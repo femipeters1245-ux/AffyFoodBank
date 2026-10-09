@@ -1,8 +1,8 @@
-// frontend/src/components/Navbar.tsx
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
+import { AffyLogo } from './AffyLogo';
 
 export const Navbar: React.FC = () => {
   const { user, wallet, isAuthenticated, logout } = useAuth();
@@ -17,18 +17,8 @@ export const Navbar: React.FC = () => {
         <div className="flex justify-between items-center h-16">
           {/* Logo & Brand */}
           <div className="flex items-center space-x-3">
-            <Link to="/" className="flex items-center space-x-2.5 group">
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-brand-700 via-brand-600 to-emerald-400 flex items-center justify-center text-white shadow-md shadow-brand-500/20 group-hover:scale-105 transition-transform duration-200">
-                <span className="text-xl">🌾</span>
-              </div>
-              <div>
-                <span className="text-xl font-bold tracking-tight text-slate-900 group-hover:text-brand-700 transition-colors">
-                  Affy <span className="text-brand-600">FoodBank</span>
-                </span>
-                <span className="hidden sm:block text-[10px] font-medium tracking-wide uppercase text-slate-400">
-                  Nigerian Raw Foodstuff & Savings
-                </span>
-              </div>
+            <Link to="/" className="flex items-center group py-1" aria-label="Affy FoodBank Home">
+              <AffyLogo variant="light" size="md" className="group-hover:scale-[1.03] transition-transform duration-200" />
             </Link>
           </div>
 
@@ -83,12 +73,12 @@ export const Navbar: React.FC = () => {
                 {/* Wallet Balance Chip */}
                 <Link
                   to="/wallet"
-                  className="flex items-center space-x-2 bg-gradient-to-r from-brand-50 to-emerald-50 border border-brand-200/80 px-3 py-1.5 rounded-full hover:shadow-sm hover:border-brand-300 transition-all"
+                  className="flex items-center space-x-2 bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-200/80 px-3 py-1.5 rounded-full hover:shadow-sm hover:border-brand-300 transition-all"
                   title="View wallet & ledger"
                 >
                   <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+                    <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
                   </span>
                   <span className="text-xs text-slate-500 font-medium">Bal:</span>
                   <span className="text-xs font-bold text-brand-800">

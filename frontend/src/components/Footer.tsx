@@ -1,22 +1,17 @@
-// frontend/src/components/Footer.tsx
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { AffyLogo } from './AffyLogo';
 
 export const Footer: React.FC = () => {
   return (
-    <footer className="bg-slate-900 text-slate-400 text-sm mt-auto border-t border-slate-800">
+    <footer className="bg-affy-dark text-slate-300 text-sm mt-auto border-t border-purple-950/60 shadow-2xl">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
           {/* Brand Info */}
           <div className="space-y-4 md:col-span-1">
-            <div className="flex items-center space-x-2.5">
-              <div className="w-9 h-9 rounded-xl bg-brand-500 flex items-center justify-center text-white text-lg">
-                🌾
-              </div>
-              <span className="text-xl font-bold tracking-tight text-white">
-                Affy <span className="text-brand-400">FoodBank</span>
-              </span>
-            </div>
+            <Link to="/" className="inline-block py-1">
+              <AffyLogo variant="dark" size="lg" />
+            </Link>
             <p className="text-xs text-slate-400 leading-relaxed">
               Empowering Nigerian households, restaurants, and caterers to hedge against food inflation through direct farm-gate sourcing and automated food savings.
             </p>

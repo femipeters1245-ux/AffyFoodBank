@@ -17,10 +17,20 @@
 }
 
 .glass-dark {
-  background: rgba(15, 23, 42, 0.85);
+  background: rgba(36, 16, 79, 0.88);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(51, 65, 85, 0.4);
+  border: 1px solid rgba(147, 51, 234, 0.3);
+}
+
+.text-affy-gradient {
+  background: linear-gradient(135deg, #F59E0B 0%, #4ADE80 30%, #00D2D3 65%, #FF1378 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.bg-affy-dark {
+  background-color: #24104F;
 }
 
 /* Custom subtle scrollbar */

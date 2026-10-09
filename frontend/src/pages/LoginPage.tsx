@@ -1,7 +1,7 @@
-// frontend/src/pages/LoginPage.tsx
 import React, { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { AffyLogo } from '../components/AffyLogo';
 
 export const LoginPage: React.FC = () => {
   const { login } = useAuth();
@@ -39,10 +39,10 @@ export const LoginPage: React.FC = () => {
   return (
     <div className="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xl space-y-6">
-        <div className="text-center space-y-2">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-brand-700 to-emerald-400 flex items-center justify-center text-white text-2xl mx-auto shadow-md">
-            🌾
-          </div>
+        <div className="text-center space-y-3">
+          <Link to="/" className="inline-block hover:opacity-90 transition-opacity">
+            <AffyLogo variant="light" size="lg" className="mx-auto" />
+          </Link>
           <h2 className="text-2xl font-extrabold text-slate-900">Welcome Back</h2>
           <p className="text-xs text-slate-500">
             Sign in to manage your food wallet, view savings plans, and order raw foodstuff.

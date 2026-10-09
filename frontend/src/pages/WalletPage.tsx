@@ -219,15 +219,15 @@ export const WalletPage: React.FC = () => {
 
       {/* 3 Metric Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Total Balance Card */}
-        <div className="bg-gradient-to-br from-brand-900 to-slate-900 text-white p-6 sm:p-7 rounded-3xl shadow-lg border border-brand-800 space-y-4">
-          <div className="flex justify-between items-center text-xs text-emerald-200/80">
+        {/* Total Balance Card with Affy Royal Dark Theme */}
+        <div className="bg-gradient-to-br from-affy-dark via-brand-900 to-brand-950 text-white p-6 sm:p-7 rounded-3xl shadow-lg border border-purple-900/50 space-y-4">
+          <div className="flex justify-between items-center text-xs text-brand-200/90">
             <span>Total Ledger Balance</span>
             <span className="text-xl">💳</span>
           </div>
           <div>
             <div className="text-3xl font-black">{formatNaira(totalBal)}</div>
-            <div className="text-[11px] text-emerald-300/80 mt-1">
+            <div className="text-[11px] text-brand-300/90 mt-1">
               Combined available & locked savings
             </div>
           </div>

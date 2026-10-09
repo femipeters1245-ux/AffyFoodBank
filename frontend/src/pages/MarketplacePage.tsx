@@ -1,10 +1,10 @@
-// frontend/src/pages/MarketplacePage.tsx
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { Product } from '../types';
 import { productsApi } from '../services/api';
 import { formatNaira } from '../utils/format';
 import { useAuth } from '../context/AuthContext';
+import { AffyLogo } from '../components/AffyLogo';
 
 // Realistic Nigerian raw-foodstuff catalogue for instant interactive display
 const DEFAULT_PRODUCTS: Product[] = [
@@ -153,56 +153,67 @@ export const MarketplacePage: React.FC = () => {
         </div>
       )}
 
-      {/* Hero Banner */}
-      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-brand-900 via-brand-800 to-slate-950 text-white shadow-2xl p-8 sm:p-12 lg:p-16">
-        {/* Subtle decorative background patterns */}
-        <div className="absolute -right-16 -bottom-16 w-80 h-80 rounded-full bg-emerald-500/10 blur-3xl pointer-events-none"></div>
-        <div className="absolute right-1/3 -top-12 w-64 h-64 rounded-full bg-accent-500/10 blur-2xl pointer-events-none"></div>
+      {/* Hero Banner with Affy Brand Dark Theme */}
+      <section className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-affy-dark via-brand-900 to-slate-950 text-white shadow-2xl p-8 sm:p-12 lg:p-16 border border-brand-800/40">
+        {/* Subtle decorative background patterns matching brand rainbow colors */}
+        <div className="absolute -right-16 -bottom-16 w-80 h-80 rounded-full bg-brand-500/20 blur-3xl pointer-events-none"></div>
+        <div className="absolute right-1/4 -top-12 w-64 h-64 rounded-full bg-affy-pink/20 blur-2xl pointer-events-none"></div>
+        <div className="absolute left-1/3 bottom-0 w-64 h-64 rounded-full bg-affy-cyan/15 blur-3xl pointer-events-none"></div>
 
-        <div className="relative z-10 max-w-3xl space-y-6">
-          <div className="inline-flex items-center space-x-2 bg-brand-700/60 backdrop-blur-md border border-brand-500/30 px-3.5 py-1.5 rounded-full text-xs font-semibold text-emerald-200">
-            <span className="text-accent-400">🔥</span>
-            <span>Hedge Against Food Inflation in Nigeria</span>
+        <div className="relative z-10 flex flex-col lg:flex-row lg:items-center lg:justify-between gap-8">
+          <div className="max-w-2xl space-y-6">
+            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-md border border-white/15 px-3.5 py-1.5 rounded-full text-xs font-semibold text-brand-200">
+              <span className="text-accent-400">🔥</span>
+              <span>Hedge Against Food Inflation in Nigeria</span>
+            </div>
+
+            <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight">
+              Buy Raw Foodstuff at Farm-Gate Prices. Save Toward Supplies.
+            </h1>
+
+            <p className="text-base sm:text-lg text-brand-100/90 leading-relaxed font-light">
+              Skip middlemen markup in open markets. Buy bags of Rice, Oloyin Beans, Ijebu Garri, Benue Yam, and Pure Palm Oil directly or lock in today's price with our automated Food Savings plans.
+            </p>
+
+            <div className="flex flex-wrap items-center gap-4 pt-2">
+              <Link
+                to="/savings"
+                className="bg-accent-500 hover:bg-accent-600 text-slate-950 font-bold px-6 py-3.5 rounded-xl shadow-lg hover:shadow-glow-accent transition-all flex items-center space-x-2"
+              >
+                <span>Start Food Savings Plan</span>
+                <span>→</span>
+              </Link>
+              <Link
+                to="/packages"
+                className="bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-medium px-6 py-3.5 rounded-xl transition-all"
+              >
+                Explore Family Food Bundles
+              </Link>
+            </div>
+
+            {/* Quick Stats Badges */}
+            <div className="grid grid-cols-3 gap-4 pt-4 border-t border-brand-800/80">
+              <div>
+                <div className="text-xl sm:text-2xl font-bold text-white">30-40%</div>
+                <div className="text-xs text-brand-200/80">Cheaper than Retail</div>
+              </div>
+              <div>
+                <div className="text-xl sm:text-2xl font-bold text-white">100%</div>
+                <div className="text-xs text-brand-200/80">Standardized Scales</div>
+              </div>
+              <div>
+                <div className="text-xl sm:text-2xl font-bold text-white">₦0 Extra</div>
+                <div className="text-xs text-brand-200/80">Savings Account Fee</div>
+              </div>
+            </div>
           </div>
 
-          <h1 className="text-3xl sm:text-5xl font-extrabold tracking-tight leading-tight">
-            Buy Raw Foodstuff at Farm-Gate Prices. Save Toward Supplies.
-          </h1>
-
-          <p className="text-base sm:text-lg text-emerald-100/90 leading-relaxed font-light">
-            Skip middlemen markup in open markets. Buy bags of Rice, Oloyin Beans, Ijebu Garri, Benue Yam, and Pure Palm Oil directly or lock in today's price with our automated Food Savings plans.
-          </p>
-
-          <div className="flex flex-wrap items-center gap-4 pt-2">
-            <Link
-              to="/savings"
-              className="bg-accent-500 hover:bg-accent-600 text-slate-950 font-bold px-6 py-3.5 rounded-xl shadow-lg hover:shadow-glow-accent transition-all flex items-center space-x-2"
-            >
-              <span>Start Food Savings Plan</span>
-              <span>→</span>
-            </Link>
-            <Link
-              to="/packages"
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/20 text-white font-medium px-6 py-3.5 rounded-xl transition-all"
-            >
-              Explore Family Food Bundles
-            </Link>
-          </div>
-
-          {/* Quick Stats Badges */}
-          <div className="grid grid-cols-3 gap-4 pt-4 border-t border-brand-700/60">
-            <div>
-              <div className="text-xl sm:text-2xl font-bold text-white">30-40%</div>
-              <div className="text-xs text-emerald-200/70">Cheaper than Retail</div>
-            </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-bold text-white">100%</div>
-              <div className="text-xs text-emerald-200/70">Standardized Scales</div>
-            </div>
-            <div>
-              <div className="text-xl sm:text-2xl font-bold text-white">₦0 Extra</div>
-              <div className="text-xs text-emerald-200/70">Savings Account Fee</div>
-            </div>
+          {/* Logo Showcase inside Hero */}
+          <div className="hidden lg:flex flex-col items-center justify-center p-8 bg-white/5 backdrop-blur-md border border-white/10 rounded-3xl shadow-inner max-w-sm">
+            <AffyLogo variant="dark" size="xl" className="scale-110 drop-shadow-2xl" />
+            <p className="mt-4 text-center text-xs text-brand-200 font-medium">
+              Nigeria's #1 Bulk Foodstuff & Disciplined Food Banking Platform
+            </p>
           </div>
         </div>
       </section>
@@ -335,20 +346,20 @@ export const MarketplacePage: React.FC = () => {
         </div>
       )}
 
-      {/* Trust Callout */}
-      <section className="bg-emerald-950 text-white rounded-3xl p-8 sm:p-10 border border-emerald-800 flex flex-col md:flex-row items-center justify-between gap-6">
+      {/* Trust Callout with Brand Colors */}
+      <section className="bg-affy-dark text-white rounded-3xl p-8 sm:p-10 border border-purple-900/60 shadow-xl flex flex-col md:flex-row items-center justify-between gap-6">
         <div className="space-y-2 max-w-xl">
           <span className="text-xs uppercase tracking-wider font-bold text-accent-400">
             Affy Collective Advantage
           </span>
           <h2 className="text-2xl font-bold">Need Wholesale Foodstuff for Catering or School?</h2>
-          <p className="text-xs text-emerald-200/80 leading-relaxed">
+          <p className="text-xs text-brand-200/90 leading-relaxed">
             Order by truckload or ton. We aggregate farm supplies across Kaduna, Benue, Kebbi, and Niger to guarantee consistency and eliminate seasonal inflation spikes.
           </p>
         </div>
         <Link
           to="/packages"
-          className="whitespace-nowrap bg-white text-slate-900 hover:bg-emerald-50 px-6 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all"
+          className="whitespace-nowrap bg-white text-brand-950 hover:bg-brand-50 px-6 py-3.5 rounded-xl font-bold text-sm shadow-md transition-all"
         >
           View Commercial Bundles
         </Link>

@@ -181,14 +181,14 @@ export const SavingsPage: React.FC = () => {
         </div>
       )}
 
-      {/* Header & Stats Banner */}
-      <div className="bg-gradient-to-r from-emerald-800 to-brand-900 rounded-3xl p-8 sm:p-10 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6">
+      {/* Header & Stats Banner with Affy Royal Dark Theme */}
+      <div className="bg-gradient-to-r from-affy-dark via-brand-900 to-brand-950 rounded-3xl p-8 sm:p-10 text-white shadow-xl flex flex-col md:flex-row justify-between items-start md:items-center gap-6 border border-purple-900/50">
         <div className="space-y-2 max-w-xl">
           <span className="text-xs uppercase tracking-wider font-bold text-accent-400 bg-white/10 px-3 py-1 rounded-full border border-white/20">
             Disciplined Food Banking
           </span>
           <h1 className="text-3xl font-extrabold">Food Savings & Inflation Hedge</h1>
-          <p className="text-xs text-emerald-100/90 leading-relaxed">
+          <p className="text-xs text-brand-100/90 leading-relaxed">
             Deposit daily or weekly towards bulk foodstuff. Once your target is met, receive guaranteed delivery of your bags of rice, beans, or oils at today's benchmark price.
           </p>
         </div>
@@ -298,7 +298,7 @@ export const SavingsPage: React.FC = () => {
 
                     <div className="w-full h-3 bg-slate-100 rounded-full overflow-hidden border border-slate-200/80">
                       <div
-                        className="h-full bg-gradient-to-r from-brand-500 to-emerald-400 rounded-full transition-all duration-500"
+                        className="h-full bg-gradient-to-r from-affy-gold via-affy-cyan to-affy-magenta rounded-full transition-all duration-500 shadow-sm"
                         style={{ width: `${percent}%` }}
                       ></div>
                     </div>
