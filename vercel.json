@@ -3,8 +3,8 @@
 
   "version": 2,
 
-  "buildCommand": "npm run build",
-  "installCommand": "npm install",
+  "buildCommand": "cd frontend && npm install && npm run build",
+  "installCommand": "cd backend && npm install && npx prisma generate",
   "outputDirectory": "frontend/dist",
   "framework": null,
 
