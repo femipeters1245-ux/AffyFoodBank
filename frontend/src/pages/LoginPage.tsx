@@ -12,7 +12,8 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [seeding, setSeeding] = useState(false);
+  const [seedSuccess, setSeedSuccess] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -21,7 +22,17 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login(email, password);
-      navigate(from, { replace: true });
+      const savedUser = JSON.parse(localStorage.getItem('affy_user') || '{}');
+      if (
+        savedUser.role === 'Admin' ||
+        savedUser.role === 'FinanceStaff' ||
+        email === 'admin@affyfoodbank.ng' ||
+        email === 'staff@affyfoodbank.ng'
+      ) {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate(from === '/' ? '/wallet' : from, { replace: true });
+      }
     } catch (err: any) {
       setError(
         err.response?.data?.error ?? 'Invalid email or password. Please check your credentials.',
@@ -36,6 +47,21 @@ export const LoginPage: React.FC = () => {
     setPassword(demoPass);
   };
 
+  const handleSeedDatabase = async () => {
+    setSeeding(true);
+    setSeedSuccess(null);
+    setError(null);
+    try {
+      const res = await fetch('/api/v1/auth/seed-demo', { method: 'POST' });
+      if (!res.ok) throw new Error('Database seeding returned status ' + res.status);
+      setSeedSuccess('Demo database initialized! Customer, Staff, and Admin accounts are ready.');
+    } catch (err: any) {
+      setError('Failed to seed database: ' + (err.message || 'Please check server logs.'));
+    } finally {
+      setSeeding(false);
+    }
+  };
+
   return (
     <div className="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xl space-y-6">
@@ -48,6 +74,13 @@ export const LoginPage: React.FC = () => {
             Sign in to manage your food wallet, view savings plans, and order raw foodstuff.
           </p>
         </div>
+
+        {seedSuccess && (
+          <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium flex items-center space-x-2">
+            <span>✅</span>
+            <span>{seedSuccess}</span>
+          </div>
+        )}
 
         {error && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-2">
@@ -98,24 +131,43 @@ export const LoginPage: React.FC = () => {
         </form>
 
         {/* Quick Demo Fill Buttons */}
-        <div className="pt-2 border-t border-slate-100">
-          <div className="text-[11px] text-slate-400 text-center font-semibold uppercase tracking-wider mb-2">
+        <div className="pt-2 border-t border-slate-100 space-y-2">
+          <div className="text-[11px] text-slate-400 text-center font-semibold uppercase tracking-wider">
             Quick Fill Demo Accounts
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-3 gap-2">
             <button
               type="button"
               onClick={() => fillDemo('customer@affyfoodbank.ng', 'Password123!')}
-              className="py-2 px-3 bg-slate-50 border border-slate-200 hover:bg-brand-50 text-[11px] font-semibold text-slate-700 rounded-xl transition-colors"
+              className="py-2 px-2 bg-slate-50 border border-slate-200 hover:bg-brand-50 text-[11px] font-semibold text-slate-700 rounded-xl transition-colors text-center"
             >
-              Demo Customer
+              Customer
+            </button>
+            <button
+              type="button"
+              onClick={() => fillDemo('staff@affyfoodbank.ng', 'StaffPassword123!')}
+              className="py-2 px-2 bg-slate-50 border border-slate-200 hover:bg-brand-50 text-[11px] font-semibold text-slate-700 rounded-xl transition-colors text-center"
+            >
+              Staff
             </button>
             <button
               type="button"
               onClick={() => fillDemo('admin@affyfoodbank.ng', 'AdminPassword123!')}
-              className="py-2 px-3 bg-slate-50 border border-slate-200 hover:bg-brand-50 text-[11px] font-semibold text-slate-700 rounded-xl transition-colors"
+              className="py-2 px-2 bg-slate-50 border border-slate-200 hover:bg-brand-50 text-[11px] font-semibold text-slate-700 rounded-xl transition-colors text-center"
             >
-              Demo Admin
+              Admin
+            </button>
+          </div>
+
+          {/* Database Setup Helper */}
+          <div className="text-center pt-1">
+            <button
+              type="button"
+              disabled={seeding}
+              onClick={handleSeedDatabase}
+              className="text-[11px] text-brand-600 hover:text-brand-700 underline font-semibold"
+            >
+              {seeding ? 'Initializing database accounts...' : 'Database empty? Click to auto-seed demo accounts'}
             </button>
           </div>
         </div>

@@ -53,3 +53,20 @@ export const resetPassword = async (req: Request, res: Response, next: NextFunct
   }
 };
 
+export const seedDemo = async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { seedDemoAccounts } = await import('../seeders/seedRolesPermissions');
+    await seedDemoAccounts();
+    res.json({
+      message: 'Demo accounts and roles seeded successfully',
+      accounts: [
+        { email: 'customer@affyfoodbank.ng', role: 'Customer', password: 'Password123!' },
+        { email: 'staff@affyfoodbank.ng', role: 'FinanceStaff', password: 'StaffPassword123!' },
+        { email: 'admin@affyfoodbank.ng', role: 'Admin', password: 'AdminPassword123!' },
+      ],
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+

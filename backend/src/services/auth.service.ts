@@ -1,8 +1,8 @@
-// backend/src/services/auth.service.ts
 import jwt from 'jsonwebtoken';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prisma/client';
 import { hashPassword, comparePassword } from '../utils/password';
+import { seedDemoAccounts } from '../seeders/seedRolesPermissions';
 import {
   BadRequestError,
   ConflictError,
@@ -118,10 +118,28 @@ export async function registerUser(body: unknown) {
 export async function loginUser(body: unknown) {
   const { email, password } = loginSchema.parse(body);
 
-  const user = await prisma.user.findUnique({
+  let user = await prisma.user.findUnique({
     where: { email },
-    include: { profile: true },
+    include: { profile: true, role: true },
   });
+
+  // Self-healing: If demo user does not exist yet in database, auto-seed demo accounts
+  const isDemoEmail =
+    email === 'customer@affyfoodbank.ng' ||
+    email === 'admin@affyfoodbank.ng' ||
+    email === 'staff@affyfoodbank.ng';
+
+  if (!user && isDemoEmail) {
+    try {
+      await seedDemoAccounts();
+      user = await prisma.user.findUnique({
+        where: { email },
+        include: { profile: true, role: true },
+      });
+    } catch (seedErr) {
+      console.error('Error auto-seeding demo accounts:', seedErr);
+    }
+  }
 
   if (!user || !user.isActive) {
     throw new UnauthorizedError('Invalid email or password');
@@ -136,6 +154,7 @@ export async function loginUser(body: unknown) {
     sub: user.id,
     email: user.email,
     roleId: user.roleId,
+    role: user.role?.name ?? null,
     profileId: user.profile?.id ?? null,
     permissions,
   };
@@ -151,6 +170,7 @@ export async function loginUser(body: unknown) {
       firstName: user.firstName,
       lastName: user.lastName,
       roleId: user.roleId,
+      role: user.role?.name ?? null,
     },
   };
 }

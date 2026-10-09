@@ -6,6 +6,7 @@ export interface User {
   firstName?: string | null;
   lastName?: string | null;
   roleId?: string | null;
+  role?: string | null;
 }
 
 export interface Unit {

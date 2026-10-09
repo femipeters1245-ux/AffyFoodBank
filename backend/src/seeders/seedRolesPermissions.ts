@@ -120,10 +120,98 @@ export async function seedRolesPermissions() {
   }
 }
 
+/**
+ * Seed demo users (Admin, Staff, Customer) with pre-configured credentials & wallet.
+ */
+export async function seedDemoAccounts() {
+  await seedRolesPermissions();
+
+  const customerRole = await prisma.role.findUnique({ where: { name: 'Customer' } });
+  const adminRole = await prisma.role.findUnique({ where: { name: 'Admin' } });
+  const staffRole = await prisma.role.findUnique({ where: { name: 'FinanceStaff' } });
+
+  const bcrypt = await import('bcrypt');
+  const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
+
+  // 1. Admin Account: admin@affyfoodbank.ng / AdminPassword123!
+  const adminHash = await bcrypt.hash('AdminPassword123!', saltRounds);
+  await prisma.user.upsert({
+    where: { email: 'admin@affyfoodbank.ng' },
+    update: { roleId: adminRole?.id, isActive: true },
+    create: {
+      id: uuidv4(),
+      email: 'admin@affyfoodbank.ng',
+      passwordHash: adminHash,
+      firstName: 'Affy',
+      lastName: 'Administrator',
+      roleId: adminRole?.id,
+      isActive: true,
+    },
+  });
+
+  // 2. Staff Account: staff@affyfoodbank.ng / StaffPassword123!
+  const staffHash = await bcrypt.hash('StaffPassword123!', saltRounds);
+  await prisma.user.upsert({
+    where: { email: 'staff@affyfoodbank.ng' },
+    update: { roleId: staffRole?.id, isActive: true },
+    create: {
+      id: uuidv4(),
+      email: 'staff@affyfoodbank.ng',
+      passwordHash: staffHash,
+      firstName: 'Finance',
+      lastName: 'Staff',
+      roleId: staffRole?.id,
+      isActive: true,
+    },
+  });
+
+  // 3. Customer Account: customer@affyfoodbank.ng / Password123!
+  const customerHash = await bcrypt.hash('Password123!', saltRounds);
+  const customer = await prisma.user.upsert({
+    where: { email: 'customer@affyfoodbank.ng' },
+    update: { roleId: customerRole?.id, isActive: true },
+    create: {
+      id: uuidv4(),
+      email: 'customer@affyfoodbank.ng',
+      passwordHash: customerHash,
+      firstName: 'Adebayo',
+      lastName: 'Ogunlesi',
+      roleId: customerRole?.id,
+      isActive: true,
+    },
+  });
+
+  // Ensure Customer Profile & Funded Wallet
+  let profile = await prisma.customerProfile.findUnique({ where: { userId: customer.id } });
+  if (!profile) {
+    profile = await prisma.customerProfile.create({
+      data: {
+        id: uuidv4(),
+        userId: customer.id,
+        phone: '+2348031234567',
+      },
+    });
+  }
+
+  const existingWallet = await prisma.wallet.findUnique({ where: { customerProfileId: profile.id } });
+  if (!existingWallet) {
+    await prisma.wallet.create({
+      data: {
+        id: uuidv4(),
+        customerProfileId: profile.id,
+        totalBalanceCents: BigInt(15000000), // ₦150,000.00
+        allocatedToSavingsCents: BigInt(5000000), // ₦50,000.00
+        currency: 'NGN',
+        status: 'ACTIVE',
+      },
+    });
+  }
+}
+
 // Run when executed directly
 if (require.main === module) {
-  seedRolesPermissions()
-    .then(() => console.log('✅ Roles & permissions seeded'))
+  seedDemoAccounts()
+    .then(() => console.log('✅ Roles, permissions, and demo users (Admin, Staff, Customer) seeded'))
     .catch((e) => {
       console.error('❌ Seeding failed', e);
       process.exit(1);

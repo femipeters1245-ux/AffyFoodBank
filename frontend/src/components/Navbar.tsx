@@ -64,6 +64,18 @@ export const Navbar: React.FC = () => {
             >
               My Wallet
             </Link>
+            {(user?.role === 'Admin' || user?.role === 'FinanceStaff' || user?.role === 'SuperAdmin') && (
+              <Link
+                to="/admin"
+                className={`px-3 py-2 rounded-lg text-sm font-bold transition-colors ${
+                  isActive('/admin')
+                    ? 'bg-purple-900 text-white font-bold'
+                    : 'text-purple-700 bg-purple-50 hover:bg-purple-100'
+                }`}
+              >
+                ⚙️ Operations Portal
+              </Link>
+            )}
           </div>
 
           {/* User Controls & Balance */}
@@ -181,6 +193,15 @@ export const Navbar: React.FC = () => {
             >
               My Wallet
             </Link>
+            {(user?.role === 'Admin' || user?.role === 'FinanceStaff' || user?.role === 'SuperAdmin') && (
+              <Link
+                to="/admin"
+                onClick={() => setMobileMenuOpen(false)}
+                className="block px-3 py-2 rounded-lg text-base font-bold text-purple-700 bg-purple-50 hover:bg-purple-100"
+              >
+                ⚙️ Operations Portal
+              </Link>
+            )}
           </div>
           <div className="pt-3 border-t border-slate-100">
             {isAuthenticated ? (

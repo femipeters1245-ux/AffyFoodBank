@@ -12,6 +12,7 @@ import { SavingsPage } from './pages/SavingsPage';
 import { WalletPage } from './pages/WalletPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
+import { AdminDashboardPage } from './pages/AdminDashboardPage';
 
 export const App: React.FC = () => {
   return (
@@ -29,6 +30,14 @@ export const App: React.FC = () => {
                 element={
                   <ProtectedRoute>
                     <WalletPage />
+                  </ProtectedRoute>
+                }
+              />
+              <Route
+                path="/admin"
+                element={
+                  <ProtectedRoute>
+                    <AdminDashboardPage />
                   </ProtectedRoute>
                 }
               />
