@@ -22,10 +22,3 @@ BCRYPT_SALT_ROUNDS=12
 # e.g. https://affy-foodbank.vercel.app  OR  https://yourdomain.com
 CORS_ORIGIN=https://<your-vercel-domain>
 
-# -- Transactpay ---------------------------------------------------------------
-TRANSACTPAY_API_KEY=<your_transactpay_api_key>
-TRANSACTPAY_BASE_URL=https://api.transactpay.com/v1
-# Replace <your-vercel-domain> with your actual domain
-TRANSACTPAY_CALLBACK_URL=https://<your-vercel-domain>/api/v1/payments/callback
-TRANSACTPAY_WEBHOOK_URL=https://<your-vercel-domain>/api/v1/payments/webhook
-TRANSACTPAY_ENVIRONMENT=LIVE
