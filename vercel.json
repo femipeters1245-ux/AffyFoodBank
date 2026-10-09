@@ -25,22 +25,5 @@
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
-  ],
-
-  "env": {
-    "NODE_ENV": "production",
-
-    "DATABASE_URL": "@database_url",
-    "JWT_SECRET": "@jwt_secret",
-    "JWT_EXPIRES_IN": "7d",
-    "BCRYPT_SALT_ROUNDS": "12",
-
-    "CORS_ORIGIN": "@cors_origin",
-
-    "TRANSACTPAY_API_KEY": "@transactpay_api_key",
-    "TRANSACTPAY_BASE_URL": "@transactpay_base_url",
-    "TRANSACTPAY_CALLBACK_URL": "@transactpay_callback_url",
-    "TRANSACTPAY_WEBHOOK_URL": "@transactpay_webhook_url",
-    "TRANSACTPAY_ENVIRONMENT": "@transactpay_environment"
-  }
+  ]
 }
