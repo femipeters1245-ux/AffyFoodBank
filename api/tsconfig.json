@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "commonjs",
+    "lib": ["ES2022"],
+    "outDir": "../.vercel/output/functions/api",
+    "rootDir": "..",
+    "strict": true,
+    "moduleResolution": "node",
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "resolveJsonModule": true,
+    "sourceMap": false,
+    "noImplicitAny": false
+  },
+  "include": ["index.ts", "../backend/src/**/*.ts"],
+  "exclude": ["../node_modules", "../backend/dist"]
+}

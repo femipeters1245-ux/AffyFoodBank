@@ -1,0 +1,12 @@
+{
+  "name": "affy-foodbank",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "build": "npm run build:backend && npm run build:frontend",
+    "build:backend": "cd backend && npm install && npx prisma generate && npx tsc",
+    "build:frontend": "cd frontend && npm install && npm run build",
+    "dev:backend": "cd backend && npm run dev",
+    "dev:frontend": "cd frontend && npm run dev"
+  }
+}

@@ -1,0 +1,31 @@
+# -----------------------------------------------------------------------------
+# Vercel Environment Variables
+# Set ALL of these in the Vercel dashboard:
+#   Project ? Settings ? Environment Variables
+#
+# The @variable_name references in vercel.json correspond to Vercel secrets.
+# Add each one under the name listed here.
+# -----------------------------------------------------------------------------
+
+# -- Database (Supabase) -------------------------------------------------------
+# Your Supabase project ? Settings ? Database ? Connection string (URI mode)
+# Use the "pooled" connection string (port 6543) for serverless functions.
+DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:6543/<DATABASE>?pgbouncer=true
+
+# -- Auth ----------------------------------------------------------------------
+JWT_SECRET=<generate a long random string, e.g. openssl rand -hex 64>
+JWT_EXPIRES_IN=7d
+BCRYPT_SALT_ROUNDS=12
+
+# -- CORS ----------------------------------------------------------------------
+# Set this AFTER your project is created on Vercel and you know your domain.
+# e.g. https://affy-foodbank.vercel.app  OR  https://yourdomain.com
+CORS_ORIGIN=https://<your-vercel-domain>
+
+# -- Transactpay ---------------------------------------------------------------
+TRANSACTPAY_API_KEY=<your_transactpay_api_key>
+TRANSACTPAY_BASE_URL=https://api.transactpay.com/v1
+# Replace <your-vercel-domain> with your actual domain
+TRANSACTPAY_CALLBACK_URL=https://<your-vercel-domain>/api/v1/payments/callback
+TRANSACTPAY_WEBHOOK_URL=https://<your-vercel-domain>/api/v1/payments/webhook
+TRANSACTPAY_ENVIRONMENT=LIVE
