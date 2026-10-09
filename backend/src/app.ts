@@ -1,4 +1,5 @@
 // backend/src/app.ts
+import 'express-async-errors';
 import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
