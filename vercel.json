@@ -4,7 +4,7 @@
   "version": 2,
 
   "buildCommand": "cd frontend && npm install && npm run build",
-  "installCommand": "cd backend && npm install && npx prisma generate",
+  "installCommand": "npm install && npx prisma generate --schema=backend/prisma/schema.prisma",
   "outputDirectory": "frontend/dist",
   "framework": null,
 
@@ -26,3 +26,4 @@
     }
   ]
 }
+
