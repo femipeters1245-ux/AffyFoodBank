@@ -30,12 +30,16 @@ export default function errorHandler(
   }
 
   // Unexpected errors – log full details, send generic message
-  logger.error('Unhandled error', { err });
+  logger.error('Unhandled error', {
+    message: err instanceof Error ? err.message : String(err),
+    stack: err instanceof Error ? err.stack : undefined,
+    err,
+  });
   res.status(500).json({
     error: 'Internal Server Error',
     code: 'INTERNAL_ERROR',
-    ...(process.env.NODE_ENV === 'development' && err instanceof Error
-      ? { stack: err.stack }
+    ...(process.env.NODE_ENV !== 'production' && err instanceof Error
+      ? { detail: err.message, stack: err.stack }
       : {}),
   });
 }

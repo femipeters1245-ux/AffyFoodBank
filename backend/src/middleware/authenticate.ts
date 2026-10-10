@@ -38,7 +38,7 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
   const token = authHeader.slice(7);
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    return next(new Error('JWT_SECRET is not configured'));
+    return next(new Error('Server configuration error: JWT_SECRET environment variable is not set. Please add it to your Vercel environment variables.'));
   }
 
   try {

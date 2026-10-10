@@ -1,5 +1,6 @@
 import prisma from '../prisma/client';
 import { v4 as uuidv4 } from 'uuid';
+import bcrypt from 'bcrypt';
 
 /**
  * Seed essential roles and permissions.
@@ -130,7 +131,6 @@ export async function seedDemoAccounts() {
   const adminRole = await prisma.role.findUnique({ where: { name: 'Admin' } });
   const staffRole = await prisma.role.findUnique({ where: { name: 'FinanceStaff' } });
 
-  const bcrypt = await import('bcrypt');
   const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
 
   // 1. Admin Account: admin@affyfoodbank.ng / AdminPassword123!
