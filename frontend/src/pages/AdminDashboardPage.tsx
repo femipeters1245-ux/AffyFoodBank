@@ -78,7 +78,7 @@ export const AdminDashboardPage: React.FC = () => {
       {/* Toast Alert */}
       {notification && (
         <div className="fixed bottom-6 right-6 z-50 bg-affy-dark text-white px-5 py-3 rounded-2xl shadow-2xl flex items-center space-x-3 border border-purple-800 animate-bounce">
-          <span className="text-emerald-400 font-bold">?</span>
+          <span className="text-emerald-400 font-bold">✓</span>
           <span className="text-sm font-semibold">{notification}</span>
         </div>
       )}
@@ -125,10 +125,10 @@ export const AdminDashboardPage: React.FC = () => {
       {/* Tab Controls */}
       <div className="flex space-x-2 border-b border-slate-200 pb-2 overflow-x-auto scrollbar-none">
         {[
-          { key: 'overview', label: '?? System Overview' },
-          { key: 'inventory', label: '?? Raw Foodstuff Inventory' },
-          { key: 'savings', label: '?? Food Savings Monitor' },
-          { key: 'users', label: '?? User & Role Access' },
+          { key: 'overview', label: '📊 System Overview' },
+          { key: 'inventory', label: '🏪 Raw Foodstuff Inventory' },
+          { key: 'savings', label: '🌾 Food Savings Monitor' },
+          { key: 'users', label: '👥 User & Role Access' },
         ].map((tab) => (
           <button
             key={tab.key}
@@ -150,13 +150,13 @@ export const AdminDashboardPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-2">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Platform Volume</span>
-              <div className="text-3xl font-black text-slate-900">?48,500,000</div>
+              <div className="text-3xl font-black text-slate-900">₦48,500,000</div>
               <div className="text-xs text-emerald-600 font-semibold">+18.4% this month</div>
             </div>
 
             <div className="bg-white p-6 rounded-3xl border border-slate-200 shadow-sm space-y-2">
               <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">Locked in Food Savings</span>
-              <div className="text-3xl font-black text-brand-900">?24,800,000</div>
+              <div className="text-3xl font-black text-brand-900">₦24,800,000</div>
               <div className="text-xs text-brand-600 font-semibold">142 Active Saver Households</div>
             </div>
 
@@ -333,7 +333,7 @@ export const AdminDashboardPage: React.FC = () => {
                             Dispatch Order
                           </button>
                         ) : item.status === 'FULFILLED' ? (
-                          <span className="text-xs text-slate-400 font-semibold">Delivered ?</span>
+                          <span className="text-xs text-slate-400 font-semibold">Delivered ✅</span>
                         ) : (
                           <span className="text-xs text-slate-400">In Progress ({percent}%)</span>
                         )}
@@ -361,7 +361,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="text-xs font-bold text-purple-700 bg-purple-100 px-2.5 py-0.5 rounded-full uppercase">
                   Administrator
                 </span>
-                <span className="text-lg">??</span>
+                <span className="text-lg">🔐</span>
               </div>
               <div>
                 <div className="font-extrabold text-sm text-slate-900">admin@affyfoodbank.ng</div>
@@ -377,7 +377,7 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="text-xs font-bold text-blue-700 bg-blue-100 px-2.5 py-0.5 rounded-full uppercase">
                   Finance Staff
                 </span>
-                <span className="text-lg">??</span>
+                <span className="text-lg">💼</span>
               </div>
               <div>
                 <div className="font-extrabold text-sm text-slate-900">staff@affyfoodbank.ng</div>
@@ -393,14 +393,14 @@ export const AdminDashboardPage: React.FC = () => {
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-100 px-2.5 py-0.5 rounded-full uppercase">
                   Customer
                 </span>
-                <span className="text-lg">???</span>
+                <span className="text-lg">🛒</span>
               </div>
               <div>
                 <div className="font-extrabold text-sm text-slate-900">customer@affyfoodbank.ng</div>
                 <div className="text-xs text-slate-500 font-mono mt-0.5">Password: Password123!</div>
               </div>
               <p className="text-xs text-slate-600">
-                End-user account with active digital food wallet (pre-funded with ?150k), active savings goals, and marketplace orders.
+                End-user account with active digital food wallet (pre-funded with ₦150k), active savings goals, and marketplace orders.
               </p>
             </div>
           </div>
