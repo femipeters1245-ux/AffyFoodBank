@@ -13,6 +13,7 @@ import meRouter from './routes/me';
 import walletRouter from './routes/wallet';
 import packageRouter from './routes/package';
 import savingsRouter from './routes/savings';
+import paymentRouter from './routes/payments';
 
 // Middleware
 import errorHandler from './middleware/errorHandler';
@@ -47,18 +48,19 @@ app.use(`${API}/me`, meRouter);
 app.use(`${API}/wallet`, walletRouter);
 app.use(`${API}/packages`, packageRouter);
 app.use(`${API}/savings`, savingsRouter);
+app.use(`${API}/payments`, paymentRouter);
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req: Request, res: Response) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-// ─── 404 Catch-all ────────────────────────────────────────────────────────────
+// ─── 404 Catch-all ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: 'Not Found', code: 'NOT_FOUND' });
 });
 
-// ─── Central Error Handler ────────────────────────────────────────────────────
+// ─── Central Error Handler ─────────────────────────────────────────────────────
 // Must be registered LAST – after all routes
 app.use(errorHandler);
 

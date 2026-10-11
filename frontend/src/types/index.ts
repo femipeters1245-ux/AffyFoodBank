@@ -36,6 +36,7 @@ export interface Product {
   sku?: string | null;
   priceCents: number; // in NGN cents (kobo)
   currency: string;
+  imageUrl?: string | null;
   unitId?: string | null;
   categoryId?: string | null;
   isActive: boolean;
@@ -133,4 +134,10 @@ export interface AuthResponse {
   token: string;
   refreshToken?: string | null;
   user: User;
+}
+
+
+export interface CartItem {
+  product: Product;
+  quantity: number;
 }

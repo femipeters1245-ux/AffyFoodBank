@@ -1,18 +1,21 @@
+// frontend/src/components/Navbar.tsx
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
+import { useCart } from '../context/CartContext';
 import { formatNaira } from '../utils/format';
 import { AffyLogo } from './AffyLogo';
 
 export const Navbar: React.FC = () => {
   const { user, wallet, isAuthenticated, logout } = useAuth();
+  const { totalItems, setIsCartOpen } = useCart();
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <nav className="sticky top-0 z-50 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
+    <nav className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-slate-200 shadow-sm">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between items-center h-16">
           {/* Logo & Brand */}
@@ -78,77 +81,103 @@ export const Navbar: React.FC = () => {
             )}
           </div>
 
-          {/* User Controls & Balance */}
-          <div className="hidden md:flex items-center space-x-3">
-            {isAuthenticated ? (
-              <div className="flex items-center space-x-3">
-                {/* Wallet Balance Chip */}
-                <Link
-                  to="/wallet"
-                  className="flex items-center space-x-2 bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-200/80 px-3 py-1.5 rounded-full hover:shadow-sm hover:border-brand-300 transition-all"
-                  title="View wallet & ledger"
-                >
-                  <span className="flex h-2 w-2 relative">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
-                  </span>
-                  <span className="text-xs text-slate-500 font-medium">Bal:</span>
-                  <span className="text-xs font-bold text-brand-800">
-                    {wallet ? formatNaira(wallet.totalBalanceCents) : '₦0.00'}
-                  </span>
-                </Link>
-
-                {/* User menu */}
-                <div className="flex items-center space-x-2">
-                  <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-700 uppercase">
-                    {user?.firstName ? user.firstName[0] : user?.email[0] ?? 'U'}
-                  </div>
-                  <span className="text-sm font-medium text-slate-700">
-                    {user?.firstName ?? user?.email.split('@')[0]}
-                  </span>
-                  <button
-                    onClick={() => logout()}
-                    className="ml-2 text-xs text-slate-500 hover:text-rose-600 font-medium py-1 px-2 rounded hover:bg-rose-50 transition-colors"
-                  >
-                    Logout
-                  </button>
-                </div>
-              </div>
-            ) : (
-              <div className="flex items-center space-x-2">
-                <Link
-                  to="/login"
-                  className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
-                >
-                  Sign In
-                </Link>
-                <Link
-                  to="/register"
-                  className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm hover:shadow transition-all"
-                >
-                  Create Account
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {/* Mobile menu button */}
-          <div className="md:hidden flex items-center">
+          {/* User Controls & Cart */}
+          <div className="flex items-center space-x-2.5">
+            {/* Basket / Cart Button */}
             <button
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none"
-              aria-label="Toggle navigation menu"
+              onClick={() => setIsCartOpen(true)}
+              className="relative p-2 text-slate-700 hover:text-brand-700 hover:bg-brand-50 rounded-xl transition-all flex items-center space-x-1.5 border border-slate-200/80 shadow-2xs"
+              title="View Cart / Food Basket"
             >
-              {mobileMenuOpen ? (
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"
+                />
+              </svg>
+              {totalItems > 0 ? (
+                <span className="bg-brand-600 text-white text-[11px] font-black px-1.5 py-0.2 rounded-full min-w-[20px] text-center shadow-sm">
+                  {totalItems}
+                </span>
               ) : (
-                <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                </svg>
+                <span className="text-xs font-semibold text-slate-500 hidden sm:inline">Basket</span>
               )}
             </button>
+
+            {/* Desktop Auth Controls */}
+            <div className="hidden md:flex items-center space-x-3">
+              {isAuthenticated ? (
+                <div className="flex items-center space-x-3">
+                  {/* Wallet Balance Chip */}
+                  <Link
+                    to="/wallet"
+                    className="flex items-center space-x-2 bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-200/80 px-3 py-1.5 rounded-full hover:shadow-sm hover:border-brand-300 transition-all"
+                    title="View wallet & ledger"
+                  >
+                    <span className="flex h-2 w-2 relative">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
+                    </span>
+                    <span className="text-xs text-slate-500 font-medium">Bal:</span>
+                    <span className="text-xs font-bold text-brand-800">
+                      {wallet ? formatNaira(wallet.totalBalanceCents) : '₦0.00'}
+                    </span>
+                  </Link>
+
+                  {/* User menu */}
+                  <div className="flex items-center space-x-2">
+                    <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-700 uppercase">
+                      {user?.firstName ? user.firstName[0] : user?.email[0] ?? 'U'}
+                    </div>
+                    <span className="text-sm font-medium text-slate-700">
+                      {user?.firstName ?? user?.email.split('@')[0]}
+                    </span>
+                    <button
+                      onClick={() => logout()}
+                      className="ml-2 text-xs text-slate-500 hover:text-rose-600 font-medium py-1 px-2 rounded hover:bg-rose-50 transition-colors"
+                    >
+                      Logout
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center space-x-2">
+                  <Link
+                    to="/login"
+                    className="px-4 py-2 text-sm font-medium text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors"
+                  >
+                    Sign In
+                  </Link>
+                  <Link
+                    to="/register"
+                    className="px-4 py-2 text-sm font-medium text-white bg-brand-600 hover:bg-brand-700 rounded-lg shadow-sm hover:shadow transition-all"
+                  >
+                    Create Account
+                  </Link>
+                </div>
+              )}
+            </div>
+
+            {/* Mobile menu button */}
+            <div className="md:hidden flex items-center">
+              <button
+                onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+                className="p-2 rounded-lg text-slate-600 hover:text-slate-900 hover:bg-slate-100 focus:outline-none"
+                aria-label="Toggle navigation menu"
+              >
+                {mobileMenuOpen ? (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                ) : (
+                  <svg className="w-6 h-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                )}
+              </button>
+            </div>
           </div>
         </div>
       </div>

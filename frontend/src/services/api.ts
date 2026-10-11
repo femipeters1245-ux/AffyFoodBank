@@ -162,3 +162,22 @@ export const savingsApi = {
     return res.data;
   },
 };
+
+export const paymentsApi = {
+  createTransactPayOrder: async (data: {
+    amountNaira: number;
+    email: string;
+    name?: string;
+    phone?: string;
+    address?: string;
+    items?: any[];
+  }) => {
+    const res = await apiClient.post('/payments/transactpay/create-order', data);
+    return res.data;
+  },
+  verifyTransactPay: async (reference: string) => {
+    const res = await apiClient.post('/payments/transactpay/verify', { reference });
+    return res.data;
+  },
+};
+
