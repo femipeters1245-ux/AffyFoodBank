@@ -132,6 +132,7 @@ model Product {
   sku         String? @unique
   priceCents  BigInt   @default(0)
   currency    String   @default("NGN")
+  imageUrl    String?
   unitId      String?
   categoryId  String?
   isActive    Boolean  @default(true)

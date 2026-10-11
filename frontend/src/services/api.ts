@@ -181,3 +181,43 @@ export const paymentsApi = {
   },
 };
 
+export const adminApi = {
+  getStats: async () => {
+    const res = await apiClient.get('/admin/stats');
+    return res.data;
+  },
+  getProducts: async () => {
+    const res = await apiClient.get('/admin/products');
+    return res.data;
+  },
+  createProduct: async (data: any) => {
+    const res = await apiClient.post('/admin/products', data);
+    return res.data;
+  },
+  updateProduct: async (id: string, data: any) => {
+    const res = await apiClient.put(`/admin/products/${id}`, data);
+    return res.data;
+  },
+  getCustomers: async () => {
+    const res = await apiClient.get('/admin/customers');
+    return res.data;
+  },
+  updateCustomerKYC: async (id: string, data: any) => {
+    const res = await apiClient.patch(`/admin/customers/${id}/kyc`, data);
+    return res.data;
+  },
+  getOrders: async () => {
+    const res = await apiClient.get('/admin/orders');
+    return res.data;
+  },
+  updateOrderDelivery: async (id: string, data: any) => {
+    const res = await apiClient.patch(`/admin/orders/${id}/delivery`, data);
+    return res.data;
+  },
+  getTransactions: async () => {
+    const res = await apiClient.get('/admin/transactions');
+    return res.data;
+  },
+};
+
+

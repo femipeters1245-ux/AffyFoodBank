@@ -136,6 +136,7 @@ export const productService = {
         ...(parsed.name !== undefined && { name: parsed.name }),
         ...(parsed.description !== undefined && { description: parsed.description }),
         ...(parsed.priceCents !== undefined && { priceCents: parsed.priceCents }),
+        ...(parsed.imageUrl !== undefined && { imageUrl: parsed.imageUrl }),
         ...(parsed.unitId !== undefined && { unitId: parsed.unitId }),
         ...(parsed.categoryId !== undefined && { categoryId: parsed.categoryId }),
       },

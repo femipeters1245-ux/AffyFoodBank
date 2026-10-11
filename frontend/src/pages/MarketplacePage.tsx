@@ -164,24 +164,51 @@ const CATEGORIES = [
   'Soup Ingredients',
 ];
 
+const getStoredOrInitialProducts = (): Product[] => {
+  try {
+    const stored = localStorage.getItem('affy_custom_products');
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed.map((p: any) => ({
+          ...p,
+          unit: p.unit ? (typeof p.unit === 'string' ? { id: 'u1', name: p.unit } : p.unit) : { id: 'u1', name: 'unit' },
+          category: p.category ? (typeof p.category === 'string' ? { id: 'c1', name: p.category } : p.category) : { id: 'c1', name: 'Staple' },
+          inventory: { id: `i-${p.id}`, productId: p.id, quantity: p.stock ?? 50, lowStockThreshold: 10 },
+        }));
+      }
+    }
+  } catch {}
+  return DEFAULT_PRODUCTS;
+};
+
 export const MarketplacePage: React.FC = () => {
   const { user } = useAuth();
   const { items, addToCart, updateQuantity, setIsCartOpen, totalItems, totalAmountCents } = useCart();
-  const [products, setProducts] = useState<Product[]>(DEFAULT_PRODUCTS);
+  const [products, setProducts] = useState<Product[]>(getStoredOrInitialProducts);
   const [selectedCategory, setSelectedCategory] = useState('All Items');
   const [search, setSearch] = useState('');
   const [notification, setNotification] = useState<string | null>(null);
 
-  // Fetch live products if available, with robust fallback to high-res DEFAULT_PRODUCTS
+  // Synchronize live products and listen for Admin updates
   useEffect(() => {
     let mounted = true;
+
+    // Listen for real-time admin changes in local storage
+    const handleStorageChange = () => {
+      if (mounted) {
+        setProducts(getStoredOrInitialProducts());
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
     productsApi
       .list()
       .then((data) => {
         if (mounted && Array.isArray(data) && data.length > 0) {
-          // Merge API data with images if missing
+          const stored = getStoredOrInitialProducts();
           const merged = data.map((apiItem, idx) => {
-            const fallback = DEFAULT_PRODUCTS.find((p) => p.name === apiItem.name) ?? DEFAULT_PRODUCTS[idx % DEFAULT_PRODUCTS.length];
+            const fallback = stored.find((p) => p.name === apiItem.name) ?? stored[idx % stored.length];
             return {
               ...apiItem,
               imageUrl: apiItem.imageUrl || fallback.imageUrl,
@@ -191,13 +218,15 @@ export const MarketplacePage: React.FC = () => {
         }
       })
       .catch(() => {
-        // Quiet fallback to DEFAULT_PRODUCTS
+        // Fallback to stored/default products
       });
 
     return () => {
       mounted = false;
+      window.removeEventListener('storage', handleStorageChange);
     };
   }, []);
+
 
   const showNotification = (msg: string) => {
     setNotification(msg);

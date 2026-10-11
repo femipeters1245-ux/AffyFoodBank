@@ -14,6 +14,7 @@ import walletRouter from './routes/wallet';
 import packageRouter from './routes/package';
 import savingsRouter from './routes/savings';
 import paymentRouter from './routes/payments';
+import adminRouter from './routes/admin';
 
 // Middleware
 import errorHandler from './middleware/errorHandler';
@@ -49,6 +50,7 @@ app.use(`${API}/wallet`, walletRouter);
 app.use(`${API}/packages`, packageRouter);
 app.use(`${API}/savings`, savingsRouter);
 app.use(`${API}/payments`, paymentRouter);
+app.use(`${API}/admin`, adminRouter);
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get('/health', (_req: Request, res: Response) => {

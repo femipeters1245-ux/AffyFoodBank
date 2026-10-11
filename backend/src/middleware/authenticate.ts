@@ -11,6 +11,7 @@ export interface JwtPayload {
   sub: string;          // user ID (UUID)
   email: string;
   roleId: string | null;
+  role?: string | null;
   permissions: string[]; // e.g. ['product:read', 'wallet:deposit']
   profileId: string | null; // CustomerProfile ID
 }
