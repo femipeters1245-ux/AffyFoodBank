@@ -118,4 +118,16 @@ router.post('/transactpay/verify', async (req: Request, res: Response, next: Nex
   }
 });
 
+/**
+ * GET /api/v1/payments/transactpay/config
+ * Exposes public keys for client-side checkout
+ */
+router.get('/transactpay/config', (_req: Request, res: Response) => {
+  res.json({
+    publicKey: process.env.TRANSACTPAY_PUBLIC_KEY || 'PGW-PUBLICKEY-493151248075433389622408C227C1E2',
+    isLive: true,
+  });
+});
+
 export default router;
+
