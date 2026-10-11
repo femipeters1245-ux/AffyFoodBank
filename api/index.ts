@@ -1,8 +1,17 @@
 // api/index.ts
-// Thin Vercel serverless adapter — wraps the Express app without modifying it.
-// Vercel invokes this file as a Node.js serverless function for every /api/* request.
-
 import 'express-async-errors';
+
+if (!process.env.DATABASE_URL) {
+  process.env.DATABASE_URL =
+    process.env.POSTGRES_PRISMA_URL ||
+    process.env.POSTGRES_URL ||
+    process.env.POSTGRES_URL_NON_POOLING;
+}
+
+if (!process.env.JWT_SECRET && process.env.SUPABASE_JWT_SECRET) {
+  process.env.JWT_SECRET = process.env.SUPABASE_JWT_SECRET;
+}
+
 import app from '../backend/src/app';
 
 export default app;
