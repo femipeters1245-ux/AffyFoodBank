@@ -62,6 +62,7 @@ export const seedDemo = async (_req: Request, res: Response, next: NextFunction)
       accounts: [
         { email: 'customer@affyfoodbank.ng', role: 'Customer', password: 'Password123!' },
         { email: 'staff@affyfoodbank.ng', role: 'FinanceStaff', password: 'StaffPassword123!' },
+        { email: 'affybrand@gmail.com', role: 'Admin', password: 'AdminPassword123!' },
         { email: 'admin@affyfoodbank.ng', role: 'Admin', password: 'AdminPassword123!' },
       ],
     });

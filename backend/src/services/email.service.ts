@@ -14,7 +14,7 @@ export const DEFAULT_FROM_EMAIL =
   process.env.RESEND_FROM_EMAIL || 'Affy FoodBank <onboarding@resend.dev>';
 
 export const ADMIN_NOTIFICATION_EMAIL =
-  process.env.ADMIN_EMAIL || 'femipeters1245@gmail.com';
+  process.env.ADMIN_EMAIL || 'affybrand@gmail.com';
 
 export interface SendEmailOptions {
   to: string | string[];
@@ -99,7 +99,7 @@ const emailWrapper = (title: string, bodyContent: string) => `
     </div>
     <div class="footer">
       <p style="margin: 0 0 6px;">Affy FoodBank • Direct from Nigerian Farmers Collective</p>
-      <p style="margin: 0;">Support: <a href="mailto:femipeters1245@gmail.com" style="color: #16a34a;">femipeters1245@gmail.com</a> | Visit: <a href="https://affy-food-bank-czt6.vercel.app" style="color: #16a34a;">affyfoodbank.ng</a></p>
+      <p style="margin: 0;">Support: <a href="mailto:affybrand@gmail.com" style="color: #16a34a;">affybrand@gmail.com</a> | Visit: <a href="https://affy-food-bank-czt6.vercel.app" style="color: #16a34a;">affyfoodbank.ng</a></p>
     </div>
   </div>
 </body>

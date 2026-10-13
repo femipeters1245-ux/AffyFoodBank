@@ -27,6 +27,7 @@ export const LoginPage: React.FC = () => {
       if (
         savedUser.role === 'Admin' ||
         savedUser.role === 'FinanceStaff' ||
+        email === 'affybrand@gmail.com' ||
         email === 'admin@affyfoodbank.ng' ||
         email === 'staff@affyfoodbank.ng'
       ) {
@@ -153,7 +154,7 @@ export const LoginPage: React.FC = () => {
             </button>
             <button
               type="button"
-              onClick={() => fillDemo('admin@affyfoodbank.ng', 'AdminPassword123!')}
+              onClick={() => fillDemo('affybrand@gmail.com', 'AdminPassword123!')}
               className="py-2 px-2 bg-slate-50 border border-slate-200 hover:bg-brand-50 text-[11px] font-semibold text-slate-700 rounded-xl transition-colors text-center"
             >
               Admin

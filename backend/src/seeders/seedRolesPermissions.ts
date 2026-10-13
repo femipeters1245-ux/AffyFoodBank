@@ -133,21 +133,23 @@ export async function seedDemoAccounts() {
 
   const saltRounds = Number(process.env.BCRYPT_SALT_ROUNDS) || 12;
 
-  // 1. Admin Account: admin@affyfoodbank.ng / AdminPassword123!
+  // 1. Admin Accounts: affybrand@gmail.com / admin@affyfoodbank.ng
   const adminHash = await bcrypt.hash('AdminPassword123!', saltRounds);
-  await prisma.user.upsert({
-    where: { email: 'admin@affyfoodbank.ng' },
-    update: { roleId: adminRole?.id, isActive: true },
-    create: {
-      id: uuidv4(),
-      email: 'admin@affyfoodbank.ng',
-      passwordHash: adminHash,
-      firstName: 'Affy',
-      lastName: 'Administrator',
-      roleId: adminRole?.id,
-      isActive: true,
-    },
-  });
+  for (const adminEmail of ['affybrand@gmail.com', 'admin@affyfoodbank.ng']) {
+    await prisma.user.upsert({
+      where: { email: adminEmail },
+      update: { roleId: adminRole?.id, isActive: true },
+      create: {
+        id: uuidv4(),
+        email: adminEmail,
+        passwordHash: adminHash,
+        firstName: 'Affy',
+        lastName: 'Administrator',
+        roleId: adminRole?.id,
+        isActive: true,
+      },
+    });
+  }
 
   // 2. Staff Account: staff@affyfoodbank.ng / StaffPassword123!
   const staffHash = await bcrypt.hash('StaffPassword123!', saltRounds);

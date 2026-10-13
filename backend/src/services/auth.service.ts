@@ -125,8 +125,9 @@ export async function loginUser(body: unknown) {
 
   // Self-healing: If demo user does not exist yet in database, auto-seed demo accounts
   const isDemoEmail =
-    email === 'customer@affyfoodbank.ng' ||
+    email === 'affybrand@gmail.com' ||
     email === 'admin@affyfoodbank.ng' ||
+    email === 'customer@affyfoodbank.ng' ||
     email === 'staff@affyfoodbank.ng';
 
   if (!user && isDemoEmail) {
