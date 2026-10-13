@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prisma/client';
 import { BadRequestError } from '../utils/errors';
+import { sendOrderReceiptEmail, sendAdminOrderAlert } from '../services/email.service';
 
 const router = Router();
 
@@ -311,7 +312,7 @@ router.post('/transactpay/verify', async (req: Request, res: Response, next: Nex
     const isSandboxRef = reference.startsWith('TP_') || reference.startsWith('WLT_');
     const isVerified = gatewayVerified || (!gatewayReachable && isSandboxRef);
 
-    // Update database records on successful payment
+    // Update database records and trigger customer receipt email on successful payment
     if (isVerified) {
       try {
         const existingTx = await prisma.walletTransaction.findUnique({
@@ -325,6 +326,26 @@ router.post('/transactpay/verify', async (req: Request, res: Response, next: Nex
         }
       } catch (e: any) {
         // ignore db errors
+      }
+
+      // Send Resend confirmation email
+      const customerEmail = gatewayData?.customer?.email || req.body?.email;
+      const chargedAmount = Number(
+        gatewayData?.totalAmountCharged || gatewayData?.order?.amount || req.body?.amountNaira || 0
+      );
+      if (customerEmail) {
+        sendOrderReceiptEmail({
+          to: customerEmail,
+          orderReference: reference,
+          amountNaira: chargedAmount,
+          channel: gatewayData?.paymentMethod || 'TransactPay Gateway',
+        }).catch((e) => console.warn('[Email] Receipt email note:', e.message));
+
+        sendAdminOrderAlert({
+          orderReference: reference,
+          amountNaira: chargedAmount,
+          customerEmail,
+        }).catch((e) => console.warn('[Email] Admin alert note:', e.message));
       }
     }
 
