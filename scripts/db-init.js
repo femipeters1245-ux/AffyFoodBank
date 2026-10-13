@@ -4,6 +4,7 @@
 
 const { execSync } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const dbUrl =
   process.env.DATABASE_URL ||
@@ -18,9 +19,17 @@ if (!dbUrl) {
 
 // Ensure Prisma CLI finds the DATABASE_URL
 process.env.DATABASE_URL = dbUrl;
-const schemaPath = path.resolve(__dirname, '../backend/prisma/schema.prisma');
 
-console.log('[db-init] Pushing Prisma schema to PostgreSQL database...');
+// Resolve schema path flexibly
+let schemaPath = path.resolve(__dirname, '../prisma/schema.prisma');
+if (!fs.existsSync(schemaPath)) {
+  schemaPath = path.resolve(__dirname, '../backend/prisma/schema.prisma');
+}
+if (!fs.existsSync(schemaPath)) {
+  schemaPath = path.resolve(process.cwd(), 'prisma/schema.prisma');
+}
+
+console.log(`[db-init] Pushing Prisma schema from ${schemaPath} to PostgreSQL database...`);
 try {
   execSync(`npx prisma db push --schema="${schemaPath}" --accept-data-loss`, {
     stdio: 'inherit',
