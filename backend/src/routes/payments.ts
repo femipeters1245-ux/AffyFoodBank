@@ -405,6 +405,26 @@ router.post('/transactpay/webhook', async (req: Request, res: Response) => {
       } catch (err: any) {
         console.warn('[TransactPay Webhook] DB update note:', err.message);
       }
+
+      // Dispatch Resend email receipt & admin alert on webhook confirmation
+      const customerEmail = data?.customer?.email || data?.email || payload?.email;
+      const chargedAmount = Number(
+        data?.totalAmountCharged || data?.amount || data?.order?.amount || 0
+      );
+      if (customerEmail) {
+        sendOrderReceiptEmail({
+          to: customerEmail,
+          orderReference,
+          amountNaira: chargedAmount,
+          channel: data?.paymentMethod || 'TransactPay Gateway',
+        }).catch((e) => console.warn('[Webhook Email] Receipt note:', e.message));
+
+        sendAdminOrderAlert({
+          orderReference,
+          amountNaira: chargedAmount,
+          customerEmail,
+        }).catch((e) => console.warn('[Webhook Email] Admin alert note:', e.message));
+      }
     }
 
     // TransactPay expects HTTP 200 OK acknowledgment
