@@ -2,8 +2,8 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
   "buildCommand": "node scripts/build.js",
-  "installCommand": "npm install && npx prisma generate",
-  "outputDirectory": "dist",
+  "installCommand": "npm install && cd backend && npm install && cd ..",
+  "outputDirectory": "frontend/dist",
   "framework": null,
   "functions": {
     "api/index.ts": {
