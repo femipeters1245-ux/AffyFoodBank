@@ -1,14 +1,11 @@
 # -----------------------------------------------------------------------------
-# Vercel Environment Variables
+# Vercel Environment Variables Reference
 # Set ALL of these in the Vercel dashboard:
-#   Project ? Settings ? Environment Variables
-#
-# The @variable_name references in vercel.json correspond to Vercel secrets.
-# Add each one under the name listed here.
+#   Project → Settings → Environment Variables
 # -----------------------------------------------------------------------------
 
 # -- Database (Supabase) -------------------------------------------------------
-# Your Supabase project ? Settings ? Database ? Connection string (URI mode)
+# Your Supabase project → Settings → Database → Connection string (URI mode)
 # Use the "pooled" connection string (port 6543) for serverless functions.
 DATABASE_URL=postgresql://postgres:<PASSWORD>@<HOST>:6543/<DATABASE>?pgbouncer=true
 
@@ -18,18 +15,25 @@ JWT_EXPIRES_IN=7d
 BCRYPT_SALT_ROUNDS=12
 
 # -- CORS ----------------------------------------------------------------------
-# Set this AFTER your project is created on Vercel and you know your domain.
-# e.g. https://affy-foodbank.vercel.app  OR  https://yourdomain.com
-CORS_ORIGIN=https://<your-vercel-domain>
+# Set this to your production Vercel domain.
+CORS_ORIGIN=https://affy-food-bank-czt6.vercel.app
 
 # -- TransactPay Payment Gateway (https://merchant.transactpay.ai) -------------
-TRANSACTPAY_PUBLIC_KEY=PGW-PUBLICKEY-...
-TRANSACTPAY_SECRET_KEY=PGW-SECRETKEY-...
-TRANSACTPAY_API_KEY=PGW-SECRETKEY-...
-TRANSACTPAY_ENCRYPTION_KEY=NDA5NiE8UlNB...
+# All 4 keys are REQUIRED for live payments to work:
+#   PUBLIC_KEY  = used in API request headers (api-key)
+#   SECRET_KEY  = same as API_KEY, used for server-side verification
+#   API_KEY     = same as SECRET_KEY (duplicate for compatibility)
+#   ENCRYPTION_KEY = 4096-bit RSA XML public key (base64) for payload encryption
+TRANSACTPAY_PUBLIC_KEY=PGW-PUBLICKEY-493151248075433389622408C227C1E2
+TRANSACTPAY_SECRET_KEY=PGW-SECRETKEY-620CFCCDDDFC4D06B002F0E2598E2F21
+TRANSACTPAY_API_KEY=PGW-SECRETKEY-620CFCCDDDFC4D06B002F0E2598E2F21
+TRANSACTPAY_ENCRYPTION_KEY=NDA5NiE8UlNBS2V5VmFsdWU+...
 
-# -- Resend Email Service (https://resend.com) ----------------------------------
+# -- TransactPay Webhook -------------------------------------------------------
+# Register this URL in your TransactPay merchant dashboard:
+# https://affy-food-bank-czt6.vercel.app/api/v1/payments/transactpay/webhook
+
+# -- Resend Email Service (https://resend.com) ---------------------------------
 RESEND_API_KEY=re_...
 RESEND_FROM_EMAIL=Affy FoodBank <onboarding@resend.dev>
 ADMIN_EMAIL=affybrand@gmail.com
-
