@@ -14,28 +14,27 @@ const dbUrl =
 
 if (!dbUrl) {
   console.log('[db-init] No PostgreSQL database URL found in environment, skipping schema push.');
-  process.exit(0);
-}
+} else {
+  // Ensure Prisma CLI finds the DATABASE_URL
+  process.env.DATABASE_URL = dbUrl;
 
-// Ensure Prisma CLI finds the DATABASE_URL
-process.env.DATABASE_URL = dbUrl;
+  // Resolve schema path flexibly
+  let schemaPath = path.resolve(__dirname, '../prisma/schema.prisma');
+  if (!fs.existsSync(schemaPath)) {
+    schemaPath = path.resolve(__dirname, '../../prisma/schema.prisma');
+  }
+  if (!fs.existsSync(schemaPath)) {
+    schemaPath = path.resolve(process.cwd(), 'prisma/schema.prisma');
+  }
 
-// Resolve schema path flexibly
-let schemaPath = path.resolve(__dirname, '../prisma/schema.prisma');
-if (!fs.existsSync(schemaPath)) {
-  schemaPath = path.resolve(__dirname, '../../prisma/schema.prisma');
-}
-if (!fs.existsSync(schemaPath)) {
-  schemaPath = path.resolve(process.cwd(), 'prisma/schema.prisma');
-}
-
-console.log(`[db-init] Pushing Prisma schema from ${schemaPath} to PostgreSQL database...`);
-try {
-  execSync(`npx prisma db push --schema="${schemaPath}" --accept-data-loss`, {
-    stdio: 'inherit',
-    env: process.env,
-  });
-  console.log('[db-init] Schema synced successfully.');
-} catch (err) {
-  console.error('[db-init] Warning: prisma db push failed:', err.message);
+  console.log(`[db-init] Pushing Prisma schema from ${schemaPath} to PostgreSQL database...`);
+  try {
+    execSync(`npx prisma db push --schema="${schemaPath}" --accept-data-loss`, {
+      stdio: 'inherit',
+      env: process.env,
+    });
+    console.log('[db-init] Schema synced successfully.');
+  } catch (err) {
+    console.warn('[db-init] Warning: prisma db push failed:', err.message);
+  }
 }
