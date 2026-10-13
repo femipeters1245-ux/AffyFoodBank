@@ -209,7 +209,10 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
             orderReference,
             processorReference: orderData?.processorReference || resData.data?.processorReference,
             data: resData.data,
-            checkoutUrl: resData.data?.checkout_url || orderData?.checkoutUrl || null,
+            checkoutUrl:
+              resData.data?.checkout_url ||
+              orderData?.checkoutUrl ||
+              `https://payment-interface.transactpay.ai/?orderId=${orderReference}`,
             otherPaymentOptions: resData.data?.otherPaymentOptions || [],
             message: 'Order created successfully with TransactPay PSSP',
           });

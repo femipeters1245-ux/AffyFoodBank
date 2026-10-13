@@ -101,6 +101,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           const config = await paymentsApi.getConfig();
           const names = (fullName || 'Customer').trim().split(' ');
           const Checkout = new (window as any).CheckoutNS.PaymentCheckout({
+            orderId: activeOrderRef,
+            orderReference: activeOrderRef,
+            reference: activeOrderRef,
+            merchantReference: activeOrderRef,
             firstName: names[0] || 'Customer',
             lastName: names.slice(1).join(' ') || 'User',
             mobile: phone,
@@ -108,8 +112,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
             email: email || user?.email || 'customer@affyfoodbank.ng',
             currency: 'NGN',
             amount: grandTotalCents / 100,
-            reference: activeOrderRef,
-            merchantReference: activeOrderRef,
             description: 'Affy FoodBank Raw Foodstuff Order',
             apiKey: config.publicKey,
             encryptionKey: config.encryptionKey,
