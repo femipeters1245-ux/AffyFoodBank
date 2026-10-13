@@ -12,7 +12,7 @@ const AUTH_GATE_META: Record<string, { icon: string; title: string; subtitle: st
     icon: '🏦',
     title: 'Food Savings is Private',
     subtitle:
-      'Sign in or create a free account to set savings goals, track your progress, and lock in today's farm prices before inflation hits.',
+      'Sign in or create a free account to set savings goals, track your progress, and lock in today\u2019s farm prices before inflation hits.',
     cta: 'Start Saving Today',
   },
   '/wallet': {
