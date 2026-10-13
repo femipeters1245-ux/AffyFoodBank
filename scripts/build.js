@@ -29,12 +29,28 @@ console.log('[build] Building frontend in:', frontendDir);
 run('npm install', frontendDir);
 run('npm run build', frontendDir);
 
-// 4. Copy dist output if running from backend root
+// 4. Ensure dist exists in every possible directory Vercel checks
 const distSrc = path.join(frontendDir, 'dist');
-const distTarget = path.resolve(process.cwd(), 'frontend/dist');
-if (distSrc !== distTarget && fs.existsSync(distSrc)) {
-  fs.mkdirSync(distTarget, { recursive: true });
-  fs.cpSync(distSrc, distTarget, { recursive: true });
+if (fs.existsSync(distSrc)) {
+  const targetLocations = [
+    path.resolve(process.cwd(), 'dist'),
+    path.resolve(process.cwd(), 'frontend/dist'),
+    path.resolve(__dirname, '../dist'),
+    path.resolve(__dirname, '../../dist'),
+    path.resolve(__dirname, '../frontend/dist'),
+  ];
+
+  targetLocations.forEach((targetDir) => {
+    try {
+      if (distSrc !== targetDir) {
+        fs.mkdirSync(targetDir, { recursive: true });
+        fs.cpSync(distSrc, targetDir, { recursive: true });
+        console.log(`[build] Synced build output to: ${targetDir}`);
+      }
+    } catch (e) {
+      // ignore
+    }
+  });
 }
 
 console.log('[build] Build step completed successfully.');

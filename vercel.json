@@ -3,7 +3,7 @@
   "version": 2,
   "buildCommand": "node scripts/build.js",
   "installCommand": "npm install && npx prisma generate",
-  "outputDirectory": "frontend/dist",
+  "outputDirectory": "dist",
   "framework": null,
   "functions": {
     "api/index.ts": {
