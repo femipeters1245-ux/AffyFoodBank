@@ -6,6 +6,19 @@ import { useCart } from '../context/CartContext';
 import { formatNaira } from '../utils/format';
 import { AffyLogo } from './AffyLogo';
 
+// Lock icon badge shown on auth-required links for guests
+const LockBadge: React.FC = () => (
+  <span
+    className="ml-1 inline-flex items-center justify-center w-3.5 h-3.5 rounded-full bg-slate-300/80 text-slate-500"
+    title="Sign in required"
+    aria-label="Sign in required"
+  >
+    <svg className="w-2 h-2" fill="currentColor" viewBox="0 0 16 16">
+      <path d="M8 1a3 3 0 0 0-3 3v1H3.5A1.5 1.5 0 0 0 2 6.5v7A1.5 1.5 0 0 0 3.5 15h9a1.5 1.5 0 0 0 1.5-1.5v-7A1.5 1.5 0 0 0 12.5 5H11V4a3 3 0 0 0-3-3zm-2 4V4a2 2 0 1 1 4 0v1H6z"/>
+    </svg>
+  </span>
+);
+
 export const Navbar: React.FC = () => {
   const { user, wallet, isAuthenticated, logout } = useAuth();
   const { totalItems, setIsCartOpen } = useCart();
@@ -49,23 +62,25 @@ export const Navbar: React.FC = () => {
             </Link>
             <Link
               to="/savings"
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
                 isActive('/savings')
                   ? 'bg-brand-50 text-brand-700 font-semibold'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               Food Savings
+              {!isAuthenticated && <LockBadge />}
             </Link>
             <Link
               to="/wallet"
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
                 isActive('/wallet')
                   ? 'bg-brand-50 text-brand-700 font-semibold'
                   : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
               }`}
             >
               My Wallet
+              {!isAuthenticated && <LockBadge />}
             </Link>
             {(user?.role === 'Admin' || user?.role === 'FinanceStaff' || user?.role === 'SuperAdmin') && (
               <Link
@@ -211,16 +226,26 @@ export const Navbar: React.FC = () => {
             <Link
               to="/savings"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-100"
+              className="flex items-center justify-between px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-100"
             >
-              Food Savings
+              <span>Food Savings</span>
+              {!isAuthenticated && (
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                  Sign In
+                </span>
+              )}
             </Link>
             <Link
               to="/wallet"
               onClick={() => setMobileMenuOpen(false)}
-              className="block px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-100"
+              className="flex items-center justify-between px-3 py-2 rounded-lg text-base font-medium text-slate-700 hover:bg-slate-100"
             >
-              My Wallet
+              <span>My Wallet</span>
+              {!isAuthenticated && (
+                <span className="text-[10px] font-bold text-slate-400 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                  Sign In
+                </span>
+              )}
             </Link>
             {(user?.role === 'Admin' || user?.role === 'FinanceStaff' || user?.role === 'SuperAdmin') && (
               <Link

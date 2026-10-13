@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AffyLogo } from '../components/AffyLogo';
 
 export const RegisterPage: React.FC = () => {
   const { register } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
+  const from = (location.state as any)?.from?.pathname || '/wallet';
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -38,7 +40,7 @@ export const RegisterPage: React.FC = () => {
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
       });
-      navigate('/', { replace: true });
+      navigate(from, { replace: true });
     } catch (err: any) {
       setError(
         err.response?.data?.error ?? 'Registration failed. Email may already be in use.',

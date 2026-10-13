@@ -27,7 +27,14 @@ export const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<MarketplacePage />} />
                 <Route path="/packages" element={<PackagesPage />} />
-                <Route path="/savings" element={<SavingsPage />} />
+                <Route
+                  path="/savings"
+                  element={
+                    <ProtectedRoute>
+                      <SavingsPage />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/wallet"
                   element={
