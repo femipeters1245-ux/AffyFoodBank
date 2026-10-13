@@ -164,6 +164,10 @@ export const savingsApi = {
 };
 
 export const paymentsApi = {
+  getConfig: async () => {
+    const res = await apiClient.get('/payments/transactpay/config');
+    return res.data;
+  },
   createTransactPayOrder: async (data: {
     amountNaira: number;
     email: string;

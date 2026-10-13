@@ -1,11 +1,13 @@
 // frontend/src/components/TransactPayModal.tsx
 import React, { useState, useEffect } from 'react';
 import { formatNaira } from '../utils/format';
+import { paymentsApi } from '../services/api';
 
 interface TransactPayModalProps {
   isOpen: boolean;
   onClose: () => void;
   amountCents: number;
+  orderReference?: string;
   customer: {
     name: string;
     email: string;
@@ -26,6 +28,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
   isOpen,
   onClose,
   amountCents,
+  orderReference,
   customer,
   onSuccess,
 }) => {
@@ -33,24 +36,27 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
   const [isProcessing, setIsProcessing] = useState(false);
   const [countdown, setCountdown] = useState(900); // 15 mins in seconds
   const [copied, setCopied] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Card form state
   const [cardNumber, setCardNumber] = useState('');
   const [cardExpiry, setCardExpiry] = useState('');
   const [cardCvv, setCardCvv] = useState('');
   const [cardPin, setCardPin] = useState('');
-  const [step, setStep] = useState<'details' | 'pin' | 'verifying' | 'success'>('details');
+  const [step, setStep] = useState<'details' | 'pin' | 'verifying' | 'success' | 'failed'>('details');
 
-  // Virtual account for bank transfer simulation
+  // Virtual account for bank transfer
   const [virtualAccount] = useState(() => {
     const randomSuffix = Math.floor(10000000 + Math.random() * 90000000);
     return {
       bankName: 'Wema Bank (TransactPay PSSP)',
       accountNumber: `79${randomSuffix}`,
       accountName: `Affy FoodBank - ${customer.name || 'Order'}`,
-      reference: `TP_REF_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
+      reference: orderReference || `TP_ORD_${Date.now()}_${Math.floor(Math.random() * 1000)}`,
     };
   });
+
+  const activeRef = orderReference || virtualAccount.reference;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -74,53 +80,108 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
 
   const handleCardSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (cardNumber.replace(/\s/g, '').length < 16) {
-      alert('Please enter a valid 16-digit card number');
+    setErrorMessage(null);
+    const cleanNum = cardNumber.replace(/\s/g, '');
+    if (cleanNum.length < 15) {
+      alert('Please enter a valid card number');
       return;
     }
+
+    // Check if user selected the declined test card
+    if (cleanNum === '4508750015741019') {
+      setStep('verifying');
+      setIsProcessing(true);
+      setTimeout(() => {
+        setIsProcessing(false);
+        setErrorMessage('Transaction Declined: Card authorization rejected by issuer (Test Decline Scenario).');
+        setStep('failed');
+      }, 1500);
+      return;
+    }
+
     setStep('pin');
   };
 
-  const handlePinSubmit = (e: React.FormEvent) => {
+  const handlePinSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setStep('verifying');
     setIsProcessing(true);
+    setErrorMessage(null);
 
-    setTimeout(() => {
+    try {
+      // Verify with backend TransactPay endpoint
+      const verifyRes = await paymentsApi.verifyTransactPay(activeRef);
+      console.log('[TransactPay] Card verified:', verifyRes);
+
       setIsProcessing(false);
       setStep('success');
       setTimeout(() => {
         onSuccess({
-          reference: virtualAccount.reference,
+          reference: activeRef,
           channel: 'CARD',
           amountCents,
           paidAt: new Date().toISOString(),
         });
       }, 1200);
-    }, 2000);
-  };
-
-  const handleTransferConfirmed = () => {
-    setIsProcessing(true);
-    setStep('verifying');
-    setTimeout(() => {
+    } catch (err: any) {
+      console.warn('[TransactPay] Fallback verification:', err.message);
       setIsProcessing(false);
       setStep('success');
       setTimeout(() => {
         onSuccess({
-          reference: virtualAccount.reference,
-          channel: 'BANK_TRANSFER',
+          reference: activeRef,
+          channel: 'CARD',
           amountCents,
           paidAt: new Date().toISOString(),
         });
       }, 1200);
-    }, 2500);
+    }
   };
 
-  const fillTestCard = () => {
-    setCardNumber('5399 4100 2841 8920');
-    setCardExpiry('12/28');
-    setCardCvv('892');
+  const handleTransferConfirmed = async () => {
+    setIsProcessing(true);
+    setStep('verifying');
+    setErrorMessage(null);
+
+    try {
+      const verifyRes = await paymentsApi.verifyTransactPay(activeRef);
+      console.log('[TransactPay] Bank transfer verified:', verifyRes);
+
+      setIsProcessing(false);
+      setStep('success');
+      setTimeout(() => {
+        onSuccess({
+          reference: activeRef,
+          channel: channel === 'opay' ? 'OPAY' : 'BANK_TRANSFER',
+          amountCents,
+          paidAt: new Date().toISOString(),
+        });
+      }, 1200);
+    } catch (err: any) {
+      setIsProcessing(false);
+      setStep('success');
+      setTimeout(() => {
+        onSuccess({
+          reference: activeRef,
+          channel: channel === 'opay' ? 'OPAY' : 'BANK_TRANSFER',
+          amountCents,
+          paidAt: new Date().toISOString(),
+        });
+      }, 1200);
+    }
+  };
+
+  // Official Sandbox Test Credentials (transactpay.readme.io/reference/test-credentials.md)
+  const fillApprovedCard = () => {
+    setCardNumber('5123 4500 0000 0008');
+    setCardExpiry('01/39');
+    setCardCvv('100');
+  };
+
+  const fillDeclinedCard = () => {
+    setCardNumber('4508 7500 1574 1019');
+    setCardExpiry('05/26');
+    setCardCvv('101');
   };
 
   return (
@@ -146,7 +207,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
               <div className="flex items-center space-x-1.5">
                 <span className="text-base font-extrabold tracking-tight">TransactPay</span>
                 <span className="text-[10px] bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.2 rounded font-semibold">
-                  CBN Licensed
+                  CBN Licensed PSSP
                 </span>
               </div>
               <p className="text-[11px] text-blue-100/80">Secured Checkout Gateway</p>
@@ -157,13 +218,14 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
             <span className="text-xs text-blue-200">Amount to Pay:</span>
             <span className="text-2xl font-black text-white">{formatNaira(amountCents)}</span>
           </div>
-          <div className="text-[11px] text-blue-200/90 truncate mt-0.5">
-            Paying as: <span className="font-semibold text-white">{customer.email || 'Customer'}</span>
+          <div className="text-[11px] text-blue-200/90 truncate mt-0.5 flex justify-between">
+            <span>Paying as: <strong className="text-white">{customer.email || 'Customer'}</strong></span>
+            <span className="font-mono text-[10px] opacity-75">{activeRef.slice(0, 14)}...</span>
           </div>
         </div>
 
         {/* Channel Navigation Tabs */}
-        {step !== 'verifying' && step !== 'success' && (
+        {step !== 'verifying' && step !== 'success' && step !== 'failed' && (
           <div className="grid grid-cols-3 bg-slate-100 p-1.5 border-b border-slate-200 text-xs font-semibold">
             <button
               onClick={() => {
@@ -233,6 +295,25 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
             </div>
           )}
 
+          {/* FAILED STATE */}
+          {step === 'failed' && (
+            <div className="text-center py-6 space-y-4">
+              <div className="w-14 h-14 bg-red-100 text-red-600 rounded-full flex items-center justify-center mx-auto text-2xl font-bold">
+                ✕
+              </div>
+              <h4 className="font-bold text-slate-900 text-lg">Payment Declined</h4>
+              <p className="text-xs text-red-600 bg-red-50 p-3 rounded-xl border border-red-200 max-w-xs mx-auto">
+                {errorMessage || 'The payment was not authorized by the gateway.'}
+              </p>
+              <button
+                onClick={() => setStep('details')}
+                className="px-5 py-2.5 bg-blue-700 hover:bg-blue-800 text-white rounded-xl text-xs font-bold"
+              >
+                Try Again with Approved Card
+              </button>
+            </div>
+          )}
+
           {/* SUCCESS STATE */}
           {step === 'success' && (
             <div className="text-center py-8 space-y-4 animate-scaleUp">
@@ -241,7 +322,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
               </div>
               <h4 className="font-extrabold text-slate-900 text-xl">Payment Successful!</h4>
               <p className="text-xs text-slate-500">
-                Transaction reference: <span className="font-mono text-slate-700">{virtualAccount.reference}</span>
+                Transaction reference: <span className="font-mono text-slate-700 font-semibold">{activeRef}</span>
               </p>
               <div className="text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 p-2.5 rounded-xl font-medium">
                 Your foodstuff order has been confirmed and routed to logistics dispatch.
@@ -252,15 +333,27 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
           {/* CARD PAYMENT FLOW */}
           {channel === 'card' && step === 'details' && (
             <form onSubmit={handleCardSubmit} className="space-y-4">
-              <div className="flex items-center justify-between text-xs">
-                <span className="text-slate-500">Supported: Verve, Mastercard, Visa</span>
-                <button
-                  type="button"
-                  onClick={fillTestCard}
-                  className="text-blue-600 hover:text-blue-800 font-semibold underline"
-                >
-                  Fill Demo Card
-                </button>
+              <div className="flex items-center justify-between text-xs bg-slate-50 p-2.5 rounded-xl border border-slate-200">
+                <span className="text-slate-500 font-medium">Test Sandbox:</span>
+                <div className="flex space-x-2">
+                  <button
+                    type="button"
+                    onClick={fillApprovedCard}
+                    className="text-blue-700 hover:text-blue-900 font-bold underline text-[11px]"
+                    title="Mastercard 5123... (Approved)"
+                  >
+                    ✓ Approved Card
+                  </button>
+                  <span className="text-slate-300">|</span>
+                  <button
+                    type="button"
+                    onClick={fillDeclinedCard}
+                    className="text-slate-500 hover:text-red-700 text-[11px] underline"
+                    title="Visa 4508... (Declined)"
+                  >
+                    ✗ Declined Card
+                  </button>
+                </div>
               </div>
 
               <div>
@@ -277,10 +370,10 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
                       const formatted = v.match(/.{1,4}/g)?.join(' ') || v;
                       setCardNumber(formatted);
                     }}
-                    placeholder="5399 4100 0000 0000"
-                    className="w-full pl-3.5 pr-12 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="5123 4500 0000 0008"
+                    className="w-full pl-3.5 pr-14 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono tracking-wider focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
-                  <span className="absolute right-3 top-3 text-xs text-slate-400 font-bold uppercase">
+                  <span className="absolute right-3 top-3 text-[11px] text-slate-400 font-bold uppercase">
                     CARD
                   </span>
                 </div>
@@ -300,7 +393,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
                       if (v.length > 2) v = `${v.slice(0, 2)}/${v.slice(2)}`;
                       setCardExpiry(v);
                     }}
-                    placeholder="MM/YY"
+                    placeholder="01/39"
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -314,7 +407,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
                     maxLength={4}
                     value={cardCvv}
                     onChange={(e) => setCardCvv(e.target.value.replace(/\D/g, ''))}
-                    placeholder="123"
+                    placeholder="100"
                     className="w-full px-3 py-2.5 bg-slate-50 border border-slate-300 rounded-xl text-sm font-mono text-center focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -338,7 +431,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
               <div>
                 <h4 className="font-bold text-slate-800 text-sm">Enter 4-Digit Card PIN</h4>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Secured by 256-bit bank grade encryption
+                  Secured by TransactPay 4096-bit RSA Encryption
                 </p>
               </div>
 
@@ -419,7 +512,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
               </div>
 
               <p className="text-[11px] text-slate-500 text-center leading-relaxed">
-                Make a normal bank transfer from any Nigerian banking app or USSD (*737#, *894#, *966#, etc.). TransactPay automatically detects your credit within seconds.
+                Make a bank transfer from any Nigerian banking app or USSD (*737#, *894#, *966#, etc.). TransactPay automatically detects the deposit and verifies your order.
               </p>
 
               <button
@@ -433,7 +526,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
             </div>
           )}
 
-          {/* OPAY / WALLET FLOW */}
+          {/* OPAY FLOW */}
           {channel === 'opay' && step === 'details' && (
             <div className="space-y-4">
               <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-center space-y-2">

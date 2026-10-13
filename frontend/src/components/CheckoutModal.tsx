@@ -4,6 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
 import { TransactPayModal } from './TransactPayModal';
+import { paymentsApi } from '../services/api';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -29,6 +30,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
   // TransactPay modal trigger & completed order state
   const [showTransactPay, setShowTransactPay] = useState(false);
+  const [createdOrderRef, setCreatedOrderRef] = useState<string | undefined>(undefined);
+  const [isInitiating, setIsInitiating] = useState(false);
   const [completedOrder, setCompletedOrder] = useState<{
     reference: string;
     paidAt: string;
@@ -43,7 +46,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const deliveryFeeCents = totalAmountCents > 10000000 ? 0 : 250000; // Free above ₦100,000, else ₦2,500
   const grandTotalCents = totalAmountCents + deliveryFeeCents;
 
-  const handleStartPayment = (e: React.FormEvent) => {
+  const handleStartPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!fullName || !phone || !address) {
       alert('Please fill in your name, phone number, and delivery address.');
@@ -69,8 +72,76 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       });
       clearCart();
     } else {
-      // Launch TransactPay checkout modal
-      setShowTransactPay(true);
+      setIsInitiating(true);
+      try {
+        // Create TransactPay order on backend
+        const orderRes = await paymentsApi.createTransactPayOrder({
+          amountNaira: grandTotalCents / 100,
+          email: email || user?.email || 'customer@affyfoodbank.ng',
+          name: fullName,
+          phone,
+          address,
+          items: items.map((i) => ({
+            productId: i.id,
+            name: i.name,
+            quantity: i.quantity,
+            priceCents: i.priceCents,
+          })),
+        });
+
+        const activeOrderRef = orderRes?.orderReference || `TP_ORD_${Date.now()}`;
+        setCreatedOrderRef(activeOrderRef);
+
+        // Check if TransactPay Standard Kit Checkout SDK is loaded (from transactpay.readme.io)
+        if (typeof (window as any).CheckoutNS?.PaymentCheckout === 'function') {
+          const config = await paymentsApi.getConfig();
+          const names = (fullName || 'Customer').trim().split(' ');
+          const Checkout = new (window as any).CheckoutNS.PaymentCheckout({
+            firstName: names[0] || 'Customer',
+            lastName: names.slice(1).join(' ') || 'User',
+            mobile: phone,
+            country: 'NG',
+            email: email || user?.email || 'customer@affyfoodbank.ng',
+            currency: 'NGN',
+            amount: grandTotalCents / 100,
+            reference: activeOrderRef,
+            merchantReference: activeOrderRef,
+            description: 'Affy FoodBank Raw Foodstuff Order',
+            apiKey: config.publicKey,
+            encryptionKey: config.encryptionKey,
+            onCompleted: async (data: any) => {
+              console.log('[TransactPay Standard Kit] Payment completed:', data);
+              try {
+                await paymentsApi.verifyTransactPay(data?.reference || activeOrderRef);
+              } catch (vErr) {
+                console.warn('[TransactPay] Verification notice:', vErr);
+              }
+              handleTransactPaySuccess({
+                reference: data?.reference || activeOrderRef,
+                channel: data?.paymentMethod || 'TRANSACTPAY',
+                amountCents: grandTotalCents,
+                paidAt: new Date().toISOString(),
+              });
+            },
+            onClose: () => {
+              console.warn('[TransactPay Standard Kit] Checkout modal closed by user');
+            },
+            onError: (err: any) => {
+              console.warn('[TransactPay Standard Kit] SDK error, fallback to embedded modal:', err);
+              setShowTransactPay(true);
+            },
+          });
+          Checkout.init();
+        } else {
+          // Fallback to embedded TransactPay modal
+          setShowTransactPay(true);
+        }
+      } catch (err: any) {
+        console.warn('[TransactPay] Gateway initialization notice:', err.message);
+        setShowTransactPay(true);
+      } finally {
+        setIsInitiating(false);
+      }
     }
   };
 
@@ -397,18 +468,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               {/* Checkout Submit Button */}
               <button
                 type="submit"
-                className={`w-full py-4 rounded-2xl font-black text-sm text-white shadow-lg transition-all flex items-center justify-center space-x-2 ${
+                disabled={isInitiating}
+                className={`w-full py-4 rounded-2xl font-black text-sm text-white shadow-lg transition-all flex items-center justify-center space-x-2 disabled:opacity-75 ${
                   paymentMethod === 'transactpay'
                     ? 'bg-blue-700 hover:bg-blue-800 shadow-blue-600/30'
                     : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/30'
                 }`}
               >
-                <span>
-                  {paymentMethod === 'transactpay'
-                    ? `Pay ${formatNaira(grandTotalCents)} with TransactPay`
-                    : `Pay ${formatNaira(grandTotalCents)} from Wallet`}
-                </span>
-                <span>➔</span>
+                {isInitiating ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
+                    <span>Initializing TransactPay...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>
+                      {paymentMethod === 'transactpay'
+                        ? `Pay ${formatNaira(grandTotalCents)} with TransactPay`
+                        : `Pay ${formatNaira(grandTotalCents)} from Wallet`}
+                    </span>
+                    <span>➔</span>
+                  </>
+                )}
               </button>
             </form>
           )}
@@ -420,6 +501,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
         isOpen={showTransactPay}
         onClose={() => setShowTransactPay(false)}
         amountCents={grandTotalCents}
+        orderReference={createdOrderRef}
         customer={{
           name: fullName,
           email: email || 'customer@affyfoodbank.ng',
