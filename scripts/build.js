@@ -34,27 +34,28 @@ if (schemaPath) {
   console.warn('[build] Warning: could not locate schema.prisma, skipping prisma generate.');
 }
 
-// ── 2. Optional DB push (only when DATABASE_URL is available) ─────────────────
+// ── 2. Optional DB push (disabled by default to prevent build hangs on Supabase pooler) ──
 const dbUrl =
   process.env.DATABASE_URL ||
   process.env.POSTGRES_PRISMA_URL ||
   process.env.POSTGRES_URL_NON_POOLING ||
   process.env.POSTGRES_URL;
 
-if (dbUrl && schemaPath) {
+if (process.env.RUN_DB_PUSH === 'true' && dbUrl && schemaPath) {
   process.env.DATABASE_URL = dbUrl;
   console.log('[build] Pushing schema to database...');
   try {
     execSync(`${npxCmd} prisma db push --schema="${schemaPath}" --accept-data-loss`, {
       stdio: 'inherit',
       env: process.env,
+      timeout: 10000,
     });
     console.log('[build] Schema pushed.');
   } catch (err) {
     console.warn('[build] Warning: prisma db push failed (non-fatal):', err.message);
   }
 } else {
-  console.log('[build] No DATABASE_URL found – skipping db push.');
+  console.log('[build] Skipping db push during web build (schema already initialized).');
 }
 
 // ── 3. Build frontend ─────────────────────────────────────────────────────────
@@ -77,4 +78,16 @@ if (!fs.existsSync(distDir)) {
   process.exit(1);
 }
 
-console.log('[build] ✅ Build completed. Output in frontend/dist');
+// Mirror to root dist so Vercel finds output regardless of configured outputDirectory
+const rootDist = path.resolve(process.cwd(), 'dist');
+try {
+  if (distDir !== rootDist) {
+    fs.mkdirSync(rootDist, { recursive: true });
+    fs.cpSync(distDir, rootDist, { recursive: true });
+    console.log('[build] Copied frontend/dist to root dist.');
+  }
+} catch (e) {
+  console.warn('[build] Note on dist copy:', e.message);
+}
+
+console.log('[build] ✅ Build completed successfully.');
