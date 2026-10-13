@@ -1,8 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "version": 2,
-  "buildCommand": "(node scripts/db-init.js 2>/dev/null || node ../scripts/db-init.js 2>/dev/null || true) && (cd ../frontend 2>/dev/null || cd frontend) && npm install && npm run build && (mkdir -p frontend/dist 2>/dev/null && cp -r ../frontend/dist/* frontend/dist/ 2>/dev/null || true)",
-  "installCommand": "npm install && (npx prisma generate || npx prisma generate --schema=prisma/schema.prisma || npx prisma generate --schema=backend/prisma/schema.prisma)",
+  "buildCommand": "node scripts/build.js",
+  "installCommand": "npm install && npx prisma generate",
   "outputDirectory": "frontend/dist",
   "framework": null,
   "functions": {
