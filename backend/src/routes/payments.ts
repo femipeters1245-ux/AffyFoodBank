@@ -187,7 +187,10 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
         });
 
         const resData: any = await tpRes.json();
-        if (resData.status === 'success' || resData.statusCode === '01') {
+        console.log('[TransactPay Create] Gateway response:', JSON.stringify(resData));
+
+        // TransactPay create-order success statusCode is '01'
+        if (resData.statusCode === '01' || resData.status === 'success') {
           // Record pending order in DB
           await recordOrderInDatabase({
             orderReference,
@@ -200,18 +203,20 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
             status: 'PENDING',
           });
 
+          const orderData = resData.data?.order || resData.data || {};
           return res.json({
             status: 'success',
             orderReference,
-            processorReference: resData.data?.order?.processorReference,
+            processorReference: orderData?.processorReference || resData.data?.processorReference,
             data: resData.data,
-            checkoutUrl: resData.data?.checkout_url || null,
+            checkoutUrl: resData.data?.checkout_url || orderData?.checkoutUrl || null,
             otherPaymentOptions: resData.data?.otherPaymentOptions || [],
             message: 'Order created successfully with TransactPay PSSP',
           });
         } else {
           console.warn('[TransactPay API] Non-success response:', resData);
         }
+
       } catch (tpErr: any) {
         console.warn('[TransactPay] Live gateway error:', tpErr.message);
       }
@@ -241,6 +246,10 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
  * POST /api/v1/payments/transactpay/verify
  * Confirms payment from TransactPay gateway verification endpoint.
  * Specification: https://transactpay.readme.io/reference/post_payment-order-verify-1.md
+ *
+ * TransactPay verify body field is `orderReference` (NOT `reference`).
+ * Success statusCode from TransactPay is '00'.
+ * Payment statusId 5 = Successful, 1 = Initiated/Pending.
  */
 router.post('/transactpay/verify', async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -252,8 +261,10 @@ router.post('/transactpay/verify', async (req: Request, res: Response, next: Nex
     const publicKey = process.env.TRANSACTPAY_PUBLIC_KEY || 'PGW-PUBLICKEY-493151248075433389622408C227C1E2';
     let gatewayVerified = false;
     let gatewayData: any = null;
+    let gatewayReachable = false;
 
     // Call TransactPay Live Verify API
+    // Body must use `orderReference` per TransactPay spec
     try {
       const tpRes = await fetch(`${TRANSACTPAY_BASE_URL}/payment/order/verify`, {
         method: 'POST',
@@ -262,57 +273,74 @@ router.post('/transactpay/verify', async (req: Request, res: Response, next: Nex
           'content-type': 'application/json',
           'api-key': publicKey,
         },
-        body: JSON.stringify({ reference }),
+        body: JSON.stringify({ orderReference: reference }),
       });
 
       const resData: any = await tpRes.json();
-      if (resData.status === 'success' || resData.statusCode === '00') {
-        gatewayData = resData.data;
-        // Check if payment is successful or initiated in sandbox
-        if (gatewayData?.status === 'Successful' || gatewayData?.statusId === 5) {
+      console.log('[TransactPay Verify] Gateway response:', JSON.stringify(resData));
+      gatewayReachable = true;
+
+      // TransactPay verify success statusCode is '00'
+      if (resData.statusCode === '00' || resData.status === 'success') {
+        gatewayData = resData.data || resData;
+
+        // statusId 5 = Successful, statusId 1 = Initiated (pending)
+        const statusId = gatewayData?.statusId ?? gatewayData?.order?.statusId;
+        const statusStr = (gatewayData?.status || gatewayData?.order?.status || '').toLowerCase();
+
+        if (statusId === 5 || statusStr === 'successful') {
           gatewayVerified = true;
-        } else if (gatewayData?.status === 'Initiated' || resData.statusCode === '00') {
-          // If in test environment or verified order record
-          gatewayVerified = true;
+        } else if (statusId === 1 || statusStr === 'initiated' || statusStr === 'pending') {
+          // Order exists but payment is still pending — not yet verified
+          gatewayVerified = false;
         }
+      } else {
+        // Gateway returned an error (e.g. "Cannot find this payment link")
+        console.warn('[TransactPay Verify] Gateway returned error:', resData?.statusDescription || resData?.message);
       }
     } catch (tpErr: any) {
-      console.warn('[TransactPay Verify] Live check warning:', tpErr.message);
+      console.warn('[TransactPay Verify] Network error reaching gateway:', tpErr.message);
+      gatewayReachable = false;
     }
 
-    // Default to verified if simulated test reference or gateway success
-    const isVerified = gatewayVerified || reference.startsWith('TP_') || reference.startsWith('TRNPAY-');
+    // Only treat as verified if the gateway explicitly confirmed it,
+    // OR if the gateway was unreachable (network failure) and reference is ours.
+    const isSandboxRef = reference.startsWith('TP_') || reference.startsWith('WLT_');
+    const isVerified = gatewayVerified || (!gatewayReachable && isSandboxRef);
 
-    // Update database records to PROCESSING and READY_FOR_DISPATCH
-    try {
-      const existingTx = await prisma.walletTransaction.findUnique({
-        where: { reference },
-      });
-      if (existingTx) {
-        await prisma.walletTransaction.update({
+    // Update database records on successful payment
+    if (isVerified) {
+      try {
+        const existingTx = await prisma.walletTransaction.findUnique({
           where: { reference },
-          data: { status: 'SUCCESSFUL' },
         });
+        if (existingTx) {
+          await prisma.walletTransaction.update({
+            where: { reference },
+            data: { status: 'SUCCESSFUL' },
+          });
+        }
+      } catch (e: any) {
+        // ignore db errors
       }
-    } catch (e: any) {
-      // ignore db errors
     }
 
     res.json({
       status: 'success',
       reference,
-      processorReference: gatewayData?.paymentReference || null,
+      processorReference: gatewayData?.paymentReference || gatewayData?.order?.processorReference || null,
       verified: isVerified,
-      orderStatus: gatewayData?.status || 'Successful',
-      amount: gatewayData?.totalAmountCharged || gatewayData?.orderAmount || null,
+      orderStatus: gatewayData?.status || gatewayData?.order?.status || (isVerified ? 'Successful' : 'Pending'),
+      amount: gatewayData?.totalAmountCharged || gatewayData?.order?.amount || null,
       paidAt: gatewayData?.dateUpdated || new Date().toISOString(),
       channel: gatewayData?.paymentMethod || 'TRANSACTPAY',
-      message: 'Payment verified successfully via TransactPay',
+      message: isVerified ? 'Payment verified successfully via TransactPay' : 'Payment not yet confirmed — please wait a moment and try again',
     });
   } catch (err) {
     next(err);
   }
 });
+
 
 /**
  * POST /api/v1/payments/transactpay/webhook

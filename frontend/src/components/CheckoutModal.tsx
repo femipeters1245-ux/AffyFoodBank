@@ -92,6 +92,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
         const activeOrderRef = orderRes?.orderReference || `TP_ORD_${Date.now()}`;
         setCreatedOrderRef(activeOrderRef);
 
+        // Mark whether this order was created live on the TransactPay gateway
+        // (isSandbox: true means create-order fell back to local simulation — TransactPay doesn't know the ref)
+        (window as any).__transactpayLiveOrder = !orderRes?.isSandbox;
+
         // Check if TransactPay Standard Kit Checkout SDK is loaded (from transactpay.readme.io)
         if (typeof (window as any).CheckoutNS?.PaymentCheckout === 'function') {
           const config = await paymentsApi.getConfig();
@@ -138,10 +142,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
         }
       } catch (err: any) {
         console.warn('[TransactPay] Gateway initialization notice:', err.message);
+        (window as any).__transactpayLiveOrder = false;
         setShowTransactPay(true);
       } finally {
         setIsInitiating(false);
       }
+
     }
   };
 
