@@ -33,10 +33,15 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+    origin: [
+      process.env.CORS_ORIGIN ?? 'http://localhost:5173',
+      'https://affy-food-bank-czt6.vercel.app',
+      'https://affy-food-bank-47z63t9vw-affybrand-4960.vercel.app',
+    ],
     credentials: true,
   }),
 );
+
 app.use(express.json());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 

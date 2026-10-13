@@ -168,7 +168,7 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
         currency: 'NGN',
       },
       payment: {
-        RedirectUrl: redirectUrl || `${req.headers.origin || 'https://affy-food-bank-czt6.vercel.app'}/?payment_success=true&ref=${orderReference}`,
+        RedirectUrl: redirectUrl || `${req.headers.origin || 'https://affy-food-bank-47z63t9vw-affybrand-4960.vercel.app'}/?payment_success=true&ref=${orderReference}`,
       },
     };
 
