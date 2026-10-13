@@ -1,0 +1,24 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "version": 2,
+  "buildCommand": "(node scripts/db-init.js 2>/dev/null || node ../scripts/db-init.js 2>/dev/null || true) && (cd ../frontend 2>/dev/null || cd frontend) && npm install && npm run build && (mkdir -p frontend/dist 2>/dev/null && cp -r ../frontend/dist/* frontend/dist/ 2>/dev/null || true)",
+  "installCommand": "npm install && (npx prisma generate || npx prisma generate --schema=prisma/schema.prisma || npx prisma generate --schema=backend/prisma/schema.prisma)",
+  "outputDirectory": "frontend/dist",
+  "framework": null,
+  "functions": {
+    "api/index.ts": {
+      "memory": 512,
+      "maxDuration": 30
+    }
+  },
+  "rewrites": [
+    {
+      "source": "/api/(.*)",
+      "destination": "/api/index.ts"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
+    }
+  ]
+}
