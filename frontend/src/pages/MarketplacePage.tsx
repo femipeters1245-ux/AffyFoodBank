@@ -278,32 +278,30 @@ export const MarketplacePage: React.FC = () => {
           <div className="space-y-4 max-w-2xl text-center lg:text-left">
             <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-md px-3 py-1.5 rounded-full text-xs font-semibold text-brand-200 border border-white/10">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Verified Raw Foodstuffs • Powered by TransactPay</span>
+              <span>Authentic Market Prices • Delivered to Your Doorstep</span>
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight leading-tight">
-              Buy Farm-Fresh Foodstuff at Guaranteed Wholesale Prices
+              Fresh Raw Foodstuff at Market Price, Delivered to Your Doorstep
             </h1>
 
             <p className="text-sm sm:text-base text-brand-100/90 leading-relaxed font-normal">
-              Direct aggregation from verified agrarian farms in Benue, Niger, Kaduna, and Kebbi.
-              Enjoy transparent digital scales, bulk savings, and secure 1-click checkout with{' '}
-              <span className="font-bold text-white underline decoration-accent-400">TransactPay</span>.
+              We sell verified agrarian staples at genuine wholesale market prices and deliver them straight to your doorstep with speed and care. No market crowds, no middleman markups, just fresh quality foodstuff brought directly to your home.
             </p>
 
             {/* Quick Metrics */}
             <div className="grid grid-cols-3 gap-4 pt-3 border-t border-white/10 max-w-md mx-auto lg:mx-0">
               <div>
-                <div className="text-xl sm:text-2xl font-bold text-white">30-40%</div>
-                <div className="text-xs text-brand-200/80">Cheaper than Retail</div>
+                <div className="text-xl sm:text-2xl font-bold text-white">Market Price</div>
+                <div className="text-xs text-brand-200/80">Direct Farm Rates</div>
               </div>
               <div>
                 <div className="text-xl sm:text-2xl font-bold text-white">100%</div>
                 <div className="text-xs text-brand-200/80">Standardized Scales</div>
               </div>
               <div>
-                <div className="text-xl sm:text-2xl font-bold text-white">Instant</div>
-                <div className="text-xs text-brand-200/80">TransactPay Checkout</div>
+                <div className="text-xl sm:text-2xl font-bold text-white">Doorstep</div>
+                <div className="text-xs text-brand-200/80">Direct Home Delivery</div>
               </div>
             </div>
           </div>

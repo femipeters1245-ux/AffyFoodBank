@@ -4,7 +4,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
 import { TransactPayModal } from './TransactPayModal';
-import { paymentsApi } from '../services/api';
+import { paymentsApi, deliveryApi } from '../services/api';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -40,10 +40,52 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     itemsCount: number;
   } | null>(null);
 
+  // Dynamic delivery fee settings (set by staff & admin in portal)
+  const [deliveryConfig, setDeliveryConfig] = useState<any>(() => {
+    try {
+      const saved = localStorage.getItem('affy_delivery_fee_config');
+      return saved
+        ? JSON.parse(saved)
+        : { standardFeeCents: 250000, freeDeliveryThresholdCents: 10000000 };
+    } catch {
+      return { standardFeeCents: 250000, freeDeliveryThresholdCents: 10000000 };
+    }
+  });
+
+  React.useEffect(() => {
+    const fetchConfig = () => {
+      deliveryApi
+        .getDeliveryFee()
+        .then((cfg) => {
+          if (cfg) {
+            setDeliveryConfig(cfg);
+            localStorage.setItem('affy_delivery_fee_config', JSON.stringify(cfg));
+          }
+        })
+        .catch(() => {});
+    };
+
+    fetchConfig();
+    window.addEventListener('affy_delivery_fee_updated', fetchConfig);
+    return () => window.removeEventListener('affy_delivery_fee_updated', fetchConfig);
+  }, []);
+
   if (!isOpen) return null;
 
-  // Delivery cost calculation (Affy food collective standard delivery)
-  const deliveryFeeCents = totalAmountCents > 10000000 ? 0 : 250000; // Free above ₦100,000, else ₦2,500
+  // Delivery cost calculation (Affy food collective standard delivery set by Admin/Staff)
+  const calculateDeliveryFee = () => {
+    const threshold = Number(deliveryConfig?.freeDeliveryThresholdCents ?? 10000000);
+    if (threshold > 0 && totalAmountCents >= threshold) {
+      return 0;
+    }
+    const stateFee = deliveryConfig?.stateFees?.[state];
+    if (typeof stateFee === 'number' && stateFee >= 0) {
+      return stateFee;
+    }
+    return Number(deliveryConfig?.standardFeeCents ?? 250000);
+  };
+
+  const deliveryFeeCents = calculateDeliveryFee();
   const grandTotalCents = totalAmountCents + deliveryFeeCents;
 
   const handleStartPayment = async (e: React.FormEvent) => {
@@ -394,22 +436,22 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   >
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center space-x-2">
-                        <div className="w-7 h-7 rounded-lg bg-blue-600 text-white font-black text-xs flex items-center justify-center">
-                          TP
+                        <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center">
+                          💳
                         </div>
                         <span className="font-extrabold text-sm text-slate-900">
-                          TransactPay Gateway
+                          Direct Online Payment
                         </span>
                       </div>
                       <input
                         type="radio"
                         checked={paymentMethod === 'transactpay'}
                         onChange={() => setPaymentMethod('transactpay')}
-                        className="text-blue-600"
+                        className="text-emerald-600"
                       />
                     </div>
                     <p className="text-[11px] text-slate-500">
-                      Debit Card (Verve, Mastercard, Visa), Bank Transfer, or OPay. Instant CBN
+                      Debit Card (Verve, Mastercard, Visa), Bank Transfer, or USSD. Instant
                       settlement.
                     </p>
                   </div>
@@ -458,10 +500,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   </span>
                 </div>
                 <div className="flex justify-between text-slate-600">
-                  <span>Logistics & Handling:</span>
+                  <span>Doorstep Delivery ({state}):</span>
                   <span className="font-semibold text-slate-800">
                     {deliveryFeeCents === 0 ? (
-                      <span className="text-emerald-600 font-bold">FREE (Bulk Order)</span>
+                      <span className="text-emerald-600 font-bold">
+                        FREE ({totalAmountCents >= (deliveryConfig?.freeDeliveryThresholdCents ?? 10000000) ? 'Bulk Order' : 'Promotional'})
+                      </span>
                     ) : (
                       formatNaira(deliveryFeeCents)
                     )}

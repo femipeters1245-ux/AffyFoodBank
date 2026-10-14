@@ -451,4 +451,28 @@ router.get('/transactions', async (_req: Request, res: Response, next: NextFunct
   }
 });
 
+/**
+ * GET /api/v1/admin/delivery-fee
+ * Fetch active delivery fee settings
+ */
+router.get('/delivery-fee', async (_req: Request, res: Response) => {
+  const { getDeliveryFeeConfig } = await import('../services/deliveryFee.service');
+  res.json(getDeliveryFeeConfig());
+});
+
+/**
+ * POST /api/v1/admin/delivery-fee
+ * Update delivery fee settings (standard fee, free delivery threshold, express fee, state fees)
+ */
+router.post('/delivery-fee', async (req: Request, res: Response) => {
+  const { updateDeliveryFeeConfig } = await import('../services/deliveryFee.service');
+  const userIdentifier = req.user?.email || req.user?.sub || 'Admin/Staff';
+  const updated = updateDeliveryFeeConfig(req.body, userIdentifier);
+  res.json({
+    status: 'success',
+    message: 'Delivery fee settings updated successfully',
+    config: updated,
+  });
+});
+
 export default router;

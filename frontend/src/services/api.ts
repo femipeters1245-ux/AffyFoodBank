@@ -222,6 +222,21 @@ export const adminApi = {
     const res = await apiClient.get('/admin/transactions');
     return res.data;
   },
+  getDeliveryFee: async () => {
+    const res = await apiClient.get('/admin/delivery-fee');
+    return res.data;
+  },
+  updateDeliveryFee: async (data: any) => {
+    const res = await apiClient.post('/admin/delivery-fee', data);
+    return res.data;
+  },
+};
+
+export const deliveryApi = {
+  getDeliveryFee: async () => {
+    const res = await apiClient.get('/delivery-fee');
+    return res.data;
+  },
 };
 
 

@@ -231,12 +231,12 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
             </div>
             <div>
               <div className="flex items-center space-x-1.5">
-                <span className="text-base font-extrabold tracking-tight">TransactPay</span>
+                <span className="text-base font-extrabold tracking-tight">Affy Secure Pay</span>
                 <span className="text-[10px] bg-emerald-400/20 text-emerald-200 border border-emerald-400/30 px-1.5 py-0.2 rounded font-semibold">
-                  CBN Licensed PSSP
+                  256-bit Encrypted
                 </span>
               </div>
-              <p className="text-[11px] text-blue-100/80">Secured Checkout Gateway</p>
+              <p className="text-[11px] text-blue-100/80">Direct Online Checkout</p>
             </div>
           </div>
 
@@ -443,7 +443,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
                 type="submit"
                 className="w-full py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-xl font-bold text-sm shadow-md hover:shadow-lg transition-all"
               >
-                Pay {formatNaira(amountCents)} with TransactPay
+                Pay {formatNaira(amountCents)} Securely
               </button>
             </form>
           )}
@@ -457,7 +457,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
               <div>
                 <h4 className="font-bold text-slate-800 text-sm">Enter 4-Digit Card PIN</h4>
                 <p className="text-xs text-slate-500 mt-0.5">
-                  Secured by TransactPay 4096-bit RSA Encryption
+                  Secured by 4096-bit RSA Bank-Grade Encryption
                 </p>
               </div>
 
@@ -593,7 +593,7 @@ export const TransactPayModal: React.FC<TransactPayModalProps> = ({
             </svg>
             <span>PCI-DSS Level 1 Compliant</span>
           </div>
-          <span className="font-semibold text-slate-600">TransactPay Direct</span>
+          <span className="font-semibold text-slate-600">Affy Direct Checkout</span>
         </div>
       </div>
     </div>

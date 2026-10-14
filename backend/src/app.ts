@@ -75,6 +75,12 @@ app.use(`${API}/payments`, paymentRouter);
 app.use(`${API}/admin`, adminRouter);
 app.use(`${API}/email`, emailRouter);
 
+// Public delivery fee endpoint for customer checkout
+app.get(['/delivery-fee', '/api/delivery-fee', `${API}/delivery-fee`], async (_req: Request, res: Response) => {
+  const { getDeliveryFeeConfig } = await import('./services/deliveryFee.service');
+  res.json(getDeliveryFeeConfig());
+});
+
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get(['/health', '/api/health', '/api/v1/health'], (_req: Request, res: Response) => {
   const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
