@@ -1,4 +1,7 @@
 // backend/src/prisma/client.ts
+import dotenv from 'dotenv';
+dotenv.config();
+
 import { PrismaClient } from '@prisma/client';
 
 /**

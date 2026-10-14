@@ -26,7 +26,22 @@ if (schemaPath) {
       stdio: 'inherit',
       env: process.env,
     });
-    console.log('[build] Prisma client generated.');
+    console.log('[build] Root Prisma client generated.');
+
+    // Also generate into backend/node_modules if backend exists
+    const backendDir = path.resolve(__dirname, '../backend');
+    if (fs.existsSync(backendDir)) {
+      try {
+        execSync(`${npxCmd} prisma generate --schema="${schemaPath}"`, {
+          stdio: 'inherit',
+          cwd: backendDir,
+          env: process.env,
+        });
+        console.log('[build] Backend Prisma client generated.');
+      } catch (err) {
+        console.warn('[build] Note on backend prisma generate:', err.message);
+      }
+    }
   } catch (err) {
     console.warn('[build] Warning: prisma generate failed (non-fatal):', err.message);
   }

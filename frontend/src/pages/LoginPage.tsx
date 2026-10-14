@@ -36,8 +36,14 @@ export const LoginPage: React.FC = () => {
         navigate(from === '/' ? '/wallet' : from, { replace: true });
       }
     } catch (err: any) {
+      const serverMsg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        (err.message === 'Network Error'
+          ? 'Cannot connect to server. Please verify your connection or try again shortly.'
+          : null);
       setError(
-        err.response?.data?.error ?? 'Invalid email or password. Please check your credentials.',
+        serverMsg ?? 'Invalid email or password. Please check your credentials.',
       );
     } finally {
       setLoading(false);

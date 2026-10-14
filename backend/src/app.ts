@@ -34,17 +34,33 @@ const app = express();
 app.use(helmet());
 app.use(
   cors({
-    origin: [
-      process.env.CORS_ORIGIN ?? 'http://localhost:5173',
-      'https://affy-food-bank-czt6.vercel.app',
-      'https://affy-food-bank-47z63t9vw-affybrand-4960.vercel.app',
-    ],
+    origin: (origin, callback) => {
+      if (!origin) return callback(null, true);
+      if (
+        origin.includes('localhost') ||
+        origin.includes('127.0.0.1') ||
+        origin.endsWith('.vercel.app') ||
+        origin === process.env.CORS_ORIGIN
+      ) {
+        return callback(null, true);
+      }
+      return callback(null, true);
+    },
     credentials: true,
   }),
 );
 
 app.use(express.json());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
+
+// ─── Path Normalization ────────────────────────────────────────────────────────
+// If proxy or serverless strips /api from /api/v1/...
+app.use((req, _res, next) => {
+  if (req.url.startsWith('/v1/')) {
+    req.url = '/api' + req.url;
+  }
+  next();
+});
 
 // ─── API Routes ────────────────────────────────────────────────────────────────
 const API = '/api/v1';
@@ -60,8 +76,16 @@ app.use(`${API}/admin`, adminRouter);
 app.use(`${API}/email`, emailRouter);
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
-app.get('/health', (_req: Request, res: Response) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+app.get(['/health', '/api/health', '/api/v1/health'], (_req: Request, res: Response) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    databaseConfigured: !!(
+      process.env.DATABASE_URL ||
+      process.env.POSTGRES_PRISMA_URL ||
+      process.env.POSTGRES_URL
+    ),
+  });
 });
 
 // ─── 404 Catch-all ─────────────────────────────────────────────────────────────
