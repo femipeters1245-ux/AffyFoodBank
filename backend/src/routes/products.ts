@@ -12,8 +12,8 @@ import { authorize } from '../middleware/authorize';
 const router = Router();
 
 // Public: list and view (read)
-router.get('/', authenticate, authorize('product:read'), getProducts);
-router.get('/:id', authenticate, authorize('product:read'), getProductById);
+router.get('/', getProducts);
+router.get('/:id', getProductById);
 
 // Protected: create, update, delete (admin/finance staff)
 router.post(

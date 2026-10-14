@@ -11,11 +11,13 @@ import {
 
 const router = Router();
 
-router.use(authenticate);
-router.post('/', authorize('package:create'), createPackage);
-router.get('/', authorize('package:read'), listPackages);
-router.get('/:id', authorize('package:read'), getPackage);
-router.patch('/:id', authorize('package:update'), updatePackage);
-router.delete('/:id', authorize('package:deactivate'), deactivatePackage);
+// Public: list and view packages
+router.get('/', listPackages);
+router.get('/:id', getPackage);
+
+// Protected: management endpoints require auth & permissions
+router.post('/', authenticate, authorize('package:create'), createPackage);
+router.patch('/:id', authenticate, authorize('package:update'), updatePackage);
+router.delete('/:id', authenticate, authorize('package:deactivate'), deactivatePackage);
 
 export default router;

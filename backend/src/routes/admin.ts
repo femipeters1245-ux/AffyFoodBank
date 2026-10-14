@@ -221,7 +221,7 @@ router.get('/customers', async (_req: Request, res: Response, next: NextFunction
       orderCount: c.profile?.orders?.length ?? 0,
       kycStatus: 'VERIFIED', // Default certified
       kycTier: 'Tier 2 (NIN / BVN Verified)',
-      address: c.profile?.addresses[0]?.line1 || 'Lagos, Nigeria',
+      address: c.profile?.addresses?.[0]?.line1 || 'Lagos, Nigeria',
     }));
 
     res.json(formatted);

@@ -3,6 +3,37 @@ import { Request, Response, NextFunction } from 'express';
 import { ForbiddenError, UnauthorizedError } from '../utils/errors';
 
 /**
+ * Helper to determine if a permission is granted by the given set of permissions and role.
+ */
+function checkSinglePermission(userPermissions: Set<string>, required: string, role?: string | null): boolean {
+  // Admin and SuperAdmin roles bypass all authorization checks
+  if (role === 'Admin' || role === 'SuperAdmin') {
+    return true;
+  }
+
+  // Full wildcard
+  if (userPermissions.has('*:*') || userPermissions.has('*')) {
+    return true;
+  }
+
+  // Exact match
+  if (userPermissions.has(required)) {
+    return true;
+  }
+
+  // Domain or action wildcards (e.g. 'product:*' grants 'product:read')
+  const [resource, action] = required.split(':');
+  if (resource && userPermissions.has(`${resource}:*`)) {
+    return true;
+  }
+  if (action && userPermissions.has(`*:${action}`)) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * authorize – factory that returns a middleware checking whether
  * `req.user` has the given permission string(s).
  *
@@ -16,10 +47,13 @@ export const authorize = (required: string | string[]) => {
       return next(new UnauthorizedError('Not authenticated'));
     }
 
-    const requiredSet = Array.isArray(required) ? required : [required];
+    const requiredList = Array.isArray(required) ? required : [required];
     const userPermissions = new Set(req.user.permissions ?? []);
 
-    const hasAll = requiredSet.every((perm) => userPermissions.has(perm));
+    const hasAll = requiredList.every((perm) =>
+      checkSinglePermission(userPermissions, perm, req.user?.role)
+    );
+
     if (!hasAll) {
       return next(new ForbiddenError('Insufficient permissions'));
     }
