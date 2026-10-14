@@ -77,14 +77,39 @@ app.use(`${API}/email`, emailRouter);
 
 // ─── Health Check ──────────────────────────────────────────────────────────────
 app.get(['/health', '/api/health', '/api/v1/health'], (_req: Request, res: Response) => {
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
   res.json({
     status: 'ok',
     timestamp: new Date().toISOString(),
-    databaseConfigured: !!(
-      process.env.DATABASE_URL ||
-      process.env.POSTGRES_PRISMA_URL ||
-      process.env.POSTGRES_URL
-    ),
+    env: {
+      NODE_ENV: process.env.NODE_ENV || 'not set',
+      DATABASE_URL: dbUrl ? `SET (${dbUrl.split('@').pop()?.split('/')[0] || 'host hidden'})` : 'NOT SET ⚠️',
+      JWT_SECRET: process.env.JWT_SECRET ? 'SET ✓' : 'NOT SET ⚠️',
+      CORS_ORIGIN: process.env.CORS_ORIGIN || 'not set',
+    },
+  });
+});
+
+// ─── Diagnostics (safe — no secrets exposed) ───────────────────────────────────
+app.get(['/api/v1/diagnostics', '/api/diagnostics'], async (_req: Request, res: Response) => {
+  const dbUrl = process.env.DATABASE_URL || process.env.POSTGRES_PRISMA_URL || process.env.POSTGRES_URL;
+  let dbPing: string;
+  try {
+    const prisma = (await import('./prisma/client')).default;
+    await (prisma as any).$queryRaw`SELECT 1`;
+    dbPing = 'connected ✓';
+  } catch (e: any) {
+    dbPing = `failed: ${e.message}`;
+  }
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    env: {
+      DATABASE_URL: dbUrl ? 'SET ✓' : 'NOT SET ⚠️',
+      JWT_SECRET: process.env.JWT_SECRET ? 'SET ✓' : 'NOT SET ⚠️',
+      NODE_ENV: process.env.NODE_ENV || 'not set',
+    },
+    database: dbPing,
   });
 });
 
