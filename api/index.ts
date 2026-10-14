@@ -1,9 +1,7 @@
-// api/index.ts
-import 'express-async-errors';
-import dotenv from 'dotenv';
-dotenv.config();
+// api/index.ts - Vercel Serverless Function Entry Point
+// ALL env mutations must happen before any imports that touch process.env
 
-// Ensure DATABASE_URL is set from Vercel Postgres / Supabase integrations if missing
+// Step 1: Set DATABASE_URL from any available Vercel/Supabase env var
 if (!process.env.DATABASE_URL) {
   process.env.DATABASE_URL =
     process.env.POSTGRES_PRISMA_URL ||
@@ -11,21 +9,15 @@ if (!process.env.DATABASE_URL) {
     process.env.POSTGRES_URL_NON_POOLING;
 }
 
+// Step 2: Set JWT_SECRET fallback
 if (!process.env.JWT_SECRET) {
-  process.env.JWT_SECRET = process.env.SUPABASE_JWT_SECRET || 'affy-foodbank-super-secret-jwt-key-2024';
+  process.env.JWT_SECRET =
+    process.env.SUPABASE_JWT_SECRET ||
+    'affy-foodbank-default-jwt-secret-change-in-production';
 }
 
+// Step 3: Now import the app (after env is ready)
+import 'express-async-errors';
 import app from '../backend/src/app';
 
-export default async function handler(req: any, res: any) {
-  try {
-    return app(req, res);
-  } catch (err: any) {
-    console.error('[API Serverless Error]:', err);
-    res.setHeader('Content-Type', 'application/json');
-    return res.status(500).json({
-      error: 'Internal Server Error',
-      message: err.message || 'An unexpected error occurred in the API handler.',
-    });
-  }
-}
+export default app;
