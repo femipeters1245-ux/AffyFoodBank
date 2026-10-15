@@ -71,24 +71,6 @@ export const otpService = {
     });
 
     // 4. Handle email dispatch results
-    const isSandboxRelayed = (emailResult as any)?.sandboxForwarded;
-    const isSandboxBlocked = !emailResult.success && (
-      emailResult.error?.toLowerCase().includes('testing emails to your own email address') ||
-      emailResult.error?.toLowerCase().includes('resend.com/domains')
-    );
-
-    if (isSandboxRelayed || isSandboxBlocked) {
-      console.warn(`[OTP Service] Resend test-tier active for ${normalizedEmail}. Code relayed to admin and provided for testing.`);
-      return {
-        success: true,
-        message: `Verification code generated! A copy was sent to affybrand@gmail.com.`,
-        expiresInMinutes: 10,
-        verificationTicket,
-        previewOtp: otp,
-        sandboxMode: true,
-      };
-    }
-
     if (!emailResult.success) {
       console.error(`[OTP Service] Resend email delivery failed for ${normalizedEmail}:`, emailResult.error);
       throw new BadRequestError(

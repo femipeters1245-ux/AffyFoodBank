@@ -84,36 +84,6 @@ export async function sendEmail(options: SendEmailOptions) {
         result = fallbackResult;
       }
 
-      // Check if Resend blocked the send due to sandbox restriction (only own account email allowed)
-      const isSandboxRestriction =
-        result.error.message?.toLowerCase().includes('testing emails to your own email address') ||
-        result.error.message?.toLowerCase().includes('resend.com/domains');
-
-      if (isSandboxRestriction && !to.includes(ADMIN_NOTIFICATION_EMAIL)) {
-        console.log(`[EmailService] Relaying to admin (${ADMIN_NOTIFICATION_EMAIL}) due to Resend sandbox restriction for ${to.join(', ')}...`);
-        const relayResult = await resend.emails.send({
-          from: 'Affy FoodBank <onboarding@resend.dev>',
-          to: [ADMIN_NOTIFICATION_EMAIL],
-          subject: `[Affy FoodBank Relay for ${to.join(', ')}] ${options.subject}`,
-          html: `<div style="background:#fef3c7;padding:12px;border:1px solid #f59e0b;border-radius:8px;margin-bottom:16px;font-family:sans-serif;font-size:12px;color:#92400e;">
-            <strong>⚠️ Resend Sandbox Relay:</strong> Originally destined for <strong>${to.join(', ')}</strong>. To send directly to all recipient mailboxes, verify your domain on <a href="https://resend.com/domains" target="_blank">resend.com/domains</a>.
-          </div>` + options.html,
-          text: `[Originally destined for ${to.join(', ')}]\n\n` + (options.text || ''),
-          replyTo: options.replyTo || ADMIN_NOTIFICATION_EMAIL,
-        });
-
-        if (!relayResult.error) {
-          console.log(`[EmailService] Sandbox relay delivered successfully to ${ADMIN_NOTIFICATION_EMAIL}:`, relayResult.data?.id);
-          return {
-            success: true,
-            id: relayResult.data?.id,
-            sandboxForwarded: true,
-            forwardedTo: ADMIN_NOTIFICATION_EMAIL,
-            originalRecipient: options.to,
-          };
-        }
-      }
-
       console.error(`[EmailService] Resend rejected email to ${options.to}:`, result.error);
       return { success: false, error: result.error.message, details: result.error };
     }
