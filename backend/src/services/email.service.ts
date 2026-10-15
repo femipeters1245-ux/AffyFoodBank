@@ -30,7 +30,7 @@ export interface SendEmailOptions {
  */
 export async function sendEmail(options: SendEmailOptions) {
   const resend = getResendClient();
-  const from = options.from || DEFAULT_FROM_EMAIL;
+  const primaryFrom = options.from || DEFAULT_FROM_EMAIL;
 
   if (!resend) {
     console.warn(
@@ -43,20 +43,55 @@ export async function sendEmail(options: SendEmailOptions) {
     };
   }
 
+  const to = Array.isArray(options.to) ? options.to : [options.to];
+
   try {
-    const data = await resend.emails.send({
-      from,
-      to: Array.isArray(options.to) ? options.to : [options.to],
+    // 1. Primary send attempt
+    let result = await resend.emails.send({
+      from: primaryFrom,
+      to,
       subject: options.subject,
       html: options.html,
       text: options.text,
-      replyTo: options.replyTo,
+      replyTo: options.replyTo || ADMIN_NOTIFICATION_EMAIL,
     });
 
-    console.log(`[EmailService] Email sent successfully to ${options.to}:`, data.data?.id);
-    return { success: true, id: data.data?.id, data };
+    // Check if Resend returned an API-level error
+    if (result.error) {
+      console.warn(`[EmailService] Primary send with "${primaryFrom}" failed:`, result.error.message);
+
+      // If domain is unverified or has DNS issues (e.g. @affyfoodbank.com), retry with Resend verified sender
+      const isDomainIssue =
+        result.error.message?.toLowerCase().includes('domain') ||
+        result.error.message?.toLowerCase().includes('verify') ||
+        result.error.message?.toLowerCase().includes('from');
+
+      if (isDomainIssue && !primaryFrom.includes('onboarding@resend.dev')) {
+        console.log(`[EmailService] Retrying with verified sender "Affy FoodBank <onboarding@resend.dev>"...`);
+        const fallbackResult = await resend.emails.send({
+          from: 'Affy FoodBank <onboarding@resend.dev>',
+          to,
+          subject: options.subject,
+          html: options.html,
+          text: options.text,
+          replyTo: options.replyTo || ADMIN_NOTIFICATION_EMAIL,
+        });
+
+        if (!fallbackResult.error) {
+          console.log(`[EmailService] Fallback email sent successfully to ${options.to}:`, fallbackResult.data?.id);
+          return { success: true, id: fallbackResult.data?.id, data: fallbackResult.data };
+        }
+        result = fallbackResult;
+      }
+
+      console.error(`[EmailService] Resend rejected email to ${options.to}:`, result.error);
+      return { success: false, error: result.error.message, details: result.error };
+    }
+
+    console.log(`[EmailService] Email sent successfully to ${options.to}:`, result.data?.id);
+    return { success: true, id: result.data?.id, data: result.data };
   } catch (error: any) {
-    console.error(`[EmailService] Failed to send email to ${options.to}:`, error.message);
+    console.error(`[EmailService] Exception sending email to ${options.to}:`, error.message);
     return { success: false, error: error.message };
   }
 }
@@ -405,9 +440,10 @@ export async function sendOtpEmail(params: {
 
   return sendEmail({
     to,
-    subject: `🔐 Your Affy FoodBank Verification Code: ${otp}`,
+    subject: `Affy FoodBank Verification Code: ${otp}`,
     html: emailWrapper('One-Time Password Verification', bodyContent),
-    text: `Hi ${firstName}, your Affy FoodBank verification code is ${otp}. It expires in 10 minutes.`,
+    text: `Hi ${firstName}, your Affy FoodBank verification code is ${otp}. It expires in 10 minutes. If you did not request this, please ignore this email.`,
+    replyTo: ADMIN_NOTIFICATION_EMAIL,
   });
 }
 

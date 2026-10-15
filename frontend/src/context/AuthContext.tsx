@@ -10,11 +10,11 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  sendLoginOtp: (email: string, password: string) => Promise<{ message: string; email: string; expiresInMinutes: number; previewOtp?: string }>;
-  verifyLoginOtp: (email: string, otp: string) => Promise<User>;
+  sendLoginOtp: (email: string, password: string) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string; previewOtp?: string }>;
+  verifyLoginOtp: (email: string, otp: string, verificationTicket?: string) => Promise<User>;
   register: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<void>;
-  sendSignupOtp: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<{ message: string; email: string; expiresInMinutes: number; previewOtp?: string }>;
-  verifySignupOtp: (email: string, otp: string) => Promise<User>;
+  sendSignupOtp: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string; previewOtp?: string }>;
+  verifySignupOtp: (email: string, otp: string, verificationTicket?: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshWallet: () => Promise<void>;
 }
@@ -77,8 +77,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return await authApi.sendLoginOtp({ email, password });
   };
 
-  const verifyLoginOtp = async (email: string, otp: string) => {
-    const res = await authApi.verifyLoginOtp({ email, otp });
+  const verifyLoginOtp = async (email: string, otp: string, verificationTicket?: string) => {
+    const res = await authApi.verifyLoginOtp({ email, otp, verificationTicket });
     return applyAuthSuccess(res);
   };
 
@@ -91,8 +91,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return await authApi.sendSignupOtp(data);
   };
 
-  const verifySignupOtp = async (email: string, otp: string) => {
-    const res = await authApi.verifySignupOtp({ email, otp });
+  const verifySignupOtp = async (email: string, otp: string, verificationTicket?: string) => {
+    const res = await authApi.verifySignupOtp({ email, otp, verificationTicket });
     return applyAuthSuccess(res);
   };
 

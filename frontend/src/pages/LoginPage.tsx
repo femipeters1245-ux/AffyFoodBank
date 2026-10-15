@@ -13,6 +13,7 @@ export const LoginPage: React.FC = () => {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [otp, setOtp] = useState('');
+  const [verificationTicket, setVerificationTicket] = useState<string | undefined>(undefined);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -35,6 +36,7 @@ export const LoginPage: React.FC = () => {
 
     try {
       const res = await sendLoginOtp(email, password);
+      setVerificationTicket(res.verificationTicket);
       setStep('OTP');
       setResendCountdown(30);
       setSuccessMsg(res.message || 'Verification code sent to your email inbox.');
@@ -57,7 +59,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const user = await verifyLoginOtp(email, otp.trim());
+      const user = await verifyLoginOtp(email, otp.trim(), verificationTicket);
       const role = (user as any).role?.name || (user as any).role;
       if (role === 'Admin' || role === 'FinanceStaff') {
         navigate('/admin', { replace: true });
@@ -81,6 +83,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await sendLoginOtp(email, password);
+      setVerificationTicket(res.verificationTicket);
       setResendCountdown(30);
       setSuccessMsg(res.message || 'A new verification code has been sent to your inbox.');
     } catch (err: any) {
@@ -209,9 +212,17 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 className="w-full text-center text-2xl tracking-[0.4em] font-mono font-bold py-3 px-4 border-2 border-brand-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-100"
               />
-              <p className="text-[11px] text-slate-400 text-center mt-1.5">
-                Check your email inbox (and spam folder). Valid for 10 minutes.
-              </p>
+              
+              {/* Delivery notice & Spam advice */}
+              <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1 mt-2 text-left">
+                <div className="font-semibold text-slate-800 flex items-center space-x-1.5">
+                  <span>📬</span>
+                  <span>Can't find the email in your primary inbox?</span>
+                </div>
+                <p className="text-slate-500 leading-relaxed">
+                  Please check your <strong>Spam / Junk</strong> folder or <strong>Promotions</strong> tab. The sender appears as <em>Affy FoodBank</em>. Email delivery may take 15–45 seconds depending on your email provider.
+                </p>
+              </div>
             </div>
 
             <button

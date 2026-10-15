@@ -67,11 +67,16 @@ export const sendSignupOtp = async (req: Request, res: Response, next: NextFunct
  */
 export const verifySignupOtp = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, verificationTicket } = req.body;
     if (!email || !otp) throw new BadRequestError('Email and 6-digit OTP code are required');
 
     // Verify OTP and retrieve stored user metadata
-    const metadata = otpService.verifyOtp(email, otp, 'SIGNUP');
+    const metadata = otpService.verifyOtp({
+      email,
+      candidateOtp: otp,
+      purpose: 'SIGNUP',
+      verificationTicket,
+    });
     if (!metadata) throw new BadRequestError('Invalid or expired verification session.');
 
     // Create user in database
@@ -128,10 +133,15 @@ export const sendLoginOtp = async (req: Request, res: Response, next: NextFuncti
  */
 export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, otp } = req.body;
+    const { email, otp, verificationTicket } = req.body;
     if (!email || !otp) throw new BadRequestError('Email and 6-digit OTP code are required');
 
-    const metadata = otpService.verifyOtp(email, otp, 'LOGIN');
+    const metadata = otpService.verifyOtp({
+      email,
+      candidateOtp: otp,
+      purpose: 'LOGIN',
+      verificationTicket,
+    });
 
     const user = await prisma.user.findUnique({
       where: { id: metadata?.userId || undefined, email: !metadata?.userId ? email : undefined },
