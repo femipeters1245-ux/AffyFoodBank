@@ -183,6 +183,50 @@ export const paymentsApi = {
     const res = await apiClient.post('/payments/transactpay/verify', { reference });
     return res.data;
   },
+  getBanks: async (): Promise<{ status: string; banks: Array<{ name: string; code: string; id?: string }> }> => {
+    const res = await apiClient.get('/payments/transactpay/banks');
+    return res.data;
+  },
+  createVirtualAccount: async (data: {
+    amountNaira?: number;
+    customerName?: string;
+    email?: string;
+  }): Promise<{
+    status: string;
+    reference: string;
+    accountNumber: string;
+    bankName: string;
+    accountName: string;
+    amountNaira?: number | null;
+    currency: string;
+    instructions: string;
+  }> => {
+    const res = await apiClient.post('/payments/transactpay/virtual-account', data);
+    return res.data;
+  },
+  initiatePayout: async (data: {
+    amountNaira: number;
+    accountNumber: string;
+    bankCode: string;
+    bankName?: string;
+    accountName: string;
+    customerProfileId?: string;
+    description?: string;
+  }): Promise<{
+    status: string;
+    reference: string;
+    batchReference?: string;
+    amountNaira: number;
+    destination: {
+      bankName: string;
+      accountNumber: string;
+      accountName: string;
+    };
+    message: string;
+  }> => {
+    const res = await apiClient.post('/payments/transactpay/payout', data);
+    return res.data;
+  },
 };
 
 export const adminApi = {
