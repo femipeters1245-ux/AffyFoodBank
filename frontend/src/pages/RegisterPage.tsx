@@ -16,7 +16,6 @@ export const RegisterPage: React.FC = () => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [otp, setOtp] = useState('');
-  const [previewOtp, setPreviewOtp] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -31,23 +30,20 @@ export const RegisterPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [resendCountdown]);
 
-  // Step 1: Send registration details & dispatch OTP via Resend
   const handleRequestOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      setError('Passwords do not match. Please re-enter.');
       return;
     }
-
     if (password.length < 8) {
-      setError('Password must be at least 8 characters long');
+      setError('Password must be at least 8 characters long.');
       return;
     }
 
     setLoading(true);
-
     try {
       const res = await sendSignupOtp({
         email,
@@ -55,28 +51,24 @@ export const RegisterPage: React.FC = () => {
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
       });
-
       setStep('OTP');
       setResendCountdown(30);
-      if (res.previewOtp) setPreviewOtp(res.previewOtp);
-      setSuccessMsg(res.message || 'Verification code sent to your email.');
+      setSuccessMsg(res.message || 'Verification code sent to your email inbox.');
     } catch (err: any) {
       setError(
         err.response?.data?.message ||
         err.response?.data?.error ||
-        'Registration failed. Email may already be in use.',
+        'Registration failed. This email may already be in use.',
       );
     } finally {
       setLoading(false);
     }
   };
 
-  // Step 2: Verify OTP and finalize registration
   const handleVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setLoading(true);
-
     try {
       await verifySignupOtp(email, otp.trim());
       navigate(from, { replace: true });
@@ -97,14 +89,12 @@ export const RegisterPage: React.FC = () => {
     setLoading(true);
     try {
       const res = await sendSignupOtp({
-        email,
-        password,
+        email, password,
         firstName: firstName.trim() || undefined,
         lastName: lastName.trim() || undefined,
       });
       setResendCountdown(30);
-      if (res.previewOtp) setPreviewOtp(res.previewOtp);
-      setSuccessMsg('New 6-digit verification code sent to your inbox!');
+      setSuccessMsg(res.message || 'A new verification code has been sent to your inbox.');
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to resend verification code.');
     } finally {
@@ -115,6 +105,8 @@ export const RegisterPage: React.FC = () => {
   return (
     <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xl space-y-6">
+
+        {/* Header */}
         <div className="text-center space-y-3">
           <Link to="/" className="inline-block hover:opacity-90 transition-opacity">
             <AffyLogo variant="light" size="lg" className="mx-auto" />
@@ -124,11 +116,12 @@ export const RegisterPage: React.FC = () => {
           </h2>
           <p className="text-xs text-slate-500">
             {step === 'OTP'
-              ? `We sent a 6-digit verification code via Resend to ${email}`
+              ? `We sent a 6-digit code to ${email}. Check your inbox.`
               : 'Open your Affy Food Wallet and start buying bulk foodstuffs at farm prices.'}
           </p>
         </div>
 
+        {/* Success banner */}
         {successMsg && step === 'OTP' && (
           <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium flex items-center space-x-2">
             <span>📩</span>
@@ -136,22 +129,7 @@ export const RegisterPage: React.FC = () => {
           </div>
         )}
 
-        {previewOtp && step === 'OTP' && (
-          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 font-medium flex items-center justify-between">
-            <div className="flex items-center space-x-2">
-              <span>🔑</span>
-              <span>Dev Preview OTP: <strong>{previewOtp}</strong></span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setOtp(previewOtp)}
-              className="text-[11px] underline text-amber-700 hover:text-amber-800 font-bold"
-            >
-              Auto-fill
-            </button>
-          </div>
-        )}
-
+        {/* Error banner */}
         {error && (
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-2">
             <span>⚠️</span>
@@ -164,11 +142,11 @@ export const RegisterPage: React.FC = () => {
           <form onSubmit={handleRequestOtp} className="space-y-4">
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  First Name
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">First Name</label>
                 <input
+                  id="reg-firstname"
                   type="text"
+                  autoComplete="given-name"
                   placeholder="Amaka"
                   value={firstName}
                   onChange={(e) => setFirstName(e.target.value)}
@@ -176,11 +154,11 @@ export const RegisterPage: React.FC = () => {
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1">
-                  Last Name
-                </label>
+                <label className="block text-xs font-semibold text-slate-700 mb-1">Last Name</label>
                 <input
+                  id="reg-lastname"
                   type="text"
+                  autoComplete="family-name"
                   placeholder="Adeyemi"
                   value={lastName}
                   onChange={(e) => setLastName(e.target.value)}
@@ -191,11 +169,13 @@ export const RegisterPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Email Address *
+                Email Address <span className="text-rose-500">*</span>
               </label>
               <input
+                id="reg-email"
                 type="email"
                 required
+                autoComplete="email"
                 placeholder="amaka@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
@@ -205,11 +185,14 @@ export const RegisterPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Password (min. 8 chars) *
+                Password <span className="text-rose-500">*</span>
+                <span className="text-slate-400 font-normal ml-1">(min. 8 characters)</span>
               </label>
               <input
+                id="reg-password"
                 type="password"
                 required
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
@@ -219,11 +202,13 @@ export const RegisterPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Confirm Password *
+                Confirm Password <span className="text-rose-500">*</span>
               </label>
               <input
+                id="reg-confirm-password"
                 type="password"
                 required
+                autoComplete="new-password"
                 placeholder="••••••••"
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
@@ -231,22 +216,27 @@ export const RegisterPage: React.FC = () => {
               />
             </div>
 
-            <div className="pt-2">
-              <button
-                type="submit"
-                disabled={loading}
-                className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm rounded-xl shadow-md hover:shadow transition-all flex items-center justify-center space-x-2"
-              >
-                {loading ? (
-                  <span>Generating Code via Resend...</span>
-                ) : (
-                  <>
-                    <span>Continue with Email OTP</span>
-                    <span>✉️</span>
-                  </>
-                )}
-              </button>
-            </div>
+            <button
+              id="btn-send-signup-otp"
+              type="submit"
+              disabled={loading}
+              className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center space-x-2"
+            >
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>Sending code…</span>
+                </>
+              ) : (
+                <>
+                  <span>Continue with Email OTP</span>
+                  <span>✉️</span>
+                </>
+              )}
+            </button>
           </form>
         )}
 
@@ -258,7 +248,9 @@ export const RegisterPage: React.FC = () => {
                 Enter 6-Digit Verification Code
               </label>
               <input
+                id="reg-otp"
                 type="text"
+                inputMode="numeric"
                 required
                 maxLength={6}
                 autoFocus
@@ -268,43 +260,51 @@ export const RegisterPage: React.FC = () => {
                 className="w-full text-center text-2xl tracking-[0.4em] font-mono font-bold py-3 px-4 border-2 border-brand-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-100"
               />
               <p className="text-[11px] text-slate-400 text-center mt-1.5">
-                Check your email inbox and spam folder for the Resend verification message.
+                Check your email inbox and spam folder. Valid for 10 minutes.
               </p>
             </div>
 
             <button
+              id="btn-verify-signup-otp"
               type="submit"
               disabled={loading || otp.length < 6}
-              className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-md hover:shadow transition-all"
+              className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center space-x-2"
             >
-              {loading ? 'Creating Account & Wallet...' : 'Verify & Complete Registration'}
+              {loading ? (
+                <>
+                  <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                  </svg>
+                  <span>Creating your account…</span>
+                </>
+              ) : (
+                <span>Verify &amp; Complete Registration</span>
+              )}
             </button>
 
-            <div className="flex items-center justify-between text-xs pt-2">
+            <div className="flex items-center justify-between text-xs pt-1">
               <button
                 type="button"
-                onClick={() => {
-                  setStep('DETAILS');
-                  setError(null);
-                }}
+                onClick={() => { setStep('DETAILS'); setError(null); setOtp(''); }}
                 className="text-slate-500 hover:text-slate-700 font-medium"
               >
                 ← Back / Edit Info
               </button>
-
               <button
+                id="btn-resend-signup-otp"
                 type="button"
                 onClick={handleResendOtp}
                 disabled={resendCountdown > 0 || loading}
                 className="text-brand-600 hover:text-brand-700 font-bold disabled:text-slate-400"
               >
-                {resendCountdown > 0 ? `Resend code in ${resendCountdown}s` : 'Resend Code'}
+                {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend Code'}
               </button>
             </div>
           </form>
         )}
 
-        <div className="text-center text-xs text-slate-500">
+        <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
           Already have an account?{' '}
           <Link to="/login" className="text-brand-600 font-bold hover:underline">
             Sign In

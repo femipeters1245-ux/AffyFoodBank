@@ -11,64 +11,10 @@ interface BankItem {
   id?: string;
 }
 
-const DEMO_TRANSACTIONS: WalletTransaction[] = [
-  {
-    id: 'tx-1',
-    walletId: 'w-demo',
-    customerId: 'c-demo',
-    reference: 'TP_WLT_DEP_839210492',
-    type: 'DEPOSIT',
-    amountCents: 15000000, // ₦150,000.00
-    currency: 'NGN',
-    direction: 'IN',
-    status: 'SUCCESSFUL',
-    description: 'Automated Bank Transfer via TransactPay Virtual Account (Wema Bank)',
-    createdAt: new Date(Date.now() - 2 * 24 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'tx-2',
-    walletId: 'w-demo',
-    customerId: 'c-demo',
-    reference: 'SAV_ALLOC_92810398',
-    type: 'SAVINGS_ALLOCATION',
-    amountCents: 5000000, // ₦50,000.00
-    currency: 'NGN',
-    direction: 'OUT',
-    status: 'SUCCESSFUL',
-    description: 'Allocation to December Food Stockup Plan',
-    createdAt: new Date(Date.now() - 5 * 24 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'tx-3',
-    walletId: 'w-demo',
-    customerId: 'c-demo',
-    reference: 'TP_WDR_109283746',
-    type: 'WITHDRAWAL',
-    amountCents: 2000000, // ₦20,000.00
-    currency: 'NGN',
-    direction: 'OUT',
-    status: 'SUCCESSFUL',
-    description: 'Automated Payout to GTBank (0123456789) - TransactPay PSSP',
-    createdAt: new Date(Date.now() - 9 * 24 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'tx-4',
-    walletId: 'w-demo',
-    customerId: 'c-demo',
-    reference: 'PURCH_ORD_7719283',
-    type: 'PURCHASE',
-    amountCents: 450000, // ₦4,500.00
-    currency: 'NGN',
-    direction: 'OUT',
-    status: 'SUCCESSFUL',
-    description: 'Purchase: 1 Paint Rubber Ijebu Garri',
-    createdAt: new Date(Date.now() - 18 * 24 * 3600 * 1000).toISOString(),
-  },
-];
-
 export const WalletPage: React.FC = () => {
   const { wallet, refreshWallet, isAuthenticated, user } = useAuth();
-  const [transactions, setTransactions] = useState<WalletTransaction[]>(DEMO_TRANSACTIONS);
+  const [transactions, setTransactions] = useState<WalletTransaction[]>([]);
+  const [txLoading, setTxLoading] = useState(true);
 
   // Modals & Tabs
   const [isDepositOpen, setIsDepositOpen] = useState(false);
@@ -108,12 +54,13 @@ export const WalletPage: React.FC = () => {
   const fetchTransactions = useCallback(async () => {
     if (!isAuthenticated) return;
     try {
+      setTxLoading(true);
       const data = await walletApi.listTransactions();
-      if (data && data.length > 0) {
-        setTransactions(data);
-      }
+      setTransactions(data || []);
     } catch {
-      // Keep demo list
+      setTransactions([]);
+    } finally {
+      setTxLoading(false);
     }
   }, [isAuthenticated]);
 
@@ -140,8 +87,8 @@ export const WalletPage: React.FC = () => {
   }, []);
 
   // Compute Balances
-  const totalBal = wallet ? Number(wallet.totalBalanceCents) : 18500000;
-  const allocatedBal = wallet ? Number(wallet.allocatedToSavingsCents) : 5000000;
+  const totalBal = wallet ? Number(wallet.totalBalanceCents) : 0;
+  const allocatedBal = wallet ? Number(wallet.allocatedToSavingsCents) : 0;
   const availableBal = totalBal - allocatedBal;
 
   // ─── 1. Automated Virtual Account Generation for Bank Transfer Deposit ──────
@@ -171,15 +118,7 @@ export const WalletPage: React.FC = () => {
         showToast('✅ Dedicated TransactPay Virtual Account generated!', 'success');
       }
     } catch (err: any) {
-      // Fallback sandbox account
-      setVirtualAccount({
-        accountNumber: `79${Math.floor(10000000 + Math.random() * 90000000)}`,
-        bankName: 'Wema Bank (TransactPay PSSP)',
-        accountName: `Affy / ${user?.firstName || 'Customer'}`,
-        reference: `WLT_VA_${Date.now()}`,
-        amountNaira: amountNum,
-      });
-      showToast('TransactPay deposit account generated.', 'info');
+      showToast(err.response?.data?.error || 'Unable to generate virtual account at this time. Please try card deposit.', 'error');
     } finally {
       setGeneratingVA(false);
     }
@@ -201,30 +140,13 @@ export const WalletPage: React.FC = () => {
     try {
       const amountCents = Math.round((virtualAccount.amountNaira || 25000) * 100);
 
-      if (isAuthenticated) {
-        await walletApi.deposit({
-          amountCents,
-          paymentReference: virtualAccount.reference,
-          description: `TransactPay Bank Transfer deposit: ${formatNaira(amountCents)}`,
-        });
-        await refreshWallet();
-        await fetchTransactions();
-      } else {
-        const fakeTx: WalletTransaction = {
-          id: `tx-${Date.now()}`,
-          walletId: 'w-local',
-          customerId: 'c-local',
-          reference: virtualAccount.reference,
-          type: 'DEPOSIT',
-          amountCents,
-          currency: 'NGN',
-          direction: 'IN',
-          status: 'SUCCESSFUL',
-          description: `TransactPay VA Bank Transfer (${virtualAccount.bankName})`,
-          createdAt: new Date().toISOString(),
-        };
-        setTransactions((prev) => [fakeTx, ...prev]);
-      }
+      await walletApi.deposit({
+        amountCents,
+        paymentReference: virtualAccount.reference,
+        description: `TransactPay Bank Transfer deposit: ${formatNaira(amountCents)}`,
+      });
+      await refreshWallet();
+      await fetchTransactions();
 
       setIsDepositOpen(false);
       setVirtualAccount(null);
@@ -259,31 +181,13 @@ export const WalletPage: React.FC = () => {
         return;
       }
 
-      // If sandbox or direct API
-      if (isAuthenticated) {
-        await walletApi.deposit({
-          amountCents,
-          paymentReference: paymentRef,
-          description: `TransactPay Card Deposit: ${formatNaira(amountCents)}`,
-        });
-        await refreshWallet();
-        await fetchTransactions();
-      } else {
-        const fakeTx: WalletTransaction = {
-          id: `tx-${Date.now()}`,
-          walletId: 'w-local',
-          customerId: 'c-local',
-          reference: paymentRef,
-          type: 'DEPOSIT',
-          amountCents,
-          currency: 'NGN',
-          direction: 'IN',
-          status: 'SUCCESSFUL',
-          description: 'TransactPay Gateway Card Deposit',
-          createdAt: new Date().toISOString(),
-        };
-        setTransactions((prev) => [fakeTx, ...prev]);
-      }
+      await walletApi.deposit({
+        amountCents,
+        paymentReference: paymentRef,
+        description: `TransactPay Card Deposit: ${formatNaira(amountCents)}`,
+      });
+      await refreshWallet();
+      await fetchTransactions();
 
       setIsDepositOpen(false);
       showToast(`✅ Successfully deposited ${formatNaira(amountCents)} via TransactPay!`, 'success');
@@ -334,25 +238,8 @@ export const WalletPage: React.FC = () => {
         description: `Affy FoodBank Wallet Withdrawal to ${selectedBank.name}`,
       });
 
-      if (isAuthenticated) {
-        await refreshWallet();
-        await fetchTransactions();
-      } else {
-        const fakeTx: WalletTransaction = {
-          id: `tx-${Date.now()}`,
-          walletId: 'w-local',
-          customerId: 'c-local',
-          reference: payoutRes.reference || `TP_WDR_${Date.now()}`,
-          type: 'WITHDRAWAL',
-          amountCents,
-          currency: 'NGN',
-          direction: 'OUT',
-          status: 'SUCCESSFUL',
-          description: `TransactPay Payout to ${selectedBank.name} (${accountNumber}) - ${accountName}`,
-          createdAt: new Date().toISOString(),
-        };
-        setTransactions((prev) => [fakeTx, ...prev]);
-      }
+      await refreshWallet();
+      await fetchTransactions();
 
       setIsWithdrawOpen(false);
       setWithdrawAmount('');
@@ -403,7 +290,7 @@ export const WalletPage: React.FC = () => {
           </div>
           <h1 className="text-3xl font-black text-slate-900 mt-2">Affy Food Wallet</h1>
           <p className="text-xs text-slate-500">
-            Account: <strong>{user?.email ?? 'customer@affyfoodbank.ng'}</strong> • Automated Deposits & Payouts
+            Account: <strong>{user?.email || 'Active Member'}</strong> • Automated Deposits & Payouts
           </p>
         </div>
 

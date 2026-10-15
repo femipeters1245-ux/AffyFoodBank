@@ -1,4 +1,3 @@
-// backend/src/routes/auth.ts
 import { Router } from 'express';
 import {
   register,
@@ -10,7 +9,6 @@ import {
   verifyLoginOtp,
   requestPasswordReset,
   resetPassword,
-  seedDemo,
 } from '../controllers/auth.controller';
 import { authenticate } from '../middleware/authenticate';
 
@@ -25,7 +23,6 @@ router.post('/otp/verify-login-otp', verifyLoginOtp);
 // ─── Standard Auth Endpoints ──────────────────────────────────────────────────
 router.post('/register', register);
 router.post('/login', login);
-router.post('/seed-demo', seedDemo);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset', resetPassword);
 

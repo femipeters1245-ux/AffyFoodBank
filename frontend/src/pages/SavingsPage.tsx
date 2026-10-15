@@ -5,34 +5,10 @@ import { SavingsPlan } from '../types';
 import { savingsApi, walletApi } from '../services/api';
 import { formatNaira, formatDate } from '../utils/format';
 
-const DEMO_SAVINGS_PLANS: SavingsPlan[] = [
-  {
-    id: 'sp-1',
-    customerProfileId: 'cp-demo',
-    name: 'December Christmas Food Stockup',
-    description: 'Saving ahead of December food price inflation for 2 bags of Rice and 1 keg of Oil.',
-    targetAmountCents: 18000000, // ₦180,000.00
-    amountSavedCents: 12000000, // ₦120,000.00 (66%)
-    targetDate: new Date(Date.now() + 60 * 24 * 3600 * 1000).toISOString(),
-    status: 'ACTIVE',
-    createdAt: new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString(),
-  },
-  {
-    id: 'sp-2',
-    customerProfileId: 'cp-demo',
-    name: 'Boarding House Term 1 Food Supply',
-    description: 'Weekly disciplined contribution for child’s foodstuff supplies.',
-    targetAmountCents: 6500000, // ₦65,000.00
-    amountSavedCents: 4500000, // ₦45,000.00 (69%)
-    targetDate: new Date(Date.now() + 25 * 24 * 3600 * 1000).toISOString(),
-    status: 'ACTIVE',
-    createdAt: new Date(Date.now() - 15 * 24 * 3600 * 1000).toISOString(),
-  },
-];
-
 export const SavingsPage: React.FC = () => {
   const { wallet, refreshWallet, isAuthenticated } = useAuth();
-  const [plans, setPlans] = useState<SavingsPlan[]>(DEMO_SAVINGS_PLANS);
+  const [plans, setPlans] = useState<SavingsPlan[]>([]);
+  const [loadingPlans, setLoadingPlans] = useState(true);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isContributeModalOpen, setIsContributeModalOpen] = useState(false);
   const [selectedPlan, setSelectedPlan] = useState<SavingsPlan | null>(null);
@@ -51,12 +27,13 @@ export const SavingsPage: React.FC = () => {
   const fetchPlans = async () => {
     if (!isAuthenticated) return;
     try {
+      setLoadingPlans(true);
       const data = await savingsApi.list();
-      if (data && data.length > 0) {
-        setPlans(data);
-      }
+      setPlans(data || []);
     } catch {
-      // Keep demo plans if API has no records yet
+      setPlans([]);
+    } finally {
+      setLoadingPlans(false);
     }
   };
 
@@ -73,29 +50,13 @@ export const SavingsPage: React.FC = () => {
     setLoading(true);
     try {
       const targetAmountCents = Math.round(parseFloat(newPlanAmountNaira) * 100);
-      if (isAuthenticated) {
-        const created = await savingsApi.create({
-          name: newPlanName,
-          description: newPlanDesc,
-          targetAmountCents,
-          targetDate: new Date(newPlanTargetDate).toISOString(),
-        });
-        setPlans([created, ...plans]);
-      } else {
-        // Local simulation if not logged in
-        const fakePlan: SavingsPlan = {
-          id: `sp-${Date.now()}`,
-          customerProfileId: 'local',
-          name: newPlanName,
-          description: newPlanDesc,
-          targetAmountCents,
-          amountSavedCents: 0,
-          targetDate: new Date(newPlanTargetDate).toISOString(),
-          status: 'ACTIVE',
-          createdAt: new Date().toISOString(),
-        };
-        setPlans([fakePlan, ...plans]);
-      }
+      const created = await savingsApi.create({
+        name: newPlanName,
+        description: newPlanDesc,
+        targetAmountCents,
+        targetDate: new Date(newPlanTargetDate).toISOString(),
+      });
+      setPlans([created, ...plans]);
       setIsModalOpen(false);
       setNewPlanName('');
       setNewPlanDesc('');
@@ -119,23 +80,12 @@ export const SavingsPage: React.FC = () => {
     setLoading(true);
 
     try {
-      if (isAuthenticated) {
-        await walletApi.allocate({
-          savingsPlanId: selectedPlan.id,
-          amountCents,
-        });
-        await refreshWallet();
-        await fetchPlans();
-      } else {
-        // Local simulation
-        setPlans(
-          plans.map((p) =>
-            p.id === selectedPlan.id
-              ? { ...p, amountSavedCents: Number(p.amountSavedCents) + amountCents }
-              : p,
-          ),
-        );
-      }
+      await walletApi.allocate({
+        savingsPlanId: selectedPlan.id,
+        amountCents,
+      });
+      await refreshWallet();
+      await fetchPlans();
       setIsContributeModalOpen(false);
       setContributeAmount('');
       setMessage({ type: 'success', text: `Allocated ${formatNaira(amountCents)} to ${selectedPlan.name}!` });
@@ -153,12 +103,8 @@ export const SavingsPage: React.FC = () => {
   const handleCancelPlan = async (planId: string) => {
     if (!window.confirm('Are you sure you want to cancel this savings plan?')) return;
     try {
-      if (isAuthenticated) {
-        await savingsApi.cancel(planId);
-        await fetchPlans();
-      } else {
-        setPlans(plans.map((p) => (p.id === planId ? { ...p, status: 'CANCELLED' } : p)));
-      }
+      await savingsApi.cancel(planId);
+      await fetchPlans();
       setMessage({ type: 'success', text: 'Savings plan cancelled.' });
     } catch (err: any) {
       setMessage({ type: 'error', text: err.response?.data?.error ?? 'Failed to cancel plan' });
@@ -248,7 +194,30 @@ export const SavingsPage: React.FC = () => {
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {loadingPlans ? (
+          <div className="bg-white rounded-3xl border border-slate-200 p-12 text-center text-slate-400 text-sm">
+            Loading your food savings goals...
+          </div>
+        ) : plans.length === 0 ? (
+          <div className="bg-white rounded-3xl border border-dashed border-slate-300 p-10 sm:p-14 text-center space-y-4">
+            <div className="w-16 h-16 bg-brand-50 text-brand-600 rounded-2xl flex items-center justify-center text-3xl mx-auto shadow-inner">
+              🌾
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-900 text-lg">No Active Savings Goals Yet</h3>
+              <p className="text-sm text-slate-500 max-w-md mx-auto mt-1">
+                Protect yourself against volatile food inflation. Set up small or disciplined weekly allocations towards rice, beans, or bulk groceries.
+              </p>
+            </div>
+            <button
+              onClick={() => setIsModalOpen(true)}
+              className="px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-semibold text-xs rounded-xl shadow-sm transition-all"
+            >
+              + Start Your First Food Goal
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           {plans.map((plan) => {
             const saved = Number(plan.amountSavedCents);
             const target = Number(plan.targetAmountCents);
@@ -338,6 +307,7 @@ export const SavingsPage: React.FC = () => {
             );
           })}
         </div>
+      )}
       </div>
 
       {/* Modal: Create Plan */}
