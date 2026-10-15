@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { User, Wallet } from '../types';
 import { authApi, walletApi } from '../services/api';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
   user: User | null;
@@ -10,11 +11,14 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
-  sendLoginOtp: (email: string, password: string) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string; previewOtp?: string }>;
+  sendLoginOtp: (email: string, password: string) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string }>;
   verifyLoginOtp: (email: string, otp: string, verificationTicket?: string) => Promise<User>;
   register: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<void>;
-  sendSignupOtp: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string; previewOtp?: string }>;
+  sendSignupOtp: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string }>;
   verifySignupOtp: (email: string, otp: string, verificationTicket?: string) => Promise<User>;
+  // Supabase-powered OTP (works without domain verification)
+  supabaseSendOtp: (email: string) => Promise<{ message: string }>;
+  supabaseVerifyOtp: (params: { email: string; otp: string; firstName?: string; lastName?: string; password?: string }) => Promise<User>;
   logout: () => Promise<void>;
   refreshWallet: () => Promise<void>;
 }
@@ -96,7 +100,74 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return applyAuthSuccess(res);
   };
 
+  /**
+   * Supabase OTP — Step 1: Send magic link / email OTP via Supabase Auth
+   * Works for both login and registration; no domain verification needed.
+   */
+  const supabaseSendOtp = async (email: string): Promise<{ message: string }> => {
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.');
+    }
+
+    const { error } = await supabase.auth.signInWithOtp({
+      email: email.trim().toLowerCase(),
+      options: {
+        shouldCreateUser: true, // Auto-creates Supabase Auth user if not exists
+      },
+    });
+
+    if (error) {
+      console.error('[Supabase OTP] Send error:', error.message);
+      throw new Error(error.message || 'Failed to send verification code. Please try again.');
+    }
+
+    return { message: `A 6-digit verification code has been sent to ${email.trim().toLowerCase()}` };
+  };
+
+  /**
+   * Supabase OTP — Step 2: Verify the OTP, exchange Supabase session for backend JWT
+   */
+  const supabaseVerifyOtp = async (params: {
+    email: string;
+    otp: string;
+    firstName?: string;
+    lastName?: string;
+    password?: string;
+  }): Promise<User> => {
+    const { email, otp, firstName, lastName } = params;
+
+    if (!isSupabaseConfigured) {
+      throw new Error('Supabase is not configured.');
+    }
+
+    // Verify OTP with Supabase Auth
+    const { data: sessionData, error } = await supabase.auth.verifyOtp({
+      email: email.trim().toLowerCase(),
+      token: otp.trim(),
+      type: 'email',
+    });
+
+    if (error || !sessionData?.session) {
+      console.error('[Supabase OTP] Verify error:', error?.message);
+      throw new Error(
+        error?.message === 'Token has expired or is invalid'
+          ? 'Incorrect or expired verification code. Please check your inbox and try again.'
+          : error?.message || 'Verification failed. Please try again.'
+      );
+    }
+
+    const accessToken = sessionData.session.access_token;
+
+    // Exchange Supabase token for our backend JWT
+    const res = await authApi.supabaseExchange({ access_token: accessToken, firstName, lastName });
+    return applyAuthSuccess(res);
+  };
+
   const logout = async () => {
+    // Sign out from Supabase Auth as well
+    if (isSupabaseConfigured) {
+      await supabase.auth.signOut().catch(() => {});
+    }
     await authApi.logout();
     setUser(null);
     setToken(null);
@@ -121,6 +192,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         register,
         sendSignupOtp,
         verifySignupOtp,
+        supabaseSendOtp,
+        supabaseVerifyOtp,
         logout,
         refreshWallet,
       }}

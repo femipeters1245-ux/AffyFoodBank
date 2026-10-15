@@ -2,19 +2,17 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AffyLogo } from '../components/AffyLogo';
+import { isSupabaseConfigured } from '../lib/supabase';
 
 export const LoginPage: React.FC = () => {
-  const { sendLoginOtp, verifyLoginOtp } = useAuth();
+  const { supabaseSendOtp, supabaseVerifyOtp } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as any)?.from?.pathname || '/';
 
-  const [step, setStep] = useState<'CREDENTIALS' | 'OTP'>('CREDENTIALS');
+  const [step, setStep] = useState<'EMAIL' | 'OTP'>('EMAIL');
   const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
   const [otp, setOtp] = useState('');
-  const [verificationTicket, setVerificationTicket] = useState<string | undefined>(undefined);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -29,26 +27,19 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [resendCountdown]);
 
-  const handleRequestOtp = async (e: React.FormEvent) => {
+  const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
     setSuccessMsg(null);
     setLoading(true);
 
     try {
-      const res = await sendLoginOtp(email, password);
-      setVerificationTicket(res.verificationTicket);
+      const res = await supabaseSendOtp(email);
       setStep('OTP');
-      setResendCountdown(30);
-      setSuccessMsg(res.message || 'Verification code sent to your email inbox.');
+      setResendCountdown(60);
+      setSuccessMsg(res.message || `Verification code sent to ${email}.`);
     } catch (err: any) {
-      const serverMsg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        (err.message === 'Network Error'
-          ? 'Cannot connect to server. Please check your internet connection.'
-          : null);
-      setError(serverMsg ?? 'Invalid email or password. Please check your credentials and try again.');
+      setError(err.message || 'Failed to send verification code. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -60,7 +51,7 @@ export const LoginPage: React.FC = () => {
     setLoading(true);
 
     try {
-      const user = await verifyLoginOtp(email, otp.trim(), verificationTicket);
+      const user = await supabaseVerifyOtp({ email, otp: otp.trim() });
       const role = (user as any).role?.name || (user as any).role;
       if (role === 'Admin' || role === 'FinanceStaff') {
         navigate('/admin', { replace: true });
@@ -68,11 +59,7 @@ export const LoginPage: React.FC = () => {
         navigate(from === '/' ? '/wallet' : from, { replace: true });
       }
     } catch (err: any) {
-      const serverMsg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        'Invalid or expired verification code. Please check your inbox and try again.';
-      setError(serverMsg);
+      setError(err.message || 'Invalid or expired verification code. Please check your inbox and try again.');
     } finally {
       setLoading(false);
     }
@@ -83,16 +70,34 @@ export const LoginPage: React.FC = () => {
     setError(null);
     setLoading(true);
     try {
-      const res = await sendLoginOtp(email, password);
-      setVerificationTicket(res.verificationTicket);
-      setResendCountdown(30);
+      const res = await supabaseSendOtp(email);
+      setResendCountdown(60);
       setSuccessMsg(res.message || 'A new verification code has been sent to your inbox.');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to resend verification code. Please try again.');
+      setError(err.message || 'Failed to resend verification code. Please try again.');
     } finally {
       setLoading(false);
     }
   };
+
+  if (!isSupabaseConfigured) {
+    return (
+      <div className="min-h-[75vh] flex items-center justify-center py-12 px-4">
+        <div className="max-w-md w-full bg-white rounded-3xl border border-amber-200 p-8 shadow-xl text-center space-y-4">
+          <div className="text-4xl">⚙️</div>
+          <h2 className="text-xl font-bold text-slate-800">Configuration Required</h2>
+          <p className="text-sm text-slate-600">
+            Supabase is not yet connected. Please set{' '}
+            <code className="bg-slate-100 px-1 rounded text-xs">VITE_SUPABASE_URL</code> and{' '}
+            <code className="bg-slate-100 px-1 rounded text-xs">VITE_SUPABASE_ANON_KEY</code> in your environment variables and redeploy.
+          </p>
+          <p className="text-xs text-slate-400">
+            Get these from: Supabase Dashboard → Your Project → Settings → API
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-[75vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
@@ -104,12 +109,12 @@ export const LoginPage: React.FC = () => {
             <AffyLogo variant="light" size="lg" className="mx-auto" />
           </Link>
           <h2 className="text-2xl font-extrabold text-slate-900">
-            {step === 'OTP' ? 'Email Verification' : 'Welcome Back'}
+            {step === 'OTP' ? 'Check Your Email' : 'Welcome Back'}
           </h2>
           <p className="text-xs text-slate-500">
             {step === 'OTP'
-              ? `We sent a 6-digit code to ${email}. Check your inbox.`
-              : 'Sign in securely with email + OTP two-factor authentication.'}
+              ? `We sent a 6-digit code to ${email}. Enter it below.`
+              : 'Enter your email address to receive a sign-in code.'}
           </p>
         </div>
 
@@ -129,9 +134,9 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
-        {/* STEP 1: EMAIL + PASSWORD */}
-        {step === 'CREDENTIALS' && (
-          <form onSubmit={handleRequestOtp} className="space-y-4">
+        {/* STEP 1: EMAIL */}
+        {step === 'EMAIL' && (
+          <form onSubmit={handleSendOtp} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
                 Email Address
@@ -141,59 +146,18 @@ export const LoginPage: React.FC = () => {
                 type="email"
                 required
                 autoComplete="email"
-                placeholder="you@domain.com"
+                autoFocus
+                placeholder="you@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
               />
             </div>
 
-            <div>
-              <div className="flex justify-between items-center mb-1">
-                <label className="block text-xs font-semibold text-slate-700">Password</label>
-                <Link
-                  to="/forgot-password"
-                  className="text-[11px] text-brand-600 hover:text-brand-700 font-semibold"
-                >
-                  Forgot password?
-                </Link>
-              </div>
-              <div className="relative">
-                <input
-                  id="login-password"
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  autoComplete="current-password"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword((prev) => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 focus:outline-none transition-colors"
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  title={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" />
-                    </svg>
-                  ) : (
-                    <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" />
-                    </svg>
-                  )}
-                </button>
-              </div>
-            </div>
-
             <button
-              id="btn-request-otp"
+              id="btn-send-login-otp"
               type="submit"
-              disabled={loading}
+              disabled={loading || !email.includes('@')}
               className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl shadow-md hover:shadow transition-all flex items-center justify-center space-x-2"
             >
               {loading ? (
@@ -206,11 +170,15 @@ export const LoginPage: React.FC = () => {
                 </>
               ) : (
                 <>
-                  <span>Continue with OTP</span>
-                  <span>🔒</span>
+                  <span>Send Sign-In Code</span>
+                  <span>📧</span>
                 </>
               )}
             </button>
+
+            <p className="text-center text-[11px] text-slate-400 leading-relaxed">
+              No password needed. We'll send a one-time code to your email inbox.
+            </p>
           </form>
         )}
 
@@ -233,15 +201,15 @@ export const LoginPage: React.FC = () => {
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
                 className="w-full text-center text-2xl tracking-[0.4em] font-mono font-bold py-3 px-4 border-2 border-brand-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-100"
               />
-              
-              {/* Delivery notice & Spam advice */}
+
+              {/* Delivery notice */}
               <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1 mt-2 text-left">
                 <div className="font-semibold text-slate-800 flex items-center space-x-1.5">
                   <span>📬</span>
-                  <span>Can't find the email in your primary inbox?</span>
+                  <span>Can't find the email?</span>
                 </div>
                 <p className="text-slate-500 leading-relaxed">
-                  Please check your <strong>Spam / Junk</strong> folder or <strong>Promotions</strong> tab. The sender appears as <em>Affy FoodBank</em>. Email delivery may take 15–45 seconds depending on your email provider.
+                  Check your <strong>Spam / Junk</strong> folder or <strong>Promotions</strong> tab. The sender is <em>Supabase</em> on behalf of Affy FoodBank. Delivery takes 15–45 seconds.
                 </p>
               </div>
             </div>
@@ -268,10 +236,10 @@ export const LoginPage: React.FC = () => {
             <div className="flex items-center justify-between text-xs pt-1">
               <button
                 type="button"
-                onClick={() => { setStep('CREDENTIALS'); setError(null); setOtp(''); }}
+                onClick={() => { setStep('EMAIL'); setError(null); setOtp(''); }}
                 className="text-slate-500 hover:text-slate-700 font-medium"
               >
-                ← Back / Edit Email
+                ← Change Email
               </button>
               <button
                 id="btn-resend-login-otp"

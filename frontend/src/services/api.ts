@@ -94,10 +94,19 @@ export const authApi = {
       localStorage.removeItem('affy_user');
     }
   },
+  supabaseExchange: async (payload: {
+    access_token: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<AuthResponse> => {
+    const res = await apiClient.post<AuthResponse>('/auth/supabase-exchange', payload);
+    return res.data;
+  },
   getMe: async (): Promise<User> => {
     const res = await apiClient.get<User>('/me');
     return res.data;
   },
+
 };
 
 export const productsApi = {
