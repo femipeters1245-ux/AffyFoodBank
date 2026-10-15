@@ -123,11 +123,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           name: fullName,
           phone,
           address,
-          items: items.map((i) => ({
-            productId: i.id,
-            name: i.name,
+          items: items.map((i: any) => ({
+            productId: i.product?.id || i.id,
+            name: i.product?.name || i.name,
             quantity: i.quantity,
-            priceCents: i.priceCents,
+            priceCents: i.product?.priceCents || i.priceCents,
           })),
         });
 
