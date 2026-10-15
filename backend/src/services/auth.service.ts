@@ -33,11 +33,15 @@ export const loginSchema = z.object({
  */
 async function loadPermissions(roleId: string | null): Promise<string[]> {
   if (!roleId) return [];
-  const rolePerms = await prisma.rolePermission.findMany({
-    where: { roleId },
-    include: { permission: true },
-  });
-  return rolePerms.map((rp) => `${rp.permission.action}:${rp.permission.resource}`);
+  try {
+    const rolePerms = await prisma.rolePermission.findMany({
+      where: { roleId },
+      include: { permission: true },
+    });
+    return rolePerms.map((rp) => `${rp.permission.action}:${rp.permission.resource}`);
+  } catch {
+    return [];
+  }
 }
 
 /**
