@@ -19,6 +19,7 @@ export const RegisterPage: React.FC = () => {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [otp, setOtp] = useState('');
   const [verificationTicket, setVerificationTicket] = useState<string | undefined>(undefined);
+  const [previewOtp, setPreviewOtp] = useState<string | null>(null);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,6 +56,7 @@ export const RegisterPage: React.FC = () => {
         lastName: lastName.trim() || undefined,
       });
       setVerificationTicket(res.verificationTicket);
+      if (res.previewOtp) setPreviewOtp(res.previewOtp);
       setStep('OTP');
       setResendCountdown(30);
       setSuccessMsg(res.message || 'Verification code sent to your email inbox.');
@@ -98,6 +100,7 @@ export const RegisterPage: React.FC = () => {
         lastName: lastName.trim() || undefined,
       });
       setVerificationTicket(res.verificationTicket);
+      if (res.previewOtp) setPreviewOtp(res.previewOtp);
       setResendCountdown(30);
       setSuccessMsg(res.message || 'A new verification code has been sent to your inbox.');
     } catch (err: any) {
@@ -139,6 +142,34 @@ export const RegisterPage: React.FC = () => {
           <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-2">
             <span>⚠️</span>
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Resend Testing Sandbox Helper */}
+        {previewOtp && step === 'OTP' && (
+          <div className="p-3.5 bg-amber-50 border border-amber-300 rounded-2xl text-xs text-amber-900 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-bold flex items-center space-x-1.5">
+                <span>🧪</span>
+                <span>Resend Test Mode Code:</span>
+              </span>
+              <button
+                type="button"
+                onClick={() => setOtp(previewOtp)}
+                className="px-2.5 py-1 bg-amber-600 hover:bg-amber-700 text-white font-bold text-[11px] rounded-lg shadow-xs transition-colors"
+              >
+                Auto-Fill Code
+              </button>
+            </div>
+            <div className="font-mono text-xl font-black tracking-widest text-amber-950 bg-amber-100/70 py-2 rounded-xl text-center">
+              {previewOtp}
+            </div>
+            <p className="text-[11px] text-amber-800 leading-normal">
+              A copy was also relayed to <strong>affybrand@gmail.com</strong>. To deliver directly to all user emails, verify your domain at{' '}
+              <a href="https://resend.com/domains" target="_blank" rel="noreferrer" className="underline font-bold text-amber-900">
+                resend.com/domains
+              </a>.
+            </p>
           </div>
         )}
 
