@@ -1,20 +1,50 @@
 // frontend/src/pages/AdminDashboardPage.tsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
 import { AffyLogo } from '../components/AffyLogo';
 import { adminApi } from '../services/api';
+import {
+  supabaseProducts,
+  supabaseCategories,
+  supabaseUnits,
+  SupabaseProduct,
+  SupabaseCategory,
+  SupabaseUnit,
+} from '../lib/supabase';
 
 export interface AdminProduct {
   id: string;
   name: string;
   description: string;
   category: string;
+  category_id?: string;
   stock: number;
   unit: string;
+  unit_id?: string;
   priceCents: number;
   imageUrl: string;
   status: 'In Stock' | 'Low Stock' | 'Out of Stock';
+}
+
+// Helper: map Supabase product to AdminProduct
+function mapToAdminProduct(p: SupabaseProduct): AdminProduct {
+  const inv = Array.isArray(p.inventory) ? p.inventory[0] : p.inventory;
+  const qty = inv ? Number(inv.quantity) : 0;
+  const threshold = inv ? Number(inv.low_stock_threshold) : 20;
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? '',
+    category: p.category?.name ?? 'Uncategorised',
+    category_id: p.category_id ?? undefined,
+    stock: qty,
+    unit: p.unit?.name ?? 'unit',
+    unit_id: p.unit_id ?? undefined,
+    priceCents: p.price_cents,
+    imageUrl: p.image_url ?? '',
+    status: qty <= 0 ? 'Out of Stock' : qty <= threshold ? 'Low Stock' : 'In Stock',
+  };
 }
 
 export interface CustomerKYC {
@@ -344,19 +374,40 @@ export const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<'inventory' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>('inventory');
 
-  // Shared state with persistence for customer marketplace synchronization
-  const [products, setProducts] = useState<AdminProduct[]>(() => {
-    try {
-      const stored = localStorage.getItem('affy_custom_products');
-      return stored ? JSON.parse(stored) : INITIAL_PRODUCTS;
-    } catch {
-      return INITIAL_PRODUCTS;
-    }
-  });
+  // ─── Products state — sourced exclusively from Supabase ──────────────────────
+  const [products, setProducts] = useState<AdminProduct[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
+  const [productsError, setProductsError] = useState<string | null>(null);
+  const [categories, setCategories] = useState<SupabaseCategory[]>([]);
+  const [units, setUnits] = useState<SupabaseUnit[]>([]);
 
   const [customers, setCustomers] = useState<CustomerKYC[]>(INITIAL_CUSTOMERS);
   const [orders, setOrders] = useState<AdminOrder[]>(INITIAL_ORDERS);
   const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
+
+  const loadProducts = useCallback(async () => {
+    try {
+      setProductsLoading(true);
+      setProductsError(null);
+      const [data, cats, unitList] = await Promise.all([
+        supabaseProducts.listAll(),
+        supabaseCategories.list(),
+        supabaseUnits.list(),
+      ]);
+      setProducts(data.map(mapToAdminProduct));
+      setCategories(cats);
+      setUnits(unitList);
+    } catch (err: any) {
+      console.error('[Admin] Failed to load products:', err);
+      setProductsError('Failed to load products from Supabase. Check your credentials.');
+    } finally {
+      setProductsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadProducts();
+  }, [loadProducts]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
@@ -463,102 +514,107 @@ export const AdminDashboardPage: React.FC = () => {
   const [isNewProductOpen, setIsNewProductOpen] = useState(false);
   const [editingOrder, setEditingOrder] = useState<AdminOrder | null>(null);
   const [toast, setToast] = useState<string | null>(null);
-
-  // Sync products with localStorage so customer marketplace always sees updates immediately
-  const persistProducts = (updated: AdminProduct[]) => {
-    setProducts(updated);
-    try {
-      localStorage.setItem('affy_custom_products', JSON.stringify(updated));
-    } catch (e) {
-      console.error('Failed to sync products to storage', e);
-    }
-  };
+  const [savingProduct, setSavingProduct] = useState(false);
+  const [deletingProductId, setDeletingProductId] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3500);
   };
 
-  // 1 & 6. Handle Editing Price, Stock, Image & Product Details
-  const handleSaveProduct = (e: React.FormEvent) => {
+  // 1 & 6. Handle Editing Price, Stock, Image & Product Details → persists to Supabase
+  const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
+    setSavingProduct(true);
 
-    const stockNum = Number(editingProduct.stock);
-    const updatedStatus: AdminProduct['status'] =
-      stockNum <= 0 ? 'Out of Stock' : stockNum <= 20 ? 'Low Stock' : 'In Stock';
-
-    const updatedItem: AdminProduct = {
-      ...editingProduct,
-      stock: stockNum,
-      status: updatedStatus,
-    };
-
-    const updatedList = products.map((p) => (p.id === updatedItem.id ? updatedItem : p));
-    persistProducts(updatedList);
-
-    // Call backend API to persist in PostgreSQL if available
-    adminApi
-      .updateProduct(updatedItem.id, {
-        name: updatedItem.name,
-        description: updatedItem.description,
-        priceCents: updatedItem.priceCents,
-        stock: updatedItem.stock,
-        imageUrl: updatedItem.imageUrl,
-      })
-      .catch(() => {});
-
-    setEditingProduct(null);
-    showToast(`Updated ${updatedItem.name} (Price: ${formatNaira(updatedItem.priceCents)}, Stock: ${updatedItem.stock})`);
+    try {
+      await supabaseProducts.update(editingProduct.id, {
+        name: editingProduct.name,
+        description: editingProduct.description,
+        price_cents: editingProduct.priceCents,
+        image_url: editingProduct.imageUrl,
+        stock: Number(editingProduct.stock),
+        category_id: editingProduct.category_id,
+        unit_id: editingProduct.unit_id,
+      });
+      await loadProducts();
+      setEditingProduct(null);
+      showToast(`✅ Updated "${editingProduct.name}" — live on marketplace!`);
+    } catch (err: any) {
+      showToast(`❌ Update failed: ${err.message ?? 'Unknown error'}`);
+    } finally {
+      setSavingProduct(false);
+    }
   };
 
-  // Quick Restock (+20 or +50)
-  const handleQuickRestock = (id: string, amount: number) => {
-    const updatedList = products.map((p) => {
-      if (p.id === id) {
-        const newStock = p.stock + amount;
-        return {
-          ...p,
-          stock: newStock,
-          status: (newStock <= 0 ? 'Out of Stock' : newStock <= 20 ? 'Low Stock' : 'In Stock') as AdminProduct['status'],
-        };
-      }
-      return p;
-    });
-    persistProducts(updatedList);
-    showToast(`Added +${amount} units to stock!`);
+  // Quick Restock (+20 or +50) → persists to Supabase
+  const handleQuickRestock = async (id: string, amount: number) => {
+    try {
+      await supabaseProducts.restock(id, amount);
+      await loadProducts();
+      showToast(`📦 +${amount} units added — inventory synced to marketplace!`);
+    } catch (err: any) {
+      showToast(`❌ Restock failed: ${err.message ?? 'Unknown error'}`);
+    }
   };
 
-  // Add New Product
-  const handleCreateProduct = (e: React.FormEvent<HTMLFormElement>) => {
+  // Add New Product → persists to Supabase
+  const handleCreateProduct = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
+    setSavingProduct(true);
     const form = e.currentTarget;
     const formData = new FormData(form);
 
     const name = formData.get('name') as string;
-    const category = formData.get('category') as string;
-    const unit = formData.get('unit') as string;
+    const categoryName = formData.get('category') as string;
+    const unitName = formData.get('unit') as string;
     const priceNaira = Number(formData.get('priceNaira'));
     const stock = Number(formData.get('stock'));
-    const imageUrl = (formData.get('imageUrl') as string) || 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80';
+    const imageUrl = (formData.get('imageUrl') as string) ||
+      'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80';
     const description = formData.get('description') as string;
 
-    const newProd: AdminProduct = {
-      id: `prod-${Date.now()}`,
-      name,
-      description,
-      category,
-      unit,
-      priceCents: priceNaira * 100,
-      stock,
-      imageUrl,
-      status: stock <= 0 ? 'Out of Stock' : stock <= 20 ? 'Low Stock' : 'In Stock',
-    };
+    try {
+      // Find or create category and unit in Supabase
+      const [cat, unit] = await Promise.all([
+        supabaseCategories.findOrCreate(categoryName),
+        supabaseUnits.findOrCreate(unitName),
+      ]);
 
-    const updatedList = [newProd, ...products];
-    persistProducts(updatedList);
-    setIsNewProductOpen(false);
-    showToast(`Created new product: ${name}`);
+      await supabaseProducts.create({
+        name,
+        description,
+        price_cents: Math.round(priceNaira * 100),
+        image_url: imageUrl,
+        category_id: cat.id,
+        unit_id: unit.id,
+        stock,
+      });
+
+      await loadProducts();
+      setIsNewProductOpen(false);
+      showToast(`✅ "${name}" created and live on marketplace!`);
+    } catch (err: any) {
+      showToast(`❌ Create failed: ${err.message ?? 'Unknown error'}`);
+    } finally {
+      setSavingProduct(false);
+    }
+  };
+
+  // Delete product permanently from Supabase
+  const handleDeleteProduct = async (id: string, name: string) => {
+    if (!window.confirm(`⚠️ Permanently delete "${name}"?\nThis cannot be undone and will remove it from the marketplace.`)) return;
+    setDeletingProductId(id);
+    try {
+      await supabaseProducts.delete(id);
+      await loadProducts();
+      showToast(`🗑️ "${name}" deleted from Supabase and marketplace.`);
+    } catch (err: any) {
+      showToast(`❌ Delete failed: ${err.message ?? 'Unknown error'}`);
+    } finally {
+      setDeletingProductId(null);
+    }
   };
 
   // 3. KYC Approval & Tier Upgrades
@@ -769,6 +825,22 @@ export const AdminDashboardPage: React.FC = () => {
               </button>
             </div>
 
+            {productsError && (
+              <div className="m-6 p-4 rounded-2xl bg-rose-50 border border-rose-200 flex items-center justify-between text-xs text-rose-800">
+                <div className="flex items-center space-x-2">
+                  <span className="text-base">⚠️</span>
+                  <span>{productsError}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={loadProducts}
+                  className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors"
+                >
+                  Retry Supabase Sync
+                </button>
+              </div>
+            )}
+
             <div className="overflow-x-auto">
               <table className="w-full text-left text-xs">
                 <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100">
@@ -783,73 +855,112 @@ export const AdminDashboardPage: React.FC = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100">
-                  {products.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
-                      <td className="px-6 py-3">
-                        <div className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group cursor-pointer"
-                          onClick={() => setEditingProduct(item)}
-                          title="Click to change picture"
-                        >
-                          <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
-                          <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold transition-opacity">
-                            Change
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-3">
-                        <div className="font-extrabold text-slate-900 text-sm">{item.name}</div>
-                        <div className="text-[11px] text-brand-700 font-semibold">{item.category}</div>
-                      </td>
-
-                      <td className="px-6 py-3 font-medium text-slate-600">{item.unit}</td>
-
-                      <td className="px-6 py-3">
-                        <div className="font-black text-slate-900 text-sm">
-                          {formatNaira(item.priceCents)}
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="font-extrabold text-slate-900 text-sm">{item.stock}</span>
-                          <span className="text-[10px] text-slate-500">units</span>
-                        </div>
-                      </td>
-
-                      <td className="px-6 py-3">
-                        <span
-                          className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
-                            item.status === 'In Stock'
-                              ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                              : item.status === 'Low Stock'
-                              ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                              : 'bg-rose-50 text-rose-700 border border-rose-200'
-                          }`}
-                        >
-                          {item.status}
-                        </span>
-                      </td>
-
-                      <td className="px-6 py-3 text-right">
-                        <div className="flex items-center justify-end space-x-1.5">
-                          <button
-                            onClick={() => handleQuickRestock(item.id, 20)}
-                            className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition-colors"
-                            title="Add +20 units quickly"
-                          >
-                            +20 Stock
-                          </button>
-                          <button
-                            onClick={() => setEditingProduct(item)}
-                            className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-[11px] shadow-2xs transition-colors"
-                          >
-                            Edit
-                          </button>
-                        </div>
+                  {productsLoading ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
+                        <div className="inline-block animate-spin text-2xl mb-2">⚡</div>
+                        <div className="font-bold text-slate-600 text-sm">Loading live inventory from Supabase...</div>
+                        <div className="text-[11px] text-slate-400">Syncing products, inventory levels and units</div>
                       </td>
                     </tr>
-                  ))}
+                  ) : products.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
+                        <div className="text-3xl mb-2">📦</div>
+                        <div className="font-bold text-slate-700 text-sm">No products found in Supabase</div>
+                        <div className="text-[11px] text-slate-400 mt-1 mb-3">
+                          Seed your initial catalogue or click "+ New Food Item" above to add products.
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsNewProductOpen(true)}
+                          className="px-4 py-2 bg-brand-600 text-white font-bold rounded-xl text-xs"
+                        >
+                          + Add First Product
+                        </button>
+                      </td>
+                    </tr>
+                  ) : (
+                    products.map((item) => (
+                      <tr key={item.id} className="hover:bg-slate-50/80 transition-colors">
+                        <td className="px-6 py-3">
+                          <div
+                            className="w-14 h-14 rounded-xl overflow-hidden bg-slate-100 border border-slate-200 relative group cursor-pointer"
+                            onClick={() => setEditingProduct(item)}
+                            title="Click to change picture"
+                          >
+                            <img src={item.imageUrl} alt={item.name} className="w-full h-full object-cover" />
+                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-[10px] text-white font-bold transition-opacity">
+                              Change
+                            </div>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-3">
+                          <div className="font-extrabold text-slate-900 text-sm">{item.name}</div>
+                          <div className="text-[11px] text-brand-700 font-semibold">{item.category}</div>
+                        </td>
+
+                        <td className="px-6 py-3 font-medium text-slate-600">{item.unit}</td>
+
+                        <td className="px-6 py-3">
+                          <div className="font-black text-slate-900 text-sm">
+                            {formatNaira(item.priceCents)}
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-3">
+                          <div className="flex items-center space-x-2">
+                            <span className="font-extrabold text-slate-900 text-sm">{item.stock}</span>
+                            <span className="text-[10px] text-slate-500">units</span>
+                          </div>
+                        </td>
+
+                        <td className="px-6 py-3">
+                          <span
+                            className={`px-2.5 py-1 rounded-full text-[10px] font-black ${
+                              item.status === 'In Stock'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : item.status === 'Low Stock'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : 'bg-rose-50 text-rose-700 border border-rose-200'
+                            }`}
+                          >
+                            {item.status}
+                          </span>
+                        </td>
+
+                        <td className="px-6 py-3 text-right">
+                          <div className="flex items-center justify-end space-x-1.5">
+                            <button
+                              type="button"
+                              onClick={() => handleQuickRestock(item.id, 20)}
+                              className="px-2.5 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-lg text-[11px] transition-colors"
+                              title="Add +20 units to live Supabase inventory"
+                            >
+                              +20 Stock
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingProduct(item)}
+                              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-lg text-[11px] shadow-2xs transition-colors"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deletingProductId === item.id}
+                              onClick={() => handleDeleteProduct(item.id, item.name)}
+                              className="px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 text-rose-700 disabled:opacity-50 font-bold rounded-lg text-[11px] transition-colors"
+                              title="Delete permanently from Supabase"
+                            >
+                              {deletingProductId === item.id ? 'Deleting...' : 'Delete'}
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -1638,9 +1749,10 @@ export const AdminDashboardPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-md"
+                  disabled={savingProduct}
+                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
                 >
-                  Save Changes
+                  {savingProduct ? 'Saving to Supabase...' : 'Save Changes'}
                 </button>
               </div>
             </form>
@@ -1750,9 +1862,10 @@ export const AdminDashboardPage: React.FC = () => {
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-md"
+                  disabled={savingProduct}
+                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
                 >
-                  Add to Marketplace
+                  {savingProduct ? 'Adding to Supabase...' : 'Add to Marketplace'}
                 </button>
               </div>
             </form>
