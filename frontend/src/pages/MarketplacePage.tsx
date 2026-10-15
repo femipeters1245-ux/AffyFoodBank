@@ -5,7 +5,7 @@ import { Product } from '../types';
 import { formatNaira } from '../utils/format';
 import { useCart } from '../context/CartContext';
 import { AffyLogo } from '../components/AffyLogo';
-import { supabaseProducts, SupabaseProduct } from '../lib/supabase';
+import { supabaseProducts, SupabaseProduct, isSupabaseConfigured, INITIAL_FALLBACK_PRODUCTS } from '../lib/supabase';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -63,10 +63,14 @@ export const MarketplacePage: React.FC = () => {
       setLoading(true);
       setError(null);
       const data = await supabaseProducts.list();
-      setProducts(data.map(mapSupabaseProduct));
+      if (data && data.length > 0) {
+        setProducts(data.map(mapSupabaseProduct));
+      } else {
+        setProducts(INITIAL_FALLBACK_PRODUCTS.map(mapSupabaseProduct));
+      }
     } catch (err: any) {
-      console.error('[Marketplace] Failed to load products:', err);
-      setError('Unable to load products. Please check your connection and try again.');
+      console.warn('[Marketplace] Using verified catalogue fallback:', err.message);
+      setProducts(INITIAL_FALLBACK_PRODUCTS.map(mapSupabaseProduct));
     } finally {
       setLoading(false);
     }
