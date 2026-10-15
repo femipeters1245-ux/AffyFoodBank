@@ -4,7 +4,12 @@ import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prisma/client';
 import { BadRequestError } from '../utils/errors';
-import { sendOrderReceiptEmail, sendAdminOrderAlert } from '../services/email.service';
+import {
+  sendOrderReceiptEmail,
+  sendAdminOrderAlert,
+  sendWalletDepositEmail,
+  sendWalletWithdrawalEmail,
+} from '../services/email.service';
 import { walletService } from '../services/wallet.service';
 
 const router = Router();
@@ -423,13 +428,22 @@ router.post('/transactpay/webhook', async (req: Request, res: Response) => {
             });
 
             if (customerProfile?.wallet) {
-              await walletService.deposit({
+              const updatedWallet = await walletService.deposit({
                 customerProfileId: customerProfile.id,
                 amountCents: chargedCents,
                 paymentReference: orderReference,
                 description: `Automated Bank Transfer Deposit via TransactPay (${data?.paymentMethod || 'Virtual Account'})`,
               });
               console.log(`[TransactPay Webhook] Auto-funded customer wallet ${customerProfile.wallet.id} via virtual account`);
+
+              sendWalletDepositEmail({
+                to: customerEmail,
+                customerName: (customerProfile as any).user?.firstName || 'Valued Member',
+                amountNaira: chargedCents / 100,
+                newBalanceNaira: Number(updatedWallet.totalBalanceCents) / 100,
+                reference: orderReference,
+                channel: data?.paymentMethod || 'TransactPay Virtual Account',
+              }).catch((e) => console.warn('[Deposit Email] Resend note:', e.message));
             }
           }
         }
@@ -716,14 +730,49 @@ router.post('/transactpay/payout', async (req: Request, res: Response, next: Nex
     }
 
     // 3. Mark transaction as SUCCESSFUL or PENDING in database
+    const payoutStatus = gatewayResult?.status === 'success' || gatewayResult?.statusCode === '00' ? 'SUCCESSFUL' : 'PENDING';
     try {
       await prisma.walletTransaction.updateMany({
         where: { reference: payoutReference },
         data: {
-          status: gatewayResult?.status === 'success' || gatewayResult?.statusCode === '00' ? 'SUCCESSFUL' : 'PENDING',
+          status: payoutStatus,
         },
       });
     } catch {}
+
+    // 4. Send withdrawal receipt email via Resend
+    try {
+      let recipientEmail = (req as any).user?.email;
+      let recipientName = accountName;
+      let remainingBalanceNaira = 0;
+
+      if (customerProfileId) {
+        const profile = await prisma.customerProfile.findUnique({
+          where: { id: customerProfileId },
+          include: { user: true, wallet: true },
+        });
+        if (profile?.user?.email) recipientEmail = profile.user.email;
+        if (profile?.user?.firstName) {
+          recipientName = [profile.user.firstName, profile.user.lastName].filter(Boolean).join(' ');
+        }
+        if (profile?.wallet) remainingBalanceNaira = Number(profile.wallet.totalBalanceCents) / 100;
+      }
+
+      if (recipientEmail) {
+        sendWalletWithdrawalEmail({
+          to: recipientEmail,
+          customerName: recipientName || 'Affy Customer',
+          amountNaira: amountNum,
+          remainingBalanceNaira,
+          bankName: bankName || 'Bank Account',
+          accountNumber,
+          reference: payoutReference,
+          status: payoutStatus as 'SUCCESSFUL' | 'PENDING',
+        }).catch((err) => console.warn('[Resend] Withdrawal email failed:', err.message));
+      }
+    } catch (e: any) {
+      console.warn('[Resend] Could not construct withdrawal email:', e.message);
+    }
 
     res.json({
       status: 'success',

@@ -10,7 +10,11 @@ interface AuthContextType {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (email: string, password: string) => Promise<void>;
+  sendLoginOtp: (email: string, password: string) => Promise<{ message: string; email: string; expiresInMinutes: number; previewOtp?: string }>;
+  verifyLoginOtp: (email: string, otp: string) => Promise<User>;
   register: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<void>;
+  sendSignupOtp: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<{ message: string; email: string; expiresInMinutes: number; previewOtp?: string }>;
+  verifySignupOtp: (email: string, otp: string) => Promise<User>;
   logout: () => Promise<void>;
   refreshWallet: () => Promise<void>;
 }
@@ -55,24 +59,41 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     return () => window.removeEventListener('affy_auth_expired', handleAuthExpired);
   }, [token]);
 
-  const login = async (email: string, password: string) => {
-    const res = await authApi.login({ email, password });
+  const applyAuthSuccess = (res: { token: string; user: User }) => {
     localStorage.setItem('affy_token', res.token);
     localStorage.setItem('affy_user', JSON.stringify(res.user));
     setToken(res.token);
     setUser(res.user);
-    try {
-      const w = await walletApi.getWallet();
-      setWallet(w);
-    } catch {
-      // Wallet fetch can follow
-    }
+    walletApi.getWallet().then(setWallet).catch(() => {});
+    return res.user;
+  };
+
+  const login = async (email: string, password: string) => {
+    const res = await authApi.login({ email, password });
+    applyAuthSuccess(res);
+  };
+
+  const sendLoginOtp = async (email: string, password: string) => {
+    return await authApi.sendLoginOtp({ email, password });
+  };
+
+  const verifyLoginOtp = async (email: string, otp: string) => {
+    const res = await authApi.verifyLoginOtp({ email, otp });
+    return applyAuthSuccess(res);
   };
 
   const register = async (data: { email: string; password: string; firstName?: string; lastName?: string }) => {
     await authApi.register(data);
-    // Auto-login after registration
     await login(data.email, data.password);
+  };
+
+  const sendSignupOtp = async (data: { email: string; password: string; firstName?: string; lastName?: string }) => {
+    return await authApi.sendSignupOtp(data);
+  };
+
+  const verifySignupOtp = async (email: string, otp: string) => {
+    const res = await authApi.verifySignupOtp({ email, otp });
+    return applyAuthSuccess(res);
   };
 
   const logout = async () => {
@@ -95,7 +116,11 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
         isLoading,
         isAuthenticated: !!token,
         login,
+        sendLoginOtp,
+        verifyLoginOtp,
         register,
+        sendSignupOtp,
+        verifySignupOtp,
         logout,
         refreshWallet,
       }}

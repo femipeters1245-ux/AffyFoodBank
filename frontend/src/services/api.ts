@@ -51,6 +51,30 @@ export const authApi = {
     const res = await apiClient.post<AuthResponse>('/auth/login', credentials);
     return res.data;
   },
+  sendLoginOtp: async (credentials: {
+    email: string;
+    password: string;
+  }): Promise<{ message: string; email: string; expiresInMinutes: number; previewOtp?: string }> => {
+    const res = await apiClient.post('/auth/otp/send-login-otp', credentials);
+    return res.data;
+  },
+  verifyLoginOtp: async (payload: { email: string; otp: string }): Promise<AuthResponse> => {
+    const res = await apiClient.post<AuthResponse>('/auth/otp/verify-login-otp', payload);
+    return res.data;
+  },
+  sendSignupOtp: async (data: {
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+  }): Promise<{ message: string; email: string; expiresInMinutes: number; previewOtp?: string }> => {
+    const res = await apiClient.post('/auth/otp/send-signup-otp', data);
+    return res.data;
+  },
+  verifySignupOtp: async (payload: { email: string; otp: string }): Promise<AuthResponse> => {
+    const res = await apiClient.post<AuthResponse>('/auth/otp/verify-signup-otp', payload);
+    return res.data;
+  },
   register: async (data: {
     email: string;
     password: string;

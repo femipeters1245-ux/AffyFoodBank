@@ -4,6 +4,7 @@ import prisma from '../prisma/client';
 import { authenticate } from '../middleware/authenticate';
 import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors';
 import { v4 as uuidv4 } from 'uuid';
+import { sendDeliveryStageUpdateEmail } from '../services/email.service';
 
 const router = Router();
 
@@ -321,12 +322,44 @@ router.patch('/orders/:id/delivery', async (req: Request, res: Response, next: N
 
     const order = await prisma.order.findUnique({
       where: { id },
-      include: { delivery: true },
+      include: {
+        delivery: true,
+        customerProfile: {
+          include: { user: true, addresses: true },
+        },
+      },
     });
+
+    // If order was simulated or not in prisma, send delivery update to test email
+    const customerEmail =
+      order?.customerProfile?.user?.email ||
+      req.body?.customerEmail ||
+      'customer@affyfoodbank.ng';
+    const customerName =
+      (order?.customerProfile?.user?.firstName
+        ? `${order.customerProfile.user.firstName} ${order.customerProfile.user.lastName || ''}`.trim()
+        : null) ||
+      req.body?.customerName ||
+      'Valued Customer';
+    const deliveryAddress =
+      order?.customerProfile?.addresses?.[0]?.line1 ||
+      req.body?.deliveryAddress ||
+      'Customer Delivery Destination';
+
+    sendDeliveryStageUpdateEmail({
+      to: customerEmail,
+      customerName,
+      orderReference: id,
+      stage: status || 'DISPATCHED',
+      assignedRider: riderName,
+      riderPhone,
+      deliveryAddress,
+      notes,
+    }).catch((e) => console.warn('[Delivery Email] Resend note:', e.message));
 
     if (!order) {
       return res.json({
-        message: 'Order delivery status updated successfully',
+        message: 'Order delivery status updated successfully and customer notified via email',
         id,
         status: status || 'DISPATCHED',
         riderName,
@@ -374,7 +407,7 @@ router.patch('/orders/:id/delivery', async (req: Request, res: Response, next: N
       deliveryStatus: status,
       riderName,
       riderPhone,
-      message: 'Delivery status updated manually',
+      message: 'Delivery status updated and customer notified via email',
     });
   } catch (err) {
     next(err);

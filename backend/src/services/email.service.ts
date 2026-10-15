@@ -363,3 +363,326 @@ export async function sendAdminOrderAlert(params: {
     text: `New order ${orderReference} for ₦${amountNaira.toLocaleString()} received from ${customerEmail}.`,
   });
 }
+
+/**
+ * 5. One-Time Password (OTP) for Sign in & Login
+ */
+export async function sendOtpEmail(params: {
+  to: string;
+  otp: string;
+  purpose: 'SIGNUP' | 'LOGIN';
+  firstName?: string;
+}) {
+  const { to, otp, purpose, firstName = 'there' } = params;
+  const isSignup = purpose === 'SIGNUP';
+  const actionText = isSignup ? 'complete your registration' : 'sign in to your account';
+
+  const bodyContent = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span class="badge" style="background-color: #e0e7ff; color: #4338ca;">🔒 Security Verification</span>
+      <h2 style="margin: 12px 0 6px; font-size: 22px; color: #0f172a;">
+        ${isSignup ? 'Verify Your Email Address' : 'Sign In Verification Code'}
+      </h2>
+      <p style="margin: 0; color: #64748b; font-size: 14px;">
+        Hi ${firstName}, use the one-time code below to ${actionText}.
+      </p>
+    </div>
+
+    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 2px dashed #16a34a; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
+      <span style="display: block; font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Your 6-Digit One-Time Code</span>
+      <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #15803d; line-height: 1;">
+        ${otp}
+      </div>
+      <p style="margin: 12px 0 0; font-size: 12px; color: #64748b;">
+        ⏱️ This code expires in <strong>10 minutes</strong>. Never share this code with anyone.
+      </p>
+    </div>
+
+    <div style="background-color: #f8fafc; border-radius: 12px; padding: 14px; font-size: 12px; color: #64748b; border: 1px solid #e2e8f0;">
+      <strong style="color: #334155;">🛡️ Security Notice:</strong> Affy FoodBank staff will never ask you for your password or OTP. If you did not initiate this request, please ignore this email or contact support.
+    </div>
+  `;
+
+  return sendEmail({
+    to,
+    subject: `🔐 Your Affy FoodBank Verification Code: ${otp}`,
+    html: emailWrapper('One-Time Password Verification', bodyContent),
+    text: `Hi ${firstName}, your Affy FoodBank verification code is ${otp}. It expires in 10 minutes.`,
+  });
+}
+
+/**
+ * 6. Automated Wallet Deposit Notification
+ */
+export async function sendWalletDepositEmail(params: {
+  to: string;
+  customerName?: string;
+  amountNaira: number;
+  newBalanceNaira?: number;
+  reference: string;
+  channel?: string;
+}) {
+  const {
+    to,
+    customerName = 'Valued Member',
+    amountNaira,
+    newBalanceNaira,
+    reference,
+    channel = 'TransactPay PSSP',
+  } = params;
+
+  const bodyContent = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span class="badge badge-success">✓ Deposit Confirmed</span>
+      <h2 style="margin: 12px 0 6px; font-size: 22px; color: #0f172a;">Wallet Credited!</h2>
+      <p style="margin: 0; color: #64748b; font-size: 14px;">Hi ${customerName}, your wallet deposit was processed successfully.</p>
+    </div>
+
+    <div style="background-color: #f8fafc; border-radius: 12px; padding: 18px; margin: 20px 0; border: 1px solid #e2e8f0;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Amount Credited:</span>
+        <strong style="color: #15803d; font-size: 18px;">+₦${amountNaira.toLocaleString()}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Reference Code:</span>
+        <strong style="font-family: monospace; font-size: 13px;">${reference}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Payment Channel:</span>
+        <strong style="font-size: 13px;">${channel}</strong>
+      </div>
+      ${
+        newBalanceNaira !== undefined
+          ? `
+      <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+        <span style="color: #0f172a; font-weight: 700; font-size: 14px;">Updated Wallet Balance:</span>
+        <span style="color: #0f172a; font-weight: 800; font-size: 16px;">₦${newBalanceNaira.toLocaleString()}</span>
+      </div>`
+          : ''
+      }
+    </div>
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="https://affy-food-bank-czt6.vercel.app/wallet" class="btn">View Food Wallet</a>
+    </div>
+  `;
+
+  return sendEmail({
+    to,
+    subject: `💰 +₦${amountNaira.toLocaleString()} Credited to Your Affy Wallet`,
+    html: emailWrapper('Wallet Deposit Receipt', bodyContent),
+    text: `Hi ${customerName}, your deposit of ₦${amountNaira.toLocaleString()} (Ref: ${reference}) has been credited to your Affy FoodBank wallet.`,
+  });
+}
+
+/**
+ * 7. Automated Wallet Withdrawal Notification
+ */
+export async function sendWalletWithdrawalEmail(params: {
+  to: string;
+  customerName?: string;
+  amountNaira: number;
+  remainingBalanceNaira?: number;
+  reference: string;
+  bankName: string;
+  accountNumber: string;
+  status?: 'SUCCESSFUL' | 'PENDING';
+}) {
+  const {
+    to,
+    customerName = 'Valued Member',
+    amountNaira,
+    remainingBalanceNaira,
+    reference,
+    bankName,
+    accountNumber,
+    status = 'SUCCESSFUL',
+  } = params;
+
+  const maskedAccount = accountNumber.length >= 4 ? `******${accountNumber.slice(-4)}` : accountNumber;
+
+  const bodyContent = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span class="badge" style="background-color: #fef3c7; color: #b45309;">📤 Bank Disbursement</span>
+      <h2 style="margin: 12px 0 6px; font-size: 22px; color: #0f172a;">
+        ${status === 'SUCCESSFUL' ? 'Withdrawal Completed' : 'Withdrawal Processing'}
+      </h2>
+      <p style="margin: 0; color: #64748b; font-size: 14px;">Hi ${customerName}, your withdrawal payout has been dispatched via TransactPay.</p>
+    </div>
+
+    <div style="background-color: #f8fafc; border-radius: 12px; padding: 18px; margin: 20px 0; border: 1px solid #e2e8f0;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Disbursed Amount:</span>
+        <strong style="color: #b45309; font-size: 18px;">-₦${amountNaira.toLocaleString()}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Destination Bank:</span>
+        <strong style="font-size: 13px;">${bankName} (${maskedAccount})</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Payout Reference:</span>
+        <strong style="font-family: monospace; font-size: 13px;">${reference}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Fee:</span>
+        <strong style="color: #15803d; font-size: 13px;">₦0.00 (Zero Fee)</strong>
+      </div>
+      ${
+        remainingBalanceNaira !== undefined
+          ? `
+      <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px dashed #cbd5e1;">
+        <span style="color: #0f172a; font-weight: 700; font-size: 14px;">Remaining Available Balance:</span>
+        <span style="color: #0f172a; font-weight: 800; font-size: 16px;">₦${remainingBalanceNaira.toLocaleString()}</span>
+      </div>`
+          : ''
+      }
+    </div>
+
+    <p style="font-size: 12px; color: #64748b; margin-top: 16px;">
+      💡 Payouts to Nigerian commercial banks and fintech accounts (OPay, PalmPay, Kuda) typically reflect within 1-5 minutes.
+    </p>
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="https://affy-food-bank-czt6.vercel.app/wallet" class="btn">View Wallet Ledger</a>
+    </div>
+  `;
+
+  return sendEmail({
+    to,
+    subject: `📤 ₦${amountNaira.toLocaleString()} Withdrawn to ${bankName} - Affy FoodBank`,
+    html: emailWrapper('Wallet Withdrawal Notification', bodyContent),
+    text: `Hi ${customerName}, your withdrawal of ₦${amountNaira.toLocaleString()} to ${bankName} (${maskedAccount}) has been dispatched. Ref: ${reference}`,
+  });
+}
+
+/**
+ * 8. Order Delivery Stage Update Notification
+ */
+export async function sendDeliveryStageUpdateEmail(params: {
+  to: string;
+  customerName?: string;
+  orderReference: string;
+  stage: string;
+  assignedRider?: string;
+  riderPhone?: string;
+  deliveryAddress?: string;
+  notes?: string;
+}) {
+  const {
+    to,
+    customerName = 'Valued Customer',
+    orderReference,
+    stage,
+    assignedRider,
+    riderPhone,
+    deliveryAddress,
+    notes,
+  } = params;
+
+  const stageDescriptions: Record<string, { label: string; badgeColor: string; description: string }> = {
+    PENDING: {
+      label: 'Order Placed & Queued',
+      badgeColor: '#fef3c7; color: #b45309',
+      description: 'Your foodstuff order has been placed and is waiting for warehouse sorting.',
+    },
+    PROCESSING: {
+      label: 'Sorting & Packaging at Farm Hub',
+      badgeColor: '#e0e7ff; color: #4338ca',
+      description: 'Our warehouse team is weighing, bagging, and quality-checking your raw foodstuffs.',
+    },
+    READY_FOR_DISPATCH: {
+      label: 'Ready for Dispatch',
+      badgeColor: '#dbeafe; color: #1d4ed8',
+      description: 'Your food items are packed and assigned to a delivery dispatch route.',
+    },
+    DISPATCHED: {
+      label: 'Out for Delivery 🚚',
+      badgeColor: '#dcfce7; color: #15803d',
+      description: 'Your order is currently with our dispatch driver on the way to your doorstep.',
+    },
+    DELIVERED: {
+      label: 'Successfully Delivered ✅',
+      badgeColor: '#dcfce7; color: #166534',
+      description: 'Your foodstuff delivery has been successfully received and signed for. Enjoy your farm-fresh food!',
+    },
+    CANCELLED: {
+      label: 'Order Cancelled',
+      badgeColor: '#ffe4e6; color: #be123c',
+      description: 'This delivery has been cancelled. If payment was made, your refund is credited to your wallet.',
+    },
+  };
+
+  const currentStageInfo = stageDescriptions[stage.toUpperCase()] || {
+    label: stage,
+    badgeColor: '#f1f5f9; color: #334155',
+    description: 'There is a new update regarding your foodstuff order delivery.',
+  };
+
+  const bodyContent = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <span class="badge" style="background-color: ${currentStageInfo.badgeColor};">
+        ${currentStageInfo.label}
+      </span>
+      <h2 style="margin: 12px 0 6px; font-size: 22px; color: #0f172a;">Delivery Progress Update</h2>
+      <p style="margin: 0; color: #64748b; font-size: 14px;">Hi ${customerName}, here is the latest status of your foodstuff order.</p>
+    </div>
+
+    <div style="background-color: #f8fafc; border-radius: 12px; padding: 18px; margin: 20px 0; border: 1px solid #e2e8f0;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Order Reference:</span>
+        <strong style="font-family: monospace; font-size: 13px;">${orderReference}</strong>
+      </div>
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Current Stage:</span>
+        <strong style="font-size: 13px;">${currentStageInfo.label}</strong>
+      </div>
+      ${
+        assignedRider
+          ? `
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Assigned Dispatch Rider:</span>
+        <strong style="font-size: 13px;">${assignedRider}</strong>
+      </div>`
+          : ''
+      }
+      ${
+        riderPhone
+          ? `
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="color: #64748b; font-size: 13px;">Rider Phone:</span>
+        <strong style="color: #15803d; font-size: 13px;">${riderPhone}</strong>
+      </div>`
+          : ''
+      }
+      ${
+        deliveryAddress
+          ? `
+      <div style="margin-top: 10px; padding-top: 10px; border-top: 1px dashed #cbd5e1; font-size: 13px;">
+        <span style="color: #64748b;">Delivery Destination:</span>
+        <div style="font-weight: 600; color: #334155; margin-top: 2px;">${deliveryAddress}</div>
+      </div>`
+          : ''
+      }
+      ${
+        notes
+          ? `
+      <div style="margin-top: 10px; padding: 10px; background: #ffffff; border-radius: 8px; border: 1px solid #e2e8f0; font-size: 12px; color: #475569;">
+        <strong>Logistics Note:</strong> ${notes}
+      </div>`
+          : ''
+      }
+    </div>
+
+    <div style="text-align: center; margin-top: 24px;">
+      <a href="https://affy-food-bank-czt6.vercel.app" class="btn">Track Order on Affy FoodBank</a>
+    </div>
+  `;
+
+  return sendEmail({
+    to,
+    subject: `🚚 [Delivery Update] Order #${orderReference.slice(-8)} is ${currentStageInfo.label}`,
+    html: emailWrapper('Delivery Stage Update', bodyContent),
+    text: `Hi ${customerName}, your order #${orderReference} status has been updated to: ${currentStageInfo.label}. ${currentStageInfo.description}`,
+  });
+}
+
