@@ -60,7 +60,32 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     window.addEventListener('affy_auth_expired', handleAuthExpired);
-    return () => window.removeEventListener('affy_auth_expired', handleAuthExpired);
+
+    // Automatically handle magic link clicks and Supabase auth state transitions
+    const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
+      if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+        const email = session.user.email || '';
+        const isAdmin = email === 'affybrand@gmail.com' || email.endsWith('@affyfoodbank.ng');
+        const loggedUser: User = {
+          id: session.user.id,
+          email,
+          firstName: session.user.user_metadata?.first_name || email.split('@')[0],
+          lastName: session.user.user_metadata?.last_name || '',
+          role: isAdmin ? 'Admin' : 'Customer',
+          isActive: true,
+          createdAt: session.user.created_at || new Date().toISOString(),
+        };
+        applyAuthSuccess({
+          token: session.access_token,
+          user: loggedUser,
+        });
+      }
+    });
+
+    return () => {
+      window.removeEventListener('affy_auth_expired', handleAuthExpired);
+      authListener?.subscription.unsubscribe();
+    };
   }, [token]);
 
   const applyAuthSuccess = (res: { token: string; user: User }) => {
