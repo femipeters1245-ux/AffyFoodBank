@@ -3,11 +3,12 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl =
-  process.env.SUPABASE_URL || 'https://jtwrnpqyvypvljgywwau.supabase.co';
-const supabaseServiceKey =
-  process.env.SUPABASE_SERVICE_ROLE_KEY ||
-  'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0d3JucHF5dnlwdmxqZ3l3d2F1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTQ5Mjk1OCwiZXhwIjoyMTA3MDY4OTU4fQ.E1rdcNicpDbxVWGSLQnrLeEJFoWy5lE5FWBMEsNwFj0';
+const supabaseUrl = process.env.SUPABASE_URL || '';
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+
+if (!supabaseServiceKey && process.env.NODE_ENV === 'production') {
+  console.warn('[SupabaseAdmin] SUPABASE_SERVICE_ROLE_KEY is not set. Token verification will be unavailable.');
+}
 
 export const isSupabaseAdminConfigured = Boolean(
   supabaseUrl &&

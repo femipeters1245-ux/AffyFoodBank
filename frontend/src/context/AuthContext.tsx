@@ -46,13 +46,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     }
   };
 
+  // Fetch wallet when token is available
   useEffect(() => {
     if (token) {
       fetchWallet().finally(() => setIsLoading(false));
     } else {
       setIsLoading(false);
     }
+  }, [token]);
 
+  // Auth expiry listener — runs once
+  useEffect(() => {
     const handleAuthExpired = () => {
       setUser(null);
       setToken(null);
@@ -60,16 +64,19 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     };
 
     window.addEventListener('affy_auth_expired', handleAuthExpired);
+    return () => window.removeEventListener('affy_auth_expired', handleAuthExpired);
+  }, []);
 
-    // Automatically handle magic link clicks and Supabase auth state transitions
+  // Supabase auth state listener — runs once, avoids re-subscribing on token change
+  useEffect(() => {
     const { data: authListener } = supabase.auth.onAuthStateChange((event, session) => {
       if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
-        const email = session.user.email || '';
-        const isAdmin = email === 'affybrand@gmail.com' || email.endsWith('@affyfoodbank.ng');
+        const sessionEmail = session.user.email || '';
+        const isAdmin = sessionEmail === 'affybrand@gmail.com' || sessionEmail.endsWith('@affyfoodbank.ng');
         const loggedUser: User = {
           id: session.user.id,
-          email,
-          firstName: session.user.user_metadata?.first_name || email.split('@')[0],
+          email: sessionEmail,
+          firstName: session.user.user_metadata?.first_name || sessionEmail.split('@')[0],
           lastName: session.user.user_metadata?.last_name || '',
           role: isAdmin ? 'Admin' : 'Customer',
           isActive: true,
@@ -83,10 +90,9 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     });
 
     return () => {
-      window.removeEventListener('affy_auth_expired', handleAuthExpired);
       authListener?.subscription.unsubscribe();
     };
-  }, [token]);
+  }, []);
 
   const applyAuthSuccess = (res: { token: string; user: User }) => {
     localStorage.setItem('affy_token', res.token);
@@ -181,21 +187,24 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       );
     }
 
+    // Extract the Supabase access token from the verified session
+    const accessToken = sessionData.session.access_token;
+
     // Exchange Supabase token for our backend JWT with seamless fallback
     let res: any;
     try {
       res = await authApi.supabaseExchange({ access_token: accessToken, firstName, lastName });
     } catch (exchangeErr: any) {
       console.warn('[Supabase OTP] Backend exchange error, activating direct verified session:', exchangeErr?.message);
-      const supaUser = sessionData.user;
-      const email = supaUser.email || params.email;
-      const isAdmin = email === 'affybrand@gmail.com' || email.endsWith('@affyfoodbank.ng');
+      const supaUser = sessionData.user!;
+      const fallbackEmail = supaUser.email || params.email;
+      const isAdmin = fallbackEmail === 'affybrand@gmail.com' || fallbackEmail.endsWith('@affyfoodbank.ng');
       res = {
         token: accessToken,
         user: {
           id: supaUser.id,
-          email,
-          firstName: firstName || supaUser.user_metadata?.first_name || email.split('@')[0],
+          email: fallbackEmail,
+          firstName: firstName || supaUser.user_metadata?.first_name || fallbackEmail.split('@')[0],
           lastName: lastName || supaUser.user_metadata?.last_name || '',
           role: isAdmin ? 'Admin' : 'Customer',
           isActive: true,

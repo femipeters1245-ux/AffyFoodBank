@@ -24,7 +24,13 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-const getSigningSecret = () => process.env.JWT_SECRET || 'affy-foodbank-otp-secret';
+const getSigningSecret = () => {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('[OTP Service] JWT_SECRET environment variable is required for OTP signing.');
+  }
+  return secret;
+};
 
 export const otpService = {
   /**
@@ -52,7 +58,11 @@ export const otpService = {
       metadata,
     });
 
-    console.log(`[OTP Service] Generated ${purpose} OTP for ${normalizedEmail}: ${otp}`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`[OTP Service] Generated ${purpose} OTP for ${normalizedEmail}: ${otp}`);
+    } else {
+      console.log(`[OTP Service] Generated ${purpose} OTP for ${normalizedEmail}`);
+    }
 
     // 2. Generate a stateless cryptographic verification ticket (serverless / multi-instance resilient)
     const secret = getSigningSecret();

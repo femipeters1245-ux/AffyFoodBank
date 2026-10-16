@@ -48,7 +48,10 @@ async function loadPermissions(roleId: string | null): Promise<string[]> {
  * Sign a short-lived access JWT (7d default, configurable via JWT_EXPIRES_IN).
  */
 function signAccessToken(payload: object): string {
-  const secret = process.env.JWT_SECRET!;
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET environment variable is required. Cannot sign access tokens without it.');
+  }
   const expiresIn = (process.env.JWT_EXPIRES_IN ?? '7d') as jwt.SignOptions['expiresIn'];
   return jwt.sign(payload, secret, { expiresIn });
 }

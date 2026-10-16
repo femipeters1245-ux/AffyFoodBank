@@ -64,7 +64,7 @@ export const LoginPage: React.FC = () => {
 
     try {
       const user = await supabaseVerifyOtp({ email, otp: otp.trim() });
-      const role = (user as any).role?.name || (user as any).role;
+      const role = typeof user.role === 'string' ? user.role : user.role;
       if (role === 'Admin' || role === 'FinanceStaff') {
         navigate('/admin', { replace: true });
       } else {
@@ -97,10 +97,23 @@ export const LoginPage: React.FC = () => {
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+    setSuccessMsg(null);
     setLoading(true);
 
     try {
       await login(email.trim(), password);
+      // Check stored user for admin redirect
+      const storedUser = localStorage.getItem('affy_user');
+      if (storedUser) {
+        try {
+          const parsed = JSON.parse(storedUser);
+          const role = parsed.role?.name || parsed.role;
+          if (role === 'Admin' || role === 'FinanceStaff') {
+            navigate('/admin', { replace: true });
+            return;
+          }
+        } catch { /* ignore parse errors */ }
+      }
       navigate(from === '/' ? '/wallet' : from, { replace: true });
     } catch (err: any) {
       const serverMsg =
@@ -142,6 +155,10 @@ export const LoginPage: React.FC = () => {
             onClick={() => {
               setAuthMethod('OTP');
               setError(null);
+              setSuccessMsg(null);
+              setStep('EMAIL');
+              setOtp('');
+              setResendCountdown(0);
             }}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
               authMethod === 'OTP'
@@ -156,6 +173,7 @@ export const LoginPage: React.FC = () => {
             onClick={() => {
               setAuthMethod('PASSWORD');
               setError(null);
+              setSuccessMsg(null);
             }}
             className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
               authMethod === 'PASSWORD'

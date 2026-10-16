@@ -144,8 +144,13 @@ export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunc
       verificationTicket,
     });
 
+    // Build a safe unique query — Prisma findUnique requires exactly one unique field
+    const whereClause = metadata?.userId
+      ? { id: metadata.userId }
+      : { email };
+
     const user = await prisma.user.findUnique({
-      where: { id: metadata?.userId || undefined, email: !metadata?.userId ? email : undefined },
+      where: whereClause,
       include: { profile: true, role: true },
     });
 
@@ -253,7 +258,10 @@ export const exchangeSupabaseToken = async (req: Request, res: Response, next: N
     }
 
     // Resilient fallback if DB was unreachable or user record is null
+    // WARNING: This issues a JWT with synthetic IDs that won't match real DB records.
+    // Wallet, savings, and order endpoints will fail until the DB is reachable.
     if (!user) {
+      console.warn(`[SupabaseExchange] FALLBACK: Issuing JWT with synthetic IDs for ${email}. DB was unreachable.`);
       user = {
         id: supabaseUser.id,
         email,
