@@ -5,10 +5,21 @@ import { AffyLogo } from '../components/AffyLogo';
 import { isSupabaseConfigured } from '../lib/supabase';
 
 export const LoginPage: React.FC = () => {
-  const { login, supabaseSendOtp, supabaseVerifyOtp } = useAuth();
+  const { login, supabaseSendOtp, supabaseVerifyOtp, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const from = (location.state as any)?.from?.pathname || '/';
+
+  // Automatically redirect if already authenticated (e.g. clicked magic link in email)
+  useEffect(() => {
+    if (isAuthenticated) {
+      if (user?.role === 'Admin') {
+        navigate('/admin', { replace: true });
+      } else {
+        navigate(from, { replace: true });
+      }
+    }
+  }, [isAuthenticated, user, navigate, from]);
 
   // Modes: 'OTP' or 'PASSWORD'
   const [authMethod, setAuthMethod] = useState<'OTP' | 'PASSWORD'>(
@@ -142,7 +153,7 @@ export const LoginPage: React.FC = () => {
           <p className="text-xs text-slate-500">
             {authMethod === 'OTP'
               ? step === 'OTP'
-                ? `We sent a 6-digit code to ${email}. Enter it below.`
+                ? `We sent a verification email to ${email}. Check your inbox.`
                 : 'Enter your email address to receive a secure sign-in code.'
               : 'Sign in with your email address and password.'}
           </p>
@@ -273,13 +284,17 @@ export const LoginPage: React.FC = () => {
                   />
 
                   {/* Delivery notice */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1 mt-2 text-left">
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-2 mt-2 text-left">
                     <div className="font-semibold text-slate-800 flex items-center space-x-1.5">
-                      <span>📬</span>
-                      <span>Can't find the email?</span>
+                      <span>💡</span>
+                      <span>How to complete verification:</span>
                     </div>
-                    <p className="text-slate-500 leading-relaxed">
-                      Check your <strong>Spam / Junk</strong> folder or <strong>Promotions</strong> tab. The sender is <em>Supabase</em> on behalf of Affy FoodBank. Delivery takes 15–45 seconds.
+                    <ul className="list-disc pl-4 space-y-1 text-slate-600">
+                      <li><strong>Click the "Sign in" link</strong> in the email to log in automatically.</li>
+                      <li>Or enter the <strong>6-digit code</strong> from the email in the box above.</li>
+                    </ul>
+                    <p className="text-[10px] text-slate-400 pt-1 border-t border-slate-200">
+                      Check your <strong>Spam / Junk</strong> folder or <strong>Promotions</strong> tab if it doesn't appear in 30 seconds.
                     </p>
                   </div>
                 </div>
