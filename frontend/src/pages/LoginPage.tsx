@@ -206,9 +206,23 @@ export const LoginPage: React.FC = () => {
 
         {/* Error banner */}
         {error && (
-          <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium flex items-center space-x-2">
-            <span>⚠️</span>
-            <span>{error}</span>
+          <div className="p-3.5 bg-rose-50 border border-rose-200 rounded-xl text-xs text-rose-700 font-medium space-y-2">
+            <div className="flex items-start space-x-2">
+              <span className="shrink-0 mt-0.5">⚠️</span>
+              <span>{error}</span>
+            </div>
+            {authMethod === 'OTP' && (
+              <button
+                type="button"
+                onClick={() => {
+                  setAuthMethod('PASSWORD');
+                  setError(null);
+                }}
+                className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-center transition-colors text-xs flex items-center justify-center space-x-1"
+              >
+                <span>👉 Sign In with Password Instead</span>
+              </button>
+            )}
           </div>
         )}
 

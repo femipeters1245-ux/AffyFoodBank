@@ -151,7 +151,17 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
 
     if (error) {
       console.error('[Supabase OTP] Send error:', error.message);
-      throw new Error(error.message || 'Failed to send verification code. Please try again.');
+      const rawMsg = error.message || '';
+      let friendlyMsg = rawMsg;
+      if (
+        rawMsg.toLowerCase().includes('magic link') ||
+        rawMsg.toLowerCase().includes('error sending') ||
+        rawMsg.toLowerCase().includes('smtp')
+      ) {
+        friendlyMsg =
+          'Email delivery failed for this address. Please switch to the "Password" tab above to sign up instantly, or check your SMTP settings in Supabase.';
+      }
+      throw new Error(friendlyMsg);
     }
 
     return { message: `A 6-digit verification code has been sent to ${email.trim().toLowerCase()}` };
