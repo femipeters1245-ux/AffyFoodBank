@@ -35,5 +35,5 @@ TRANSACTPAY_ENCRYPTION_KEY=NDA5NiE8UlNBS2V5VmFsdWU+...
 
 # -- Resend Email Service (https://resend.com) ---------------------------------
 RESEND_API_KEY=re_...
-RESEND_FROM_EMAIL=Affy FoodBank <onboarding@resend.dev>
+RESEND_FROM_EMAIL=Affy FoodBank <noreply@affyfoodbank.com.ng>
 ADMIN_EMAIL=affybrand@gmail.com

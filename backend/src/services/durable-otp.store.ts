@@ -28,7 +28,35 @@ const memoryStore = new Map<string, OtpRecord>();
 
 // DB health tracking: If DB is unreachable, back off briefly to prevent hanging connections
 let lastDbFailure = 0;
-const DB_BACKOFF_MS = 15000;
+const DB_BACKOFF_MS = 5000;
+let tableInitialized = false;
+
+async function ensureOtpTable(): Promise<void> {
+  if (tableInitialized) return;
+  try {
+    await (prisma as any).$executeRawUnsafe(`
+      CREATE TABLE IF NOT EXISTS "OtpVerification" (
+        "id" UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        "email" VARCHAR(255) NOT NULL,
+        "hashedOtp" VARCHAR(255) NOT NULL,
+        "purpose" VARCHAR(50) NOT NULL DEFAULT 'LOGIN',
+        "attempts" INTEGER NOT NULL DEFAULT 0,
+        "maxAttempts" INTEGER NOT NULL DEFAULT 5,
+        "expiresAt" TIMESTAMPTZ NOT NULL,
+        "resendAfter" TIMESTAMPTZ NOT NULL,
+        "consumedAt" TIMESTAMPTZ,
+        "metadata" JSONB,
+        "createdAt" TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        "updatedAt" TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS "OtpVerification_email_idx" ON "OtpVerification"("email");
+      CREATE INDEX IF NOT EXISTS "OtpVerification_expiresAt_idx" ON "OtpVerification"("expiresAt");
+    `);
+    tableInitialized = true;
+  } catch {
+    // Ignore if already initialized or permissions constrained
+  }
+}
 
 function isDbTemporarilyUnavailable(): boolean {
   return Date.now() - lastDbFailure < DB_BACKOFF_MS;
@@ -38,7 +66,7 @@ function markDbFailure() {
   lastDbFailure = Date.now();
 }
 
-function withTimeout<T>(promise: Promise<T>, ms = 1500): Promise<T> {
+function withTimeout<T>(promise: Promise<T>, ms = 6000): Promise<T> {
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<T>((_, reject) => {
     timer = setTimeout(() => reject(new Error('Database query timed out')), ms);
@@ -126,6 +154,7 @@ export const durableOtpStore = {
     // 1. Try Prisma Database if healthy
     if (!isDbTemporarilyUnavailable()) {
       try {
+        await ensureOtpTable();
         const dbRecord: any = await withTimeout<any>(
           (prisma as any).otpVerification.findFirst({
             where: {
@@ -136,7 +165,7 @@ export const durableOtpStore = {
             },
             orderBy: { createdAt: 'desc' },
           }),
-          1500
+          6000
         );
 
         if (dbRecord) {
@@ -155,7 +184,8 @@ export const durableOtpStore = {
             updatedAt: dbRecord.updatedAt,
           };
         }
-      } catch {
+      } catch (err: any) {
+        console.warn('[durableOtpStore] DB find note:', err?.message);
         markDbFailure();
       }
     }
@@ -217,6 +247,7 @@ export const durableOtpStore = {
     // Persist to PostgreSQL database (Supabase) if available
     if (!isDbTemporarilyUnavailable()) {
       try {
+        await ensureOtpTable();
         const created: any = await withTimeout<any>(
           (prisma as any).otpVerification.create({
             data: {
@@ -232,7 +263,7 @@ export const durableOtpStore = {
               metadata: params.metadata || undefined,
             },
           }),
-          1500
+          6000
         );
 
         return {
@@ -250,6 +281,7 @@ export const durableOtpStore = {
           updatedAt: created.updatedAt,
         };
       } catch (err: any) {
+        console.warn('[durableOtpStore] DB save note:', err?.message);
         markDbFailure();
       }
     }
@@ -283,7 +315,7 @@ export const durableOtpStore = {
               updatedAt: new Date(),
             },
           }),
-          1500
+          6000
         );
         return updated.attempts;
       } catch {
@@ -317,7 +349,7 @@ export const durableOtpStore = {
               updatedAt: now,
             },
           }),
-          1500
+          6000
         );
       } catch {
         markDbFailure();

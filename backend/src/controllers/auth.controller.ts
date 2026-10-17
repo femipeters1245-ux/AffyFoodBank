@@ -48,8 +48,8 @@ const clearSessionCookies = (res: Response) => {
 };
 
 let lastDbErr = 0;
-async function safeDbQuery<T>(fn: () => Promise<T>, timeoutMs = 1500): Promise<T | null> {
-  if (Date.now() - lastDbErr < 15000) return null;
+async function safeDbQuery<T>(fn: () => Promise<T>, timeoutMs = 6000): Promise<T | null> {
+  if (Date.now() - lastDbErr < 3000) return null;
   let timer: NodeJS.Timeout;
   const timeoutPromise = new Promise<null>((resolve) => {
     timer = setTimeout(() => {
@@ -183,6 +183,12 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
         const passwordHash = await hashPassword(defaultPwd);
 
         user = await prisma.$transaction(async (tx) => {
+          const existing = await tx.user.findUnique({
+            where: { email: normalizedEmail },
+            include: { profile: true, role: true },
+          });
+          if (existing) return existing;
+
           const newUser = await tx.user.create({
             data: {
               id: uuidv4(),

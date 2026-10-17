@@ -11,7 +11,9 @@ const getResendClient = () => {
 };
 
 export const DEFAULT_FROM_EMAIL =
-  process.env.RESEND_FROM_EMAIL || 'Affy FoodBank <onboarding@resend.dev>';
+  process.env.RESEND_FROM_EMAIL && !process.env.RESEND_FROM_EMAIL.includes('onboarding@resend.dev')
+    ? process.env.RESEND_FROM_EMAIL
+    : 'Affy FoodBank <noreply@affyfoodbank.com.ng>';
 
 export const ADMIN_NOTIFICATION_EMAIL =
   process.env.ADMIN_EMAIL || 'affybrand@gmail.com';
@@ -26,20 +28,20 @@ export interface SendEmailOptions {
 }
 
 /**
- * Base email sender function wrapping Resend API
+ * Base email sender function wrapping Resend API directly
  */
 export async function sendEmail(options: SendEmailOptions) {
   const resend = getResendClient();
   const primaryFrom = options.from || DEFAULT_FROM_EMAIL;
 
   if (!resend) {
-    console.warn(
-      `[EmailService] RESEND_API_KEY not configured. Email to "${options.to}" with subject "${options.subject}" was simulated.`
+    console.error(
+      `[EmailService] RESEND_API_KEY is not configured. Cannot dispatch email to "${options.to}".`
     );
     return {
-      success: true,
-      simulated: true,
-      message: 'Email logged (Resend API key not set)',
+      success: false,
+      simulated: false,
+      error: 'Email delivery service is currently not configured on this server.',
     };
   }
 
@@ -60,16 +62,16 @@ export async function sendEmail(options: SendEmailOptions) {
     if (result.error) {
       console.warn(`[EmailService] Primary send with "${primaryFrom}" failed:`, result.error.message);
 
-      // If domain is unverified or has DNS issues (e.g. @affyfoodbank.com), retry with Resend verified sender
+      // If domain has DNS/from format issues, retry once with production verified sender
       const isDomainIssue =
         result.error.message?.toLowerCase().includes('domain') ||
         result.error.message?.toLowerCase().includes('verify') ||
         result.error.message?.toLowerCase().includes('from');
 
-      if (isDomainIssue && !primaryFrom.includes('onboarding@resend.dev')) {
-        console.log(`[EmailService] Retrying with verified sender "Affy FoodBank <onboarding@resend.dev>"...`);
+      if (isDomainIssue && !primaryFrom.includes('affyfoodbank.com.ng')) {
+        console.log(`[EmailService] Retrying with verified sender "Affy FoodBank <noreply@affyfoodbank.com.ng>"...`);
         const fallbackResult = await resend.emails.send({
-          from: 'Affy FoodBank <onboarding@resend.dev>',
+          from: 'Affy FoodBank <noreply@affyfoodbank.com.ng>',
           to,
           subject: options.subject,
           html: options.html,

@@ -16,7 +16,12 @@ if (!process.env.JWT_SECRET) {
     'affy-foodbank-default-jwt-secret-change-in-production';
 }
 
-// Step 3: Now import the app (after env is ready)
+// Step 3: Ensure verified Resend production sender domain (never onboarding@resend.dev in prod)
+if (!process.env.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL.includes('onboarding@resend.dev')) {
+  process.env.RESEND_FROM_EMAIL = 'Affy FoodBank <noreply@affyfoodbank.com.ng>';
+}
+
+// Step 4: Now import the app (after env is ready)
 import 'express-async-errors';
 import app from '../backend/src/app';
 
