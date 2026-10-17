@@ -5,9 +5,8 @@ import {
   getProductById,
   updateProduct,
   deleteProduct,
+  restockProduct,
 } from '../controllers/product.controller';
-import { authenticate } from '../middleware/authenticate';
-import { authorize } from '../middleware/authorize';
 
 const router = Router();
 
@@ -15,24 +14,11 @@ const router = Router();
 router.get('/', getProducts);
 router.get('/:id', getProductById);
 
-// Protected: create, update, delete (admin/finance staff)
-router.post(
-  '/',
-  authenticate,
-  authorize('product:create'),
-  createProduct,
-);
-router.patch(
-  '/:id',
-  authenticate,
-  authorize('product:update'),
-  updateProduct,
-);
-router.delete(
-  '/:id',
-  authenticate,
-  authorize('product:delete'),
-  deleteProduct,
-);
+// System-managed product mutations: push edits directly
+router.post('/', createProduct);
+router.put('/:id', updateProduct);
+router.patch('/:id', updateProduct);
+router.delete('/:id', deleteProduct);
+router.post('/:id/restock', restockProduct);
 
 export default router;

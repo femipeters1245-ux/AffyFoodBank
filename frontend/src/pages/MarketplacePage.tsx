@@ -78,6 +78,12 @@ export const MarketplacePage: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
+
+    const handleInventoryChange = () => {
+      loadProducts();
+    };
+    window.addEventListener('affy_inventory_updated', handleInventoryChange);
+    return () => window.removeEventListener('affy_inventory_updated', handleInventoryChange);
   }, [loadProducts]);
 
   const showNotification = (msg: string) => {

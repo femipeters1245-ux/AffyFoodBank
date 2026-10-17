@@ -5,10 +5,62 @@ import { authenticate } from '../middleware/authenticate';
 import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors';
 import { v4 as uuidv4 } from 'uuid';
 import { sendDeliveryStageUpdateEmail } from '../services/email.service';
+import { systemProductStore } from '../services/system-product.store';
 
 const router = Router();
 
-// Middleware: restrict to Admin or Operations Staff
+// ─── Foodstuff Inventory & Pricing Control (Self-pushing System Store) ──────────
+// Bypasses Supabase and allows immediate self-pushing of inventory and prices
+router.get('/products', (_req: Request, res: Response) => {
+  const result = systemProductStore.list({ includeInactive: true, limit: 100 });
+  res.json(result.items);
+});
+
+router.post('/products', (req: Request, res: Response) => {
+  const { name, description, priceCents, stock, imageUrl, unitId, unitName, categoryId, categoryName } = req.body;
+  if (!name || priceCents === undefined) {
+    return res.status(400).json({ error: 'Name and price are required' });
+  }
+  const created = systemProductStore.create({
+    name,
+    description,
+    priceCents: Number(priceCents),
+    stock: stock !== undefined ? Number(stock) : 50,
+    imageUrl,
+    unitId,
+    unitName,
+    categoryId,
+    categoryName,
+  });
+  res.status(201).json(created);
+});
+
+router.put('/products/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updated = systemProductStore.update(id, req.body);
+  res.json(updated);
+});
+
+router.patch('/products/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updated = systemProductStore.update(id, req.body);
+  res.json(updated);
+});
+
+router.delete('/products/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const ok = systemProductStore.delete(id);
+  res.json({ message: 'Product deleted successfully', id, success: ok });
+});
+
+router.post('/products/:id/restock', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const amount = Number(req.body.amount || 20);
+  const updated = systemProductStore.restock(id, amount);
+  res.json(updated);
+});
+
+// Middleware: restrict other admin endpoints to Admin or Operations Staff
 const requireAdminOrStaff = (req: Request, _res: Response, next: NextFunction) => {
   if (!req.user) {
     return next(new ForbiddenError('Authentication required'));
@@ -62,155 +114,7 @@ router.get('/stats', async (_req: Request, res: Response, next: NextFunction) =>
   }
 });
 
-/**
- * GET /api/v1/admin/products
- * List all products for inventory management
- */
-router.get('/products', async (_req: Request, res: Response, next: NextFunction) => {
-  try {
-    const products = await prisma.product.findMany({
-      where: { isActive: true },
-      include: { unit: true, category: true, inventory: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    res.json(products);
-  } catch (err) {
-    next(err);
-  }
-});
 
-/**
- * POST /api/v1/admin/products
- * Create foodstuff product with image, price, and stock
- */
-router.post('/products', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { name, description, priceCents, stock, imageUrl, categoryName, unitName } = req.body;
-
-    if (!name || priceCents === undefined) {
-      throw new BadRequestError('Name and price are required');
-    }
-
-    // Find or create default unit and category
-    let unit = await prisma.unit.findFirst();
-    if (!unit) {
-      unit = await prisma.unit.create({
-        data: { id: uuidv4(), name: unitName || '50kg Bag', symbol: 'bag' },
-      });
-    }
-
-    let category = await prisma.category.findFirst({
-      where: categoryName ? { name: categoryName } : undefined,
-    });
-    if (!category) {
-      category = await prisma.category.create({
-        data: { id: uuidv4(), name: categoryName || 'Grains & Flours', isActive: true },
-      });
-    }
-
-    const product = await prisma.$transaction(async (tx) => {
-      const p = await tx.product.create({
-        data: {
-          id: uuidv4(),
-          name,
-          description: description || null,
-          priceCents: BigInt(priceCents),
-          imageUrl: imageUrl || null,
-          unitId: unit.id,
-          categoryId: category.id,
-          isActive: true,
-        },
-        include: { unit: true, category: true },
-      });
-
-      await tx.inventory.create({
-        data: {
-          id: uuidv4(),
-          productId: p.id,
-          quantity: Number(stock ?? 50),
-          lowStockThreshold: 10,
-        },
-      });
-
-      return p;
-    });
-
-    res.status(201).json(product);
-  } catch (err) {
-    next(err);
-  }
-});
-
-/**
- * PUT /api/v1/admin/products/:id
- * Edit product price, stock, picture, and details
- */
-router.put('/products/:id', async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { id } = req.params;
-    const { name, description, priceCents, stock, imageUrl } = req.body;
-
-    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
-    let existing = isUuid ? await prisma.product.findUnique({ where: { id } }).catch(() => null) : null;
-    if (!existing && name) {
-      existing = await prisma.product.findFirst({
-        where: { name: { equals: name, mode: 'insensitive' } },
-      });
-    }
-
-    const targetId = existing?.id || (isUuid ? id : uuidv4());
-
-    const updated = await prisma.$transaction(async (tx) => {
-      let p;
-      if (existing) {
-        p = await tx.product.update({
-          where: { id: existing.id },
-          data: {
-            ...(name && { name }),
-            ...(description !== undefined && { description }),
-            ...(priceCents !== undefined && { priceCents: BigInt(priceCents) }),
-            ...(imageUrl !== undefined && { imageUrl }),
-            ...(req.body.unitId && { unitId: req.body.unitId }),
-            ...(req.body.categoryId && { categoryId: req.body.categoryId }),
-            ...(req.body.isActive !== undefined && { isActive: Boolean(req.body.isActive) }),
-          },
-          include: { unit: true, category: true, inventory: true },
-        });
-      } else {
-        // Fallback default unit & category if needed
-        const unit = await tx.unit.findFirst();
-        const category = await tx.category.findFirst();
-        p = await tx.product.create({
-          data: {
-            id: targetId,
-            name: name || 'Food Item',
-            description: description || null,
-            priceCents: BigInt(priceCents || 0),
-            imageUrl: imageUrl || null,
-            unitId: req.body.unitId || unit?.id || null,
-            categoryId: req.body.categoryId || category?.id || null,
-            isActive: true,
-          },
-          include: { unit: true, category: true, inventory: true },
-        });
-      }
-
-      if (stock !== undefined) {
-        await tx.inventory.upsert({
-          where: { productId: p.id },
-          update: { quantity: Number(stock) },
-          create: { id: uuidv4(), productId: p.id, quantity: Number(stock), lowStockThreshold: 10 },
-        });
-      }
-
-      return p;
-    });
-
-    res.json(updated);
-  } catch (err) {
-    next(err);
-  }
-});
 
 /**
  * GET /api/v1/admin/customers

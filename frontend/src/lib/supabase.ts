@@ -348,7 +348,7 @@ function normalizeProductFromDb(p: any): SupabaseProduct {
 }
 
 export const supabaseProducts = {
-  /** List all active products with unit, category, and inventory */
+  /** List all active products with unit, category, and inventory directly from system store */
   async list(): Promise<SupabaseProduct[]> {
     try {
       const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
@@ -359,32 +359,13 @@ export const supabaseProducts = {
         return normalized;
       }
     } catch (err: any) {
-      console.warn('[Affy API] Products query fallback:', err.message);
-    }
-
-    // Direct Supabase query fallback on "Product" table
-    if (isSupabaseConfigured) {
-      try {
-        const { data, error } = await supabase
-          .from('Product')
-          .select('*')
-          .eq('isActive', true)
-          .order('createdAt', { ascending: false });
-
-        if (!error && data && data.length > 0) {
-          const mapped = data.map(normalizeProductFromDb);
-          saveLocalFallbackProducts(mapped);
-          return mapped;
-        }
-      } catch (e: any) {
-        console.warn('[Affy Supabase] Direct query warning:', e.message);
-      }
+      console.warn('[System Inventory Engine] Products query fallback:', err.message);
     }
 
     return getLocalFallbackProducts().filter((p) => p.is_active);
   },
 
-  /** Get all products (including inactive) for admin */
+  /** Get all products (including inactive) for admin inventory control */
   async listAll(): Promise<SupabaseProduct[]> {
     try {
       const res = await apiClient.get<any>('/admin/products');
@@ -405,7 +386,7 @@ export const supabaseProducts = {
         return normalized;
       }
     } catch (err: any) {
-      console.warn('[Affy API] Admin products query warning:', err.message);
+      console.warn('[System Inventory Engine] Admin products query warning:', err.message);
     }
 
     return getLocalFallbackProducts();
@@ -420,7 +401,7 @@ export const supabaseProducts = {
     return getLocalFallbackProducts().find((p) => p.id === id) ?? null;
   },
 
-  /** Create a new product (admin) */
+  /** Create a new product in system store */
   async create(payload: {
     name: string;
     description?: string;
@@ -449,10 +430,11 @@ export const supabaseProducts = {
         const list = getLocalFallbackProducts();
         list.unshift(p);
         saveLocalFallbackProducts(list);
+        window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: p }));
         return p;
       }
     } catch (err: any) {
-      console.warn('[Affy Admin] Create product API failed, saving locally:', err.message);
+      console.warn('[System Inventory Engine] Create product API failed, saving locally:', err.message);
     }
 
     const newProd = normalizeProductFromDb({
@@ -470,10 +452,11 @@ export const supabaseProducts = {
     const list = getLocalFallbackProducts();
     list.unshift(newProd);
     saveLocalFallbackProducts(list);
+    window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: newProd }));
     return newProd;
   },
 
-  /** Update an existing product (admin) */
+  /** Update an existing product and push edits immediately */
   async update(
     id: string,
     payload: Partial<{
@@ -506,11 +489,15 @@ export const supabaseProducts = {
         if (idx !== -1) {
           list[idx] = updated;
           saveLocalFallbackProducts(list);
+        } else {
+          list.unshift(updated);
+          saveLocalFallbackProducts(list);
         }
+        window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: updated }));
         return updated;
       }
     } catch (err: any) {
-      console.warn('[Affy Admin] Update product API warning:', err.message);
+      console.warn('[System Inventory Engine] Update product API warning:', err.message);
     }
 
     // Update local storage fallback
@@ -528,13 +515,30 @@ export const supabaseProducts = {
             : list[idx].inventory,
       };
       saveLocalFallbackProducts(list);
+      window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: list[idx] }));
       return list[idx];
     }
-    throw new Error('Product not found');
+
+    // If item was not found locally, create it with updates
+    const createdItem = normalizeProductFromDb({
+      id,
+      name: payload.name || 'Food Item',
+      description: payload.description,
+      priceCents: payload.price_cents,
+      imageUrl: payload.image_url,
+      stock: payload.stock ?? 50,
+    });
+    list.unshift(createdItem);
+    saveLocalFallbackProducts(list);
+    window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: createdItem }));
+    return createdItem;
   },
 
   /** Increment stock */
   async restock(id: string, additionalQty: number): Promise<void> {
+    try {
+      await apiClient.post(`/admin/products/${id}/restock`, { amount: additionalQty });
+    } catch {}
     const prod = await this.getById(id);
     const current = Number(prod?.inventory?.[0]?.quantity ?? 0);
     await this.update(id, { stock: current + additionalQty });
@@ -548,10 +552,11 @@ export const supabaseProducts = {
   /** Hard-delete a product */
   async delete(id: string): Promise<void> {
     try {
-      await apiClient.delete(`/products/${id}`);
+      await apiClient.delete(`/admin/products/${id}`);
     } catch {}
     const list = getLocalFallbackProducts().filter((p) => p.id !== id);
     saveLocalFallbackProducts(list);
+    window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: { id, deleted: true } }));
   },
 };
 
@@ -576,58 +581,25 @@ const FALLBACK_UNITS: SupabaseUnit[] = [
 
 export const supabaseCategories = {
   async list(): Promise<SupabaseCategory[]> {
-    if (!isSupabaseConfigured) return FALLBACK_CATEGORIES;
-    try {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .eq('is_active', true)
-        .order('name');
-      if (error || !data || data.length === 0) return FALLBACK_CATEGORIES;
-      return data;
-    } catch {
-      return FALLBACK_CATEGORIES;
-    }
+    return FALLBACK_CATEGORIES;
   },
 
   async findOrCreate(name: string): Promise<SupabaseCategory> {
-    if (!isSupabaseConfigured) {
-      return { id: `cat-${Date.now()}`, name, description: null, is_active: true, created_at: '', updated_at: '' };
-    }
-    const { data: existing } = await supabase.from('categories').select('*').eq('name', name).single();
+    const existing = FALLBACK_CATEGORIES.find((c) => c.name.toLowerCase() === name.toLowerCase());
     if (existing) return existing;
-
-    const { data, error } = await supabase.from('categories').insert({ name, is_active: true }).select('*').single();
-    if (error) return { id: `cat-${Date.now()}`, name, description: null, is_active: true, created_at: '', updated_at: '' };
-    return data;
+    return { id: `cat-${Date.now()}`, name, description: null, is_active: true, created_at: '', updated_at: '' };
   },
 };
 
 export const supabaseUnits = {
   async list(): Promise<SupabaseUnit[]> {
-    if (!isSupabaseConfigured) return FALLBACK_UNITS;
-    try {
-      const { data, error } = await supabase.from('units').select('*').order('name');
-      if (error || !data || data.length === 0) return FALLBACK_UNITS;
-      return data;
-    } catch {
-      return FALLBACK_UNITS;
-    }
+    return FALLBACK_UNITS;
   },
 
   async findOrCreate(name: string, symbol?: string): Promise<SupabaseUnit> {
-    if (!isSupabaseConfigured) {
-      return { id: `unit-${Date.now()}`, name, symbol: symbol ?? null, created_at: '', updated_at: '' };
-    }
-    const { data: existing } = await supabase.from('units').select('*').eq('name', name).single();
+    const existing = FALLBACK_UNITS.find((u) => u.name.toLowerCase() === name.toLowerCase());
     if (existing) return existing;
-
-    const { data, error } = await supabase
-      .from('units')
-      .insert({ name, symbol: symbol ?? null })
-      .select('*')
-      .single();
-    if (error) return { id: `unit-${Date.now()}`, name, symbol: symbol ?? null, created_at: '', updated_at: '' };
-    return data;
+    return { id: `unit-${Date.now()}`, name, symbol: symbol ?? null, created_at: '', updated_at: '' };
   },
 };
+

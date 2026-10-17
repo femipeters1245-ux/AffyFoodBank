@@ -403,7 +403,7 @@ export const AdminDashboardPage: React.FC = () => {
       }
     } catch (err: any) {
       console.error('[Admin] Failed to load products:', err);
-      setProductsError('Failed to load products from Supabase. Check your credentials.');
+      setProductsError('Failed to load products from system inventory engine.');
     } finally {
       setProductsLoading(false);
     }
@@ -411,6 +411,12 @@ export const AdminDashboardPage: React.FC = () => {
 
   useEffect(() => {
     loadProducts();
+
+    const handleInventoryChange = () => {
+      loadProducts();
+    };
+    window.addEventListener('affy_inventory_updated', handleInventoryChange);
+    return () => window.removeEventListener('affy_inventory_updated', handleInventoryChange);
   }, [loadProducts]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
@@ -534,25 +540,43 @@ export const AdminDashboardPage: React.FC = () => {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // 1 & 6. Handle Editing Price, Stock, Image & Product Details → persists to Supabase
+  // 1 & 6. Handle Editing Price, Stock, Image & Product Details → pushes directly to system engine
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
     setSavingProduct(true);
 
+    const edited = { ...editingProduct };
+
+    // Update local table immediately for instant UI responsiveness
+    setProducts((prev) =>
+      prev.map((p) =>
+        p.id === edited.id
+          ? {
+              ...p,
+              name: edited.name,
+              description: edited.description,
+              priceCents: Number(edited.priceCents),
+              imageUrl: edited.imageUrl,
+              stock: Number(edited.stock),
+              status: Number(edited.stock) > 20 ? 'In Stock' : Number(edited.stock) > 0 ? 'Low Stock' : 'Out of Stock',
+            }
+          : p
+      )
+    );
+
     try {
-      await supabaseProducts.update(editingProduct.id, {
-        name: editingProduct.name,
-        description: editingProduct.description,
-        price_cents: editingProduct.priceCents,
-        image_url: editingProduct.imageUrl,
-        stock: Number(editingProduct.stock),
-        category_id: editingProduct.category_id,
-        unit_id: editingProduct.unit_id,
+      await supabaseProducts.update(edited.id, {
+        name: edited.name,
+        description: edited.description,
+        price_cents: Number(edited.priceCents),
+        image_url: edited.imageUrl,
+        stock: Number(edited.stock),
+        category_id: edited.category_id,
+        unit_id: edited.unit_id,
       });
-      await loadProducts();
       setEditingProduct(null);
-      showToast(`✅ Updated "${editingProduct.name}" — live on marketplace!`);
+      showToast(`✅ Updated "${edited.name}" — live on marketplace!`);
     } catch (err: any) {
       showToast(`❌ Update failed: ${err.message ?? 'Unknown error'}`);
     } finally {
@@ -560,11 +584,21 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Quick Restock (+20 or +50) → persists to Supabase
+  // Quick Restock (+20 or +50) → pushes directly to system engine
   const handleQuickRestock = async (id: string, amount: number) => {
+    setProducts((prev) =>
+      prev.map((p) => {
+        if (p.id !== id) return p;
+        const newStock = p.stock + amount;
+        return {
+          ...p,
+          stock: newStock,
+          status: newStock > 20 ? 'In Stock' : 'Low Stock',
+        };
+      })
+    );
     try {
       await supabaseProducts.restock(id, amount);
-      await loadProducts();
       showToast(`📦 +${amount} units added — inventory synced to marketplace!`);
     } catch (err: any) {
       showToast(`❌ Restock failed: ${err.message ?? 'Unknown error'}`);
@@ -848,7 +882,7 @@ export const AdminDashboardPage: React.FC = () => {
                   onClick={loadProducts}
                   className="px-3 py-1 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg transition-colors"
                 >
-                  Retry Supabase Sync
+                  Refresh Inventory
                 </button>
               </div>
             )}
@@ -871,17 +905,17 @@ export const AdminDashboardPage: React.FC = () => {
                     <tr>
                       <td colSpan={7} className="px-6 py-12 text-center text-slate-400">
                         <div className="inline-block animate-spin text-2xl mb-2">⚡</div>
-                        <div className="font-bold text-slate-600 text-sm">Loading live inventory from Supabase...</div>
-                        <div className="text-[11px] text-slate-400">Syncing products, inventory levels and units</div>
+                        <div className="font-bold text-slate-600 text-sm">Loading live inventory from system engine...</div>
+                        <div className="text-[11px] text-slate-400">Syncing products, inventory levels and prices</div>
                       </td>
                     </tr>
                   ) : products.length === 0 ? (
                     <tr>
                       <td colSpan={7} className="px-6 py-12 text-center text-slate-500">
                         <div className="text-3xl mb-2">📦</div>
-                        <div className="font-bold text-slate-700 text-sm">No products found in Supabase</div>
+                        <div className="font-bold text-slate-700 text-sm">No products found in system catalogue</div>
                         <div className="text-[11px] text-slate-400 mt-1 mb-3">
-                          Seed your initial catalogue or click "+ New Food Item" above to add products.
+                          Click "+ New Food Item" above to add products.
                         </div>
                         <button
                           type="button"

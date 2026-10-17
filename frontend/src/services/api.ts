@@ -137,11 +137,27 @@ export const authApi = {
 
 export const productsApi = {
   list: async (params?: { category?: string; search?: string; page?: number; limit?: number }) => {
-    const res = await apiClient.get<Product[]>('/products', { params });
+    const res = await apiClient.get<any>('/products', { params });
     return res.data;
   },
   getById: async (id: string) => {
     const res = await apiClient.get<Product>(`/products/${id}`);
+    return res.data;
+  },
+  create: async (data: any) => {
+    const res = await apiClient.post('/admin/products', data);
+    return res.data;
+  },
+  update: async (id: string, data: any) => {
+    const res = await apiClient.put(`/admin/products/${id}`, data);
+    return res.data;
+  },
+  delete: async (id: string) => {
+    const res = await apiClient.delete(`/admin/products/${id}`);
+    return res.data;
+  },
+  restock: async (id: string, amount: number) => {
+    const res = await apiClient.post(`/admin/products/${id}/restock`, { amount });
     return res.data;
   },
 };
@@ -303,6 +319,14 @@ export const adminApi = {
   },
   updateProduct: async (id: string, data: any) => {
     const res = await apiClient.put(`/admin/products/${id}`, data);
+    return res.data;
+  },
+  deleteProduct: async (id: string) => {
+    const res = await apiClient.delete(`/admin/products/${id}`);
+    return res.data;
+  },
+  restockProduct: async (id: string, amount: number) => {
+    const res = await apiClient.post(`/admin/products/${id}/restock`, { amount });
     return res.data;
   },
   getCustomers: async () => {
