@@ -428,7 +428,10 @@ export async function sendOtpEmail(params: {
       <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #15803d; line-height: 1;">
         ${otp}
       </div>
-      <p style="margin: 12px 0 0; font-size: 12px; color: #64748b;">
+      <p style="margin: 8px 0 0; font-size: 13px; color: #166534; font-weight: 600;">
+        Enter these 6 numbers in the Affy FoodBank verification screen.
+      </p>
+      <p style="margin: 8px 0 0; font-size: 12px; color: #64748b;">
         ⏱️ This code expires in <strong>10 minutes</strong>. Never share this code with anyone.
       </p>
     </div>

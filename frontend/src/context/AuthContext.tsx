@@ -10,12 +10,17 @@ interface AuthContextType {
   wallet: Wallet | null;
   isLoading: boolean;
   isAuthenticated: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<User | void>;
   sendLoginOtp: (email: string, password: string) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string }>;
   verifyLoginOtp: (email: string, otp: string, verificationTicket?: string) => Promise<User>;
   register: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<void>;
   sendSignupOtp: (data: { email: string; password: string; firstName?: string; lastName?: string }) => Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string }>;
-  verifySignupOtp: (email: string, otp: string, verificationTicket?: string) => Promise<User>;
+  verifySignupOtp: (
+    email: string,
+    otp: string,
+    verificationTicket?: string,
+    extraData?: { password?: string; firstName?: string; lastName?: string }
+  ) => Promise<User>;
   // Supabase-powered OTP (works without domain verification)
   supabaseSendOtp: (email: string) => Promise<{ message: string }>;
   supabaseVerifyOtp: (params: { email: string; otp: string; firstName?: string; lastName?: string; password?: string }) => Promise<User>;
@@ -104,8 +109,48 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const login = async (email: string, password: string) => {
-    const res = await authApi.login({ email, password });
-    applyAuthSuccess(res);
+    try {
+      const res = await authApi.login({ email: email.trim().toLowerCase(), password });
+      return applyAuthSuccess(res);
+    } catch (apiErr: any) {
+      // If backend login failed or backend is offline, check Supabase Auth password login
+      if (isSupabaseConfigured) {
+        try {
+          const { data: supaData, error: supaErr } = await supabase.auth.signInWithPassword({
+            email: email.trim().toLowerCase(),
+            password,
+          });
+
+          if (!supaErr && supaData?.session) {
+            const accessToken = supaData.session.access_token;
+            try {
+              const res = await authApi.supabaseExchange({ access_token: accessToken });
+              return applyAuthSuccess(res);
+            } catch {
+              const supaUser = supaData.user!;
+              const fallbackEmail = supaUser.email || email.trim().toLowerCase();
+              const isAdmin = fallbackEmail === 'affybrand@gmail.com' || fallbackEmail.endsWith('@affyfoodbank.ng');
+              const fallbackRes = {
+                token: accessToken,
+                user: {
+                  id: supaUser.id,
+                  email: fallbackEmail,
+                  firstName: supaUser.user_metadata?.first_name || fallbackEmail.split('@')[0],
+                  lastName: supaUser.user_metadata?.last_name || '',
+                  role: isAdmin ? 'Admin' : 'Customer',
+                  isActive: true,
+                  createdAt: supaUser.created_at || new Date().toISOString(),
+                },
+              };
+              return applyAuthSuccess(fallbackRes);
+            }
+          }
+        } catch (supaErr) {
+          console.warn('[Supabase password login note]:', supaErr);
+        }
+      }
+      throw apiErr;
+    }
   };
 
   const sendLoginOtp = async (email: string, password: string) => {
@@ -123,52 +168,74 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const sendSignupOtp = async (data: { email: string; password: string; firstName?: string; lastName?: string }) => {
-    return await authApi.sendSignupOtp(data);
+    try {
+      return await authApi.sendSignupOtp(data);
+    } catch (err: any) {
+      // If backend is unavailable, fallback to Supabase OTP
+      if (isSupabaseConfigured) {
+        console.warn('[Signup OTP] Backend unavailable, using Supabase OTP:', err.message);
+        const supaRes = await supabaseSendOtp(data.email);
+        return {
+          message: supaRes.message,
+          email: data.email,
+          expiresInMinutes: 10,
+        };
+      }
+      throw err;
+    }
   };
 
-  const verifySignupOtp = async (email: string, otp: string, verificationTicket?: string) => {
-    const res = await authApi.verifySignupOtp({ email, otp, verificationTicket });
-    return applyAuthSuccess(res);
+  const verifySignupOtp = async (
+    email: string,
+    otp: string,
+    verificationTicket?: string,
+    extraData?: { password?: string; firstName?: string; lastName?: string }
+  ) => {
+    try {
+      const res = await authApi.verifySignupOtp({ email, otp, verificationTicket });
+      return applyAuthSuccess(res);
+    } catch (err: any) {
+      if (isSupabaseConfigured) {
+        console.warn('[Signup OTP] Backend verify error, attempting Supabase verify:', err.message);
+        return await supabaseVerifyOtp({
+          email,
+          otp,
+          password: extraData?.password,
+          firstName: extraData?.firstName,
+          lastName: extraData?.lastName,
+        });
+      }
+      throw err;
+    }
   };
 
   /**
    * Supabase OTP — Step 1: Send magic link / email OTP via Supabase Auth
-   * Works for both login and registration; no domain verification needed.
    */
   const supabaseSendOtp = async (email: string): Promise<{ message: string }> => {
     if (!isSupabaseConfigured) {
-      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your environment.');
+      throw new Error('Supabase is not configured.');
     }
 
     const redirectUrl = typeof window !== 'undefined' ? window.location.origin : undefined;
     const { error } = await supabase.auth.signInWithOtp({
       email: email.trim().toLowerCase(),
       options: {
-        shouldCreateUser: true, // Auto-creates Supabase Auth user if not exists
+        shouldCreateUser: true,
         emailRedirectTo: redirectUrl,
       },
     });
 
     if (error) {
       console.error('[Supabase OTP] Send error:', error.message);
-      const rawMsg = error.message || '';
-      let friendlyMsg = rawMsg;
-      if (
-        rawMsg.toLowerCase().includes('magic link') ||
-        rawMsg.toLowerCase().includes('error sending') ||
-        rawMsg.toLowerCase().includes('smtp')
-      ) {
-        friendlyMsg =
-          'Email delivery failed for this address. Please switch to the "Password" tab above to sign up instantly, or check your SMTP settings in Supabase.';
-      }
-      throw new Error(friendlyMsg);
+      throw new Error(error.message || 'Failed to send verification code.');
     }
 
     return { message: `A 6-digit verification code has been sent to ${email.trim().toLowerCase()}` };
   };
 
   /**
-   * Supabase OTP — Step 2: Verify the OTP, exchange Supabase session for backend JWT
+   * Supabase OTP — Step 2: Verify the OTP, set desired password, exchange Supabase session for backend JWT
    */
   const supabaseVerifyOtp = async (params: {
     email: string;
@@ -177,7 +244,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     lastName?: string;
     password?: string;
   }): Promise<User> => {
-    const { email, otp, firstName, lastName } = params;
+    const { email, otp, firstName, lastName, password } = params;
 
     if (!isSupabaseConfigured) {
       throw new Error('Supabase is not configured.');
@@ -199,13 +266,23 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       );
     }
 
+    // If a desired password was provided at signup, set it in Supabase Auth now!
+    if (password) {
+      try {
+        await supabase.auth.updateUser({ password });
+        console.log('[Supabase OTP] User password successfully set on Supabase account.');
+      } catch (pwdErr: any) {
+        console.warn('[Supabase OTP] Could not update password in Supabase:', pwdErr?.message);
+      }
+    }
+
     // Extract the Supabase access token from the verified session
     const accessToken = sessionData.session.access_token;
 
     // Exchange Supabase token for our backend JWT with seamless fallback
     let res: any;
     try {
-      res = await authApi.supabaseExchange({ access_token: accessToken, firstName, lastName });
+      res = await authApi.supabaseExchange({ access_token: accessToken, firstName, lastName, password });
     } catch (exchangeErr: any) {
       console.warn('[Supabase OTP] Backend exchange error, activating direct verified session:', exchangeErr?.message);
       const supaUser = sessionData.user!;

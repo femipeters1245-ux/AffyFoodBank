@@ -21,10 +21,8 @@ export const LoginPage: React.FC = () => {
     }
   }, [isAuthenticated, user, navigate, from]);
 
-  // Modes: 'OTP' or 'PASSWORD'
-  const [authMethod, setAuthMethod] = useState<'OTP' | 'PASSWORD'>(
-    isSupabaseConfigured ? 'OTP' : 'PASSWORD'
-  );
+  // Modes: 'PASSWORD' or 'OTP' (Default: PASSWORD for sign in)
+  const [authMethod, setAuthMethod] = useState<'PASSWORD' | 'OTP'>('PASSWORD');
 
   // OTP flow state
   const [step, setStep] = useState<'EMAIL' | 'OTP'>('EMAIL');
@@ -164,6 +162,21 @@ export const LoginPage: React.FC = () => {
           <button
             type="button"
             onClick={() => {
+              setAuthMethod('PASSWORD');
+              setError(null);
+              setSuccessMsg(null);
+            }}
+            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
+              authMethod === 'PASSWORD'
+                ? 'bg-white text-brand-700 shadow-sm'
+                : 'text-slate-600 hover:text-slate-900'
+            }`}
+          >
+            Password
+          </button>
+          <button
+            type="button"
+            onClick={() => {
               setAuthMethod('OTP');
               setError(null);
               setSuccessMsg(null);
@@ -178,21 +191,6 @@ export const LoginPage: React.FC = () => {
             }`}
           >
             Email Code (OTP)
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMethod('PASSWORD');
-              setError(null);
-              setSuccessMsg(null);
-            }}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              authMethod === 'PASSWORD'
-                ? 'bg-white text-brand-700 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Password
           </button>
         </div>
 
@@ -431,7 +429,7 @@ export const LoginPage: React.FC = () => {
         <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
           Don't have an account yet?{' '}
           <Link to="/register" className="text-brand-600 font-bold hover:underline">
-            Create Account
+            Create Account (with Email OTP)
           </Link>
         </div>
       </div>

@@ -98,6 +98,7 @@ export const authApi = {
     access_token: string;
     firstName?: string;
     lastName?: string;
+    password?: string;
   }): Promise<AuthResponse> => {
     const res = await apiClient.post<AuthResponse>('/auth/supabase-exchange', payload);
     return res.data;

@@ -10,6 +10,7 @@ import {
   UnauthorizedError,
 } from '../utils/errors';
 import { z } from 'zod';
+import { supabaseAdmin, isSupabaseAdminConfigured } from './supabase-admin.service';
 
 // ─── Validation Schemas ────────────────────────────────────────────────────────
 
@@ -125,10 +126,15 @@ export async function registerUser(body: unknown) {
 export async function loginUser(body: unknown) {
   const { email, password } = loginSchema.parse(body);
 
-  let user = await prisma.user.findUnique({
-    where: { email },
-    include: { profile: true, role: true },
-  });
+  let user: any = null;
+  try {
+    user = await prisma.user.findUnique({
+      where: { email },
+      include: { profile: true, role: true },
+    });
+  } catch (dbErr: any) {
+    console.warn('[loginUser] Database connection note:', dbErr?.message);
+  }
 
   // Self-healing: If demo user does not exist yet in database, auto-seed demo accounts
   const isDemoEmail =
@@ -149,38 +155,76 @@ export async function loginUser(body: unknown) {
     }
   }
 
-  if (!user || !user.isActive) {
-    throw new UnauthorizedError('Invalid email or password');
+  // If user found in database, verify password
+  if (user && user.isActive) {
+    const valid = await comparePassword(password, user.passwordHash);
+    if (valid) {
+      const permissions = await loadPermissions(user.roleId);
+      const payload = {
+        sub: user.id,
+        email: user.email,
+        roleId: user.roleId,
+        role: user.role?.name ?? null,
+        profileId: user.profile?.id ?? null,
+        permissions,
+      };
+      const token = signAccessToken(payload);
+      return {
+        token,
+        refreshToken: null,
+        user: {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          roleId: user.roleId,
+          role: user.role?.name ?? null,
+        },
+      };
+    }
   }
 
-  const valid = await comparePassword(password, user.passwordHash);
-  if (!valid) throw new UnauthorizedError('Invalid email or password');
+  // Fallback: Verify against Supabase Auth (for users created/synced with Supabase)
+  if (isSupabaseAdminConfigured && supabaseAdmin) {
+    try {
+      const { data: supaAuth, error: supaErr } = await supabaseAdmin.auth.signInWithPassword({
+        email: email.trim().toLowerCase(),
+        password,
+      });
 
-  const permissions = await loadPermissions(user.roleId);
+      if (!supaErr && supaAuth?.user) {
+        const supaUser = supaAuth.user;
+        const isAdmin = email === 'affybrand@gmail.com' || email === 'admin@affyfoodbank.ng';
+        const roleName = isAdmin ? 'Admin' : 'Customer';
+        const permissions = isAdmin ? ['*'] : [];
+        const payload = {
+          sub: supaUser.id,
+          email: supaUser.email,
+          roleId: isAdmin ? 'admin-role' : 'customer-role',
+          role: roleName,
+          profileId: `prof-${supaUser.id}`,
+          permissions,
+        };
+        const token = signAccessToken(payload);
+        return {
+          token,
+          refreshToken: null,
+          user: {
+            id: supaUser.id,
+            email: supaUser.email,
+            firstName: supaUser.user_metadata?.first_name || email.split('@')[0],
+            lastName: supaUser.user_metadata?.last_name || '',
+            roleId: isAdmin ? 'admin-role' : 'customer-role',
+            role: roleName,
+          },
+        };
+      }
+    } catch (supaErr: any) {
+      console.warn('[loginUser] Supabase auth check note:', supaErr?.message);
+    }
+  }
 
-  const payload = {
-    sub: user.id,
-    email: user.email,
-    roleId: user.roleId,
-    role: user.role?.name ?? null,
-    profileId: user.profile?.id ?? null,
-    permissions,
-  };
-
-  const token = signAccessToken(payload);
-
-  return {
-    token,
-    refreshToken: null, // stateless JWT – add refresh token flow later
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      roleId: user.roleId,
-      role: user.role?.name ?? null,
-    },
-  };
+  throw new UnauthorizedError('Invalid email or password');
 }
 
 /**
@@ -189,10 +233,15 @@ export async function loginUser(body: unknown) {
 export async function validateLoginCredentials(body: unknown) {
   const { email, password } = loginSchema.parse(body);
 
-  let user = await prisma.user.findUnique({
-    where: { email },
-    include: { profile: true, role: true },
-  });
+  let user: any = null;
+  try {
+    user = await prisma.user.findUnique({
+      where: { email },
+      include: { profile: true, role: true },
+    });
+  } catch (dbErr: any) {
+    console.warn('[validateLoginCredentials] DB note:', dbErr?.message);
+  }
 
   const isDemoEmail =
     email === 'affybrand@gmail.com' ||
