@@ -389,14 +389,18 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       setProductsLoading(true);
       setProductsError(null);
-      const [data, cats, unitList] = await Promise.all([
+      const [data, cats, unitList, customerList] = await Promise.all([
         supabaseProducts.listAll(),
         supabaseCategories.list(),
         supabaseUnits.list(),
+        adminApi.getCustomers().catch(() => null),
       ]);
       setProducts(data.map(mapToAdminProduct));
       setCategories(cats);
       setUnits(unitList);
+      if (Array.isArray(customerList) && customerList.length > 0) {
+        setCustomers(customerList);
+      }
     } catch (err: any) {
       console.error('[Admin] Failed to load products:', err);
       setProductsError('Failed to load products from Supabase. Check your credentials.');
@@ -409,23 +413,27 @@ export const AdminDashboardPage: React.FC = () => {
     loadProducts();
   }, [loadProducts]);
 
-  // Delivery fee configuration state (Staff & Admin can configure delivery rates)
+  // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
     try {
       const saved = localStorage.getItem('affy_delivery_fee_config');
       if (saved) {
         const p = JSON.parse(saved);
         return {
-          standardFeeNaira: (p.standardFeeCents ?? 250000) / 100,
-          freeDeliveryThresholdNaira: (p.freeDeliveryThresholdCents ?? 10000000) / 100,
-          expressFeeNaira: (p.expressFeeCents ?? 500000) / 100,
+          standardFeeNaira: (p.standardFeeCents ?? 150000) / 100,
+          freeDeliveryThresholdNaira: (p.freeDeliveryThresholdCents ?? 5000000) / 100,
+          expressFeeNaira: (p.expressFeeCents ?? 250000) / 100,
           stateFeesNaira: {
-            Lagos: (p.stateFees?.Lagos ?? 250000) / 100,
-            Ogun: (p.stateFees?.Ogun ?? 350000) / 100,
-            Abuja: (p.stateFees?.Abuja ?? 450000) / 100,
-            Rivers: (p.stateFees?.Rivers ?? 500000) / 100,
-            Oyo: (p.stateFees?.Oyo ?? 350000) / 100,
-            Default: (p.stateFees?.Default ?? 250000) / 100,
+            'Ilesa Central (Roundabout, Isokun, Imo)': (p.stateFees?.['Ilesa Central (Roundabout, Isokun, Imo)'] ?? 120000) / 100,
+            'Ilesa West (Breweries, Omi Aladiye, Ereja)': (p.stateFees?.['Ilesa West (Breweries, Omi Aladiye, Ereja)'] ?? 150000) / 100,
+            'Ilesa East (Grammar School, Bolorunduro, Irojo)': (p.stateFees?.['Ilesa East (Grammar School, Bolorunduro, Irojo)'] ?? 150000) / 100,
+            'Ijebu-Jesa / Oriade': (p.stateFees?.['Ijebu-Jesa / Oriade'] ?? 200000) / 100,
+            'Ipetu-Ijesha': (p.stateFees?.['Ipetu-Ijesha'] ?? 250000) / 100,
+            'Ibokun / Obokun': (p.stateFees?.['Ibokun / Obokun'] ?? 220000) / 100,
+            'Osogbo (State Capital)': (p.stateFees?.['Osogbo (State Capital)'] ?? 300000) / 100,
+            'Ile-Ife (Campus & Town)': (p.stateFees?.['Ile-Ife (Campus & Town)'] ?? 300000) / 100,
+            'Other Osun State Locations': (p.stateFees?.['Other Osun State Locations'] ?? 350000) / 100,
+            Default: (p.stateFees?.Default ?? 150000) / 100,
           },
           updatedAt: p.updatedAt,
           updatedBy: p.updatedBy,
@@ -433,16 +441,20 @@ export const AdminDashboardPage: React.FC = () => {
       }
     } catch {}
     return {
-      standardFeeNaira: 2500,
-      freeDeliveryThresholdNaira: 100000,
-      expressFeeNaira: 5000,
+      standardFeeNaira: 1500,
+      freeDeliveryThresholdNaira: 50000,
+      expressFeeNaira: 2500,
       stateFeesNaira: {
-        Lagos: 2500,
-        Ogun: 3500,
-        Abuja: 4500,
-        Rivers: 5000,
-        Oyo: 3500,
-        Default: 2500,
+        'Ilesa Central (Roundabout, Isokun, Imo)': 1200,
+        'Ilesa West (Breweries, Omi Aladiye, Ereja)': 1500,
+        'Ilesa East (Grammar School, Bolorunduro, Irojo)': 1500,
+        'Ijebu-Jesa / Oriade': 2000,
+        'Ipetu-Ijesha': 2500,
+        'Ibokun / Obokun': 2200,
+        'Osogbo (State Capital)': 3000,
+        'Ile-Ife (Campus & Town)': 3000,
+        'Other Osun State Locations': 3500,
+        Default: 1500,
       },
     };
   });
@@ -998,6 +1010,7 @@ export const AdminDashboardPage: React.FC = () => {
                   <tr>
                     <th className="px-6 py-4">Customer Details</th>
                     <th className="px-6 py-4">Phone & Location</th>
+                    <th className="px-6 py-4">Saved User Data (Registered)</th>
                     <th className="px-6 py-4">Identity (BVN / NIN)</th>
                     <th className="px-6 py-4">KYC Tier</th>
                     <th className="px-6 py-4">Wallet Balance</th>
@@ -1016,6 +1029,16 @@ export const AdminDashboardPage: React.FC = () => {
                       <td className="px-6 py-4">
                         <div className="font-semibold text-slate-800">{c.phone}</div>
                         <div className="text-[11px] text-slate-500 truncate max-w-[180px]">{c.address}, {c.state}</div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="font-bold text-slate-800">
+                          {c.registeredDate || ((c as any).registeredAt ? new Date((c as any).registeredAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : 'Saved User')}
+                        </div>
+                        <div className="text-[10px] text-emerald-600 font-medium">✓ Saved in Supabase</div>
+                        <div className="text-[10px] text-slate-400 font-mono truncate max-w-[140px]" title={c.id}>
+                          ID: {c.id.slice(0, 8)}...
+                        </div>
                       </td>
 
                       <td className="px-6 py-4">
@@ -1380,8 +1403,8 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="border border-slate-200 rounded-2xl overflow-hidden">
                 <div className="p-4 bg-slate-50 border-b border-slate-200 flex justify-between items-center">
                   <div>
-                    <h3 className="text-sm font-black text-slate-900">Destination State Delivery Rates</h3>
-                    <p className="text-xs text-slate-500">Customers selecting these states at checkout will be charged these specific logistics rates.</p>
+                    <h3 className="text-sm font-black text-slate-900">Ilesa & Osun State Destination Delivery Rates</h3>
+                    <p className="text-xs text-slate-500">Customers selecting these Ilesa and surrounding Osun State zones at checkout will be charged these specific logistics rates.</p>
                   </div>
                   <span className="text-xs text-slate-400 font-semibold">{Object.keys(deliveryConfig.stateFeesNaira).length} Regions Configured</span>
                 </div>

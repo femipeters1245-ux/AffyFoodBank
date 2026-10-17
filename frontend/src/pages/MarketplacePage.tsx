@@ -17,24 +17,24 @@ function mapSupabaseProduct(p: SupabaseProduct): Product {
     name: p.name,
     description: p.description,
     sku: p.sku,
-    priceCents: p.price_cents,
-    currency: p.currency,
-    imageUrl: p.image_url,
-    unitId: p.unit_id,
-    categoryId: p.category_id,
-    isActive: p.is_active,
+    priceCents: Number(p.price_cents ?? (p as any).priceCents ?? 0),
+    currency: p.currency || 'NGN',
+    imageUrl: p.image_url ?? (p as any).imageUrl ?? null,
+    unitId: p.unit_id ?? (p as any).unitId ?? null,
+    categoryId: p.category_id ?? (p as any).categoryId ?? null,
+    isActive: p.is_active ?? (p as any).isActive ?? true,
     unit: p.unit
       ? { id: p.unit.id, name: p.unit.name, symbol: p.unit.symbol }
       : null,
     category: p.category
-      ? { id: p.category.id, name: p.category.name, isActive: p.category.is_active }
+      ? { id: p.category.id, name: p.category.name, isActive: p.category.is_active ?? (p.category as any).isActive ?? true }
       : null,
     inventory: inv
       ? {
           id: inv.id,
-          productId: inv.product_id,
-          quantity: inv.quantity,
-          lowStockThreshold: inv.low_stock_threshold,
+          productId: inv.product_id ?? (inv as any).productId,
+          quantity: Number(inv.quantity ?? 0),
+          lowStockThreshold: Number(inv.low_stock_threshold ?? (inv as any).lowStockThreshold ?? 10),
         }
       : null,
   };

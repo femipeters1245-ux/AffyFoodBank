@@ -12,16 +12,20 @@ export interface DeliveryFeeConfig {
 }
 
 export const DEFAULT_DELIVERY_CONFIG: DeliveryFeeConfig = {
-  standardFeeCents: 250000, // ₦2,500
-  freeDeliveryThresholdCents: 10000000, // ₦100,000 (0 means free delivery disabled)
-  expressFeeCents: 500000, // ₦5,000
+  standardFeeCents: 150000, // ₦1,500 within Ilesa
+  freeDeliveryThresholdCents: 5000000, // ₦50,000
+  expressFeeCents: 250000, // ₦2,500
   stateFees: {
-    Lagos: 250000,
-    Ogun: 350000,
-    Abuja: 450000,
-    Rivers: 500000,
-    Oyo: 350000,
-    Default: 250000,
+    'Ilesa Central (Roundabout, Isokun, Imo)': 120000,
+    'Ilesa West (Breweries, Omi Aladiye, Ereja)': 150000,
+    'Ilesa East (Grammar School, Bolorunduro, Irojo)': 150000,
+    'Ijebu-Jesa / Oriade': 200000,
+    'Ipetu-Ijesha': 250000,
+    'Ibokun / Obokun': 220000,
+    'Osogbo (State Capital)': 300000,
+    'Ile-Ife (Campus & Town)': 300000,
+    'Other Osun State Locations': 350000,
+    Default: 150000,
   },
   updatedAt: new Date().toISOString(),
   updatedBy: 'System Default',

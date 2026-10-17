@@ -2,6 +2,7 @@
 // Supabase client — primary source of truth for all product data with resilient offline/initial fallback
 
 import { createClient } from '@supabase/supabase-js';
+import { apiClient } from '../services/api';
 
 const supabaseUrl =
   ((import.meta as any).env?.VITE_SUPABASE_URL as string) ||
@@ -297,95 +298,126 @@ function saveLocalFallbackProducts(items: SupabaseProduct[]) {
 
 // ─── Products API ──────────────────────────────────────────────────────────────
 
+function normalizeProductFromDb(p: any): SupabaseProduct {
+  const inv = Array.isArray(p.inventory) ? p.inventory[0] : p.inventory;
+  return {
+    id: p.id,
+    name: p.name,
+    description: p.description ?? null,
+    sku: p.sku ?? null,
+    price_cents: Number(p.priceCents ?? p.price_cents ?? 0),
+    currency: p.currency || 'NGN',
+    image_url: p.imageUrl ?? p.image_url ?? null,
+    unit_id: p.unitId ?? p.unit_id ?? null,
+    category_id: p.categoryId ?? p.category_id ?? null,
+    is_active: p.isActive ?? p.is_active ?? true,
+    created_at: p.createdAt ?? p.created_at ?? new Date().toISOString(),
+    updated_at: p.updatedAt ?? p.updated_at ?? new Date().toISOString(),
+    unit: p.unit
+      ? {
+          id: p.unit.id,
+          name: p.unit.name,
+          symbol: p.unit.symbol ?? null,
+          created_at: p.unit.createdAt ?? p.unit.created_at ?? '',
+          updated_at: p.unit.updatedAt ?? p.unit.updated_at ?? '',
+        }
+      : null,
+    category: p.category
+      ? {
+          id: p.category.id,
+          name: p.category.name,
+          description: p.category.description ?? null,
+          is_active: p.category.isActive ?? p.category.is_active ?? true,
+          created_at: p.category.createdAt ?? p.category.created_at ?? '',
+          updated_at: p.category.updatedAt ?? p.category.updated_at ?? '',
+        }
+      : null,
+    inventory: inv
+      ? [
+          {
+            id: inv.id || `inv-${p.id}`,
+            product_id: p.id,
+            quantity: Number(inv.quantity ?? 0),
+            low_stock_threshold: Number(inv.lowStockThreshold ?? inv.low_stock_threshold ?? 10),
+            created_at: inv.createdAt ?? inv.created_at ?? '',
+            updated_at: inv.updatedAt ?? inv.updated_at ?? '',
+          },
+        ]
+      : [],
+  };
+}
+
 export const supabaseProducts = {
   /** List all active products with unit, category, and inventory */
   async list(): Promise<SupabaseProduct[]> {
-    if (!isSupabaseConfigured) {
-      return getLocalFallbackProducts().filter((p) => p.is_active);
-    }
-
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select(
-          `
-          *,
-          unit:units(*),
-          category:categories(*),
-          inventory:inventories(*)
-        `
-        )
-        .eq('is_active', true)
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('[Affy Supabase] Query warning:', error.message);
-        return getLocalFallbackProducts().filter((p) => p.is_active);
+      const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
+      const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      if (items.length > 0) {
+        const normalized = items.map(normalizeProductFromDb).filter((p: SupabaseProduct) => p.is_active);
+        saveLocalFallbackProducts(normalized);
+        return normalized;
       }
-      return data && data.length > 0 ? data : getLocalFallbackProducts().filter((p) => p.is_active);
     } catch (err: any) {
-      console.warn('[Affy Supabase] Connection warning:', err.message);
-      return getLocalFallbackProducts().filter((p) => p.is_active);
+      console.warn('[Affy API] Products query fallback:', err.message);
     }
+
+    // Direct Supabase query fallback on "Product" table
+    if (isSupabaseConfigured) {
+      try {
+        const { data, error } = await supabase
+          .from('Product')
+          .select('*')
+          .eq('isActive', true)
+          .order('createdAt', { ascending: false });
+
+        if (!error && data && data.length > 0) {
+          const mapped = data.map(normalizeProductFromDb);
+          saveLocalFallbackProducts(mapped);
+          return mapped;
+        }
+      } catch (e: any) {
+        console.warn('[Affy Supabase] Direct query warning:', e.message);
+      }
+    }
+
+    return getLocalFallbackProducts().filter((p) => p.is_active);
   },
 
   /** Get all products (including inactive) for admin */
   async listAll(): Promise<SupabaseProduct[]> {
-    if (!isSupabaseConfigured) {
-      return getLocalFallbackProducts();
-    }
+    try {
+      const res = await apiClient.get<any>('/admin/products');
+      const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      if (items.length > 0) {
+        const normalized = items.map(normalizeProductFromDb);
+        saveLocalFallbackProducts(normalized);
+        return normalized;
+      }
+    } catch {}
 
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select(
-          `
-          *,
-          unit:units(*),
-          category:categories(*),
-          inventory:inventories(*)
-        `
-        )
-        .order('created_at', { ascending: false });
-
-      if (error) {
-        console.warn('[Affy Supabase] Query warning:', error.message);
-        return getLocalFallbackProducts();
+      const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
+      const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
+      if (items.length > 0) {
+        const normalized = items.map(normalizeProductFromDb);
+        saveLocalFallbackProducts(normalized);
+        return normalized;
       }
-      return data && data.length > 0 ? data : getLocalFallbackProducts();
     } catch (err: any) {
-      console.warn('[Affy Supabase] Connection warning:', err.message);
-      return getLocalFallbackProducts();
+      console.warn('[Affy API] Admin products query warning:', err.message);
     }
+
+    return getLocalFallbackProducts();
   },
 
   /** Get a single product */
   async getById(id: string): Promise<SupabaseProduct | null> {
-    if (!isSupabaseConfigured) {
-      return getLocalFallbackProducts().find((p) => p.id === id) ?? null;
-    }
-
     try {
-      const { data, error } = await supabase
-        .from('products')
-        .select(
-          `
-          *,
-          unit:units(*),
-          category:categories(*),
-          inventory:inventories(*)
-        `
-        )
-        .eq('id', id)
-        .single();
-
-      if (error) {
-        return getLocalFallbackProducts().find((p) => p.id === id) ?? null;
-      }
-      return data;
-    } catch {
-      return getLocalFallbackProducts().find((p) => p.id === id) ?? null;
-    }
+      const res = await apiClient.get(`/products/${id}`);
+      if (res.data) return normalizeProductFromDb(res.data);
+    } catch {}
+    return getLocalFallbackProducts().find((p) => p.id === id) ?? null;
   },
 
   /** Create a new product (admin) */
@@ -401,55 +433,44 @@ export const supabaseProducts = {
   }): Promise<SupabaseProduct> {
     const { name, description, price_cents, image_url, category_id, unit_id, stock = 0, is_active = true } = payload;
 
-    if (!isSupabaseConfigured) {
-      const newProd: SupabaseProduct = {
-        id: `prod-${Date.now()}`,
+    try {
+      const res = await apiClient.post('/admin/products', {
         name,
-        description: description ?? null,
-        sku: `SKU-${Date.now().toString().slice(-6)}`,
-        price_cents,
-        currency: 'NGN',
-        image_url: image_url ?? null,
-        unit_id: unit_id ?? null,
-        category_id: category_id ?? null,
-        is_active,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-        inventory: [{ id: `inv-${Date.now()}`, product_id: `prod-${Date.now()}`, quantity: stock, low_stock_threshold: 10, created_at: '', updated_at: '' }],
-      };
-      const list = getLocalFallbackProducts();
-      list.unshift(newProd);
-      saveLocalFallbackProducts(list);
-      return newProd;
+        description,
+        priceCents: price_cents,
+        imageUrl: image_url,
+        stock,
+        categoryId: category_id,
+        unitId: unit_id,
+        isActive: is_active,
+      });
+      if (res.data) {
+        const p = normalizeProductFromDb(res.data);
+        const list = getLocalFallbackProducts();
+        list.unshift(p);
+        saveLocalFallbackProducts(list);
+        return p;
+      }
+    } catch (err: any) {
+      console.warn('[Affy Admin] Create product API failed, saving locally:', err.message);
     }
 
-    // Live Supabase creation
-    const { data: product, error: productError } = await supabase
-      .from('products')
-      .insert({
-        name,
-        description: description ?? null,
-        price_cents,
-        image_url: image_url ?? null,
-        category_id: category_id ?? null,
-        unit_id: unit_id ?? null,
-        currency: 'NGN',
-        is_active,
-      })
-      .select('*')
-      .single();
-
-    if (productError) throw productError;
-
-    // Create inventory record
-    const { error: invError } = await supabase.from('inventories').insert({
-      product_id: product.id,
-      quantity: stock,
-      low_stock_threshold: 10,
+    const newProd = normalizeProductFromDb({
+      id: `prod-${Date.now()}`,
+      name,
+      description,
+      sku: `SKU-${Date.now().toString().slice(-6)}`,
+      priceCents: price_cents,
+      imageUrl: image_url,
+      unitId: unit_id,
+      categoryId: category_id,
+      isActive: is_active,
+      inventory: { quantity: stock },
     });
-
-    if (invError) throw invError;
-    return product;
+    const list = getLocalFallbackProducts();
+    list.unshift(newProd);
+    saveLocalFallbackProducts(list);
+    return newProd;
   },
 
   /** Update an existing product (admin) */
@@ -466,86 +487,71 @@ export const supabaseProducts = {
       stock: number;
     }>
   ): Promise<SupabaseProduct> {
-    const { stock, ...productFields } = payload;
+    try {
+      const res = await apiClient.put(`/admin/products/${id}`, {
+        name: payload.name,
+        description: payload.description,
+        priceCents: payload.price_cents,
+        imageUrl: payload.image_url,
+        stock: payload.stock,
+        categoryId: payload.category_id,
+        unitId: payload.unit_id,
+        isActive: payload.is_active,
+      });
 
-    if (!isSupabaseConfigured) {
-      const list = getLocalFallbackProducts();
-      const idx = list.findIndex((p) => p.id === id);
-      if (idx !== -1) {
-        list[idx] = {
-          ...list[idx],
-          ...productFields,
-          inventory: stock !== undefined ? [{ ...list[idx].inventory?.[0]!, quantity: stock, product_id: id, id: 'inv', low_stock_threshold: 10, created_at: '', updated_at: '' }] : list[idx].inventory,
-        };
-        saveLocalFallbackProducts(list);
-        return list[idx];
+      if (res.data) {
+        const updated = normalizeProductFromDb(res.data);
+        const list = getLocalFallbackProducts();
+        const idx = list.findIndex((p) => p.id === id || p.name === payload.name);
+        if (idx !== -1) {
+          list[idx] = updated;
+          saveLocalFallbackProducts(list);
+        }
+        return updated;
       }
+    } catch (err: any) {
+      console.warn('[Affy Admin] Update product API warning:', err.message);
     }
 
-    // Update product fields in Supabase
-    if (Object.keys(productFields).length > 0) {
-      const { error } = await supabase.from('products').update(productFields).eq('id', id);
-      if (error) throw error;
-    }
-
-    // Update inventory if stock provided
-    if (stock !== undefined) {
-      const { error } = await supabase
-        .from('inventories')
-        .upsert({ product_id: id, quantity: stock, low_stock_threshold: 10 }, { onConflict: 'product_id' });
-      if (error) throw error;
-    }
-
-    const updated = await this.getById(id);
-    if (!updated) throw new Error('Product not found after update');
-    return updated;
-  },
-
-  /** Soft-delete a product */
-  async deactivate(id: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      const list = getLocalFallbackProducts();
-      const p = list.find((item) => item.id === id);
-      if (p) p.is_active = false;
+    // Update local storage fallback
+    const list = getLocalFallbackProducts();
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx !== -1) {
+      list[idx] = {
+        ...list[idx],
+        ...payload,
+        price_cents: payload.price_cents ?? list[idx].price_cents,
+        image_url: payload.image_url ?? list[idx].image_url,
+        inventory:
+          payload.stock !== undefined
+            ? [{ ...list[idx].inventory?.[0]!, quantity: payload.stock, product_id: id, id: 'inv', low_stock_threshold: 10, created_at: '', updated_at: '' }]
+            : list[idx].inventory,
+      };
       saveLocalFallbackProducts(list);
-      return;
+      return list[idx];
     }
-    const { error } = await supabase.from('products').update({ is_active: false }).eq('id', id);
-    if (error) throw error;
-  },
-
-  /** Hard-delete a product */
-  async delete(id: string): Promise<void> {
-    if (!isSupabaseConfigured) {
-      const list = getLocalFallbackProducts().filter((p) => p.id !== id);
-      saveLocalFallbackProducts(list);
-      return;
-    }
-    await supabase.from('inventories').delete().eq('product_id', id);
-    const { error } = await supabase.from('products').delete().eq('id', id);
-    if (error) throw error;
+    throw new Error('Product not found');
   },
 
   /** Increment stock */
   async restock(id: string, additionalQty: number): Promise<void> {
-    if (!isSupabaseConfigured) {
-      const list = getLocalFallbackProducts();
-      const p = list.find((item) => item.id === id);
-      if (p && p.inventory && p.inventory[0]) {
-        p.inventory[0].quantity = Number(p.inventory[0].quantity) + additionalQty;
-        saveLocalFallbackProducts(list);
-      }
-      return;
-    }
-    const { data: inv } = await supabase.from('inventories').select('quantity').eq('product_id', id).single();
-    const current = inv?.quantity ?? 0;
-    const { error } = await supabase
-      .from('inventories')
-      .upsert(
-        { product_id: id, quantity: Number(current) + additionalQty, low_stock_threshold: 10 },
-        { onConflict: 'product_id' }
-      );
-    if (error) throw error;
+    const prod = await this.getById(id);
+    const current = Number(prod?.inventory?.[0]?.quantity ?? 0);
+    await this.update(id, { stock: current + additionalQty });
+  },
+
+  /** Soft-delete a product */
+  async deactivate(id: string): Promise<void> {
+    await this.update(id, { is_active: false });
+  },
+
+  /** Hard-delete a product */
+  async delete(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/products/${id}`);
+    } catch {}
+    const list = getLocalFallbackProducts().filter((p) => p.id !== id);
+    saveLocalFallbackProducts(list);
   },
 };
 

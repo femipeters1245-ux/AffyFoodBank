@@ -1,7 +1,8 @@
-// frontend/src/pages/PackagesPage.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { formatNaira } from '../utils/format';
+import { packagesApi } from '../services/api';
+import { useCart } from '../context/CartContext';
 
 interface DisplayPackage {
   id: string;
@@ -91,10 +92,48 @@ const FEATURED_PACKAGES: DisplayPackage[] = [
 ];
 
 export const PackagesPage: React.FC = () => {
+  const [packagesList, setPackagesList] = useState<DisplayPackage[]>(FEATURED_PACKAGES);
   const [orderedPkg, setOrderedPkg] = useState<string | null>(null);
+  const { addToCart, setIsCartOpen } = useCart();
 
-  const handleOrder = (pkgName: string) => {
-    setOrderedPkg(pkgName);
+  useEffect(() => {
+    packagesApi
+      .list()
+      .then((data: any) => {
+        if (Array.isArray(data) && data.length > 0) {
+          const mapped: DisplayPackage[] = data.map((pkg: any) => ({
+            id: pkg.id,
+            name: pkg.name,
+            badge: pkg.badge || 'Curated Bundle',
+            description: pkg.description || 'Nutrient-rich balanced foodstuffs direct from verified farms.',
+            priceCents: Number(pkg.priceCents || pkg.price_cents || 2500000),
+            originalPriceCents: Number(pkg.originalPriceCents || 2900000),
+            savingsPercentage: Number(pkg.savingsPercentage || 14),
+            items: (pkg.items || []).map((it: any) => ({
+              name: it.product?.name || it.name || 'Food item',
+              quantity: `${it.quantity} x ${it.unit?.name || 'Pack'}`,
+            })),
+            bestFor: pkg.bestFor || 'Families and bulk buyers',
+          }));
+          setPackagesList(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleOrder = (pkg: DisplayPackage) => {
+    addToCart(
+      {
+        id: pkg.id,
+        name: pkg.name,
+        priceCents: pkg.priceCents,
+        currency: 'NGN',
+        isActive: true,
+        sku: `BUNDLE-${pkg.id}`,
+      },
+      1
+    );
+    setOrderedPkg(pkg.name);
     setTimeout(() => setOrderedPkg(null), 3500);
   };
 
@@ -123,7 +162,7 @@ export const PackagesPage: React.FC = () => {
 
       {/* Packages Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {FEATURED_PACKAGES.map((pkg) => (
+        {packagesList.map((pkg) => (
           <div
             key={pkg.id}
             className="bg-white rounded-3xl border border-slate-200 shadow-sm hover:shadow-lg transition-all duration-200 flex flex-col justify-between overflow-hidden"
@@ -182,7 +221,7 @@ export const PackagesPage: React.FC = () => {
                     {formatNaira(pkg.originalPriceCents)}
                   </span>
                 </div>
-                <span className="text-[11px] text-emerald-600 font-medium">Free door-step delivery in Lagos</span>
+                <span className="text-[11px] text-emerald-600 font-medium">Free door-step delivery in Ilesa</span>
               </div>
 
               <div className="flex items-center space-x-2 w-full sm:w-auto">
@@ -193,7 +232,7 @@ export const PackagesPage: React.FC = () => {
                   Save in Plan
                 </Link>
                 <button
-                  onClick={() => handleOrder(pkg.name)}
+                  onClick={() => handleOrder(pkg)}
                   className="w-1/2 sm:w-auto px-5 py-3 rounded-xl bg-brand-600 hover:bg-brand-700 text-white font-bold text-xs shadow-sm hover:shadow transition-all"
                 >
                   Order Bundle

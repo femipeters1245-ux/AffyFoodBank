@@ -150,29 +150,56 @@ router.put('/products/:id', async (req: Request, res: Response, next: NextFuncti
     const { id } = req.params;
     const { name, description, priceCents, stock, imageUrl } = req.body;
 
-    const existing = await prisma.product.findUnique({ where: { id } });
-    if (!existing) {
-      // If product ID was a client mock ID, create or return
-      return res.json({ message: 'Product updated successfully', id });
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
+    let existing = isUuid ? await prisma.product.findUnique({ where: { id } }).catch(() => null) : null;
+    if (!existing && name) {
+      existing = await prisma.product.findFirst({
+        where: { name: { equals: name, mode: 'insensitive' } },
+      });
     }
 
+    const targetId = existing?.id || (isUuid ? id : uuidv4());
+
     const updated = await prisma.$transaction(async (tx) => {
-      const p = await tx.product.update({
-        where: { id },
-        data: {
-          ...(name && { name }),
-          ...(description !== undefined && { description }),
-          ...(priceCents !== undefined && { priceCents: BigInt(priceCents) }),
-          ...(imageUrl !== undefined && { imageUrl }),
-        },
-        include: { unit: true, category: true, inventory: true },
-      });
+      let p;
+      if (existing) {
+        p = await tx.product.update({
+          where: { id: existing.id },
+          data: {
+            ...(name && { name }),
+            ...(description !== undefined && { description }),
+            ...(priceCents !== undefined && { priceCents: BigInt(priceCents) }),
+            ...(imageUrl !== undefined && { imageUrl }),
+            ...(req.body.unitId && { unitId: req.body.unitId }),
+            ...(req.body.categoryId && { categoryId: req.body.categoryId }),
+            ...(req.body.isActive !== undefined && { isActive: Boolean(req.body.isActive) }),
+          },
+          include: { unit: true, category: true, inventory: true },
+        });
+      } else {
+        // Fallback default unit & category if needed
+        const unit = await tx.unit.findFirst();
+        const category = await tx.category.findFirst();
+        p = await tx.product.create({
+          data: {
+            id: targetId,
+            name: name || 'Food Item',
+            description: description || null,
+            priceCents: BigInt(priceCents || 0),
+            imageUrl: imageUrl || null,
+            unitId: req.body.unitId || unit?.id || null,
+            categoryId: req.body.categoryId || category?.id || null,
+            isActive: true,
+          },
+          include: { unit: true, category: true, inventory: true },
+        });
+      }
 
       if (stock !== undefined) {
         await tx.inventory.upsert({
-          where: { productId: id },
+          where: { productId: p.id },
           update: { quantity: Number(stock) },
-          create: { id: uuidv4(), productId: id, quantity: Number(stock), lowStockThreshold: 10 },
+          create: { id: uuidv4(), productId: p.id, quantity: Number(stock), lowStockThreshold: 10 },
         });
       }
 
@@ -218,12 +245,16 @@ router.get('/customers', async (_req: Request, res: Response, _next: NextFunctio
       name: `${c.firstName ?? ''} ${c.lastName ?? ''}`.trim() || c.email.split('@')[0],
       phone: c.profile?.phone || '0803 000 0000',
       registeredAt: c.createdAt,
+      registeredDate: new Date(c.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }),
       isActive: c.isActive,
       walletBalanceCents: Number(c.profile?.wallet?.totalBalanceCents ?? 0),
+      ordersCount: c.profile?.orders?.length ?? 0,
       orderCount: c.profile?.orders?.length ?? 0,
       kycStatus: 'VERIFIED',
       kycTier: 'Tier 2 (NIN / BVN Verified)',
-      address: c.profile?.addresses?.[0]?.line1 || 'Lagos, Nigeria',
+      bvnOrNinMasked: '222******90',
+      address: c.profile?.addresses?.[0]?.line1 || 'Ilesa, Osun State',
+      state: c.profile?.addresses?.[0]?.state || 'Osun State',
     }));
 
     res.json(formatted);

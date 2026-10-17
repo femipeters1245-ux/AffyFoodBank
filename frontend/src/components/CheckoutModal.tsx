@@ -22,7 +22,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const [email, setEmail] = useState(user?.email ?? '');
   const [phone, setPhone] = useState('080');
   const [address, setAddress] = useState('');
-  const [state, setState] = useState('Lagos');
+  const [state, setState] = useState('Ilesa Central (Roundabout, Isokun, Imo)');
   const [deliveryNotes, setDeliveryNotes] = useState('');
 
   // Payment method
@@ -225,7 +225,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               <p className="text-xs text-slate-500 mt-0.5">
                 {completedOrder
                   ? 'Your raw foodstuff will be dispatched directly from wholesale farms.'
-                  : 'Fast dispatch across Nigeria via Affy Cold & Bulk Logistics.'}
+                  : 'Fast dispatch across Ilesa & surrounding Osun State communities via Affy Logistics.'}
               </p>
             </div>
             <button
@@ -379,27 +379,29 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                       required
                       value={address}
                       onChange={(e) => setAddress(e.target.value)}
-                      placeholder="No 14, Admiralty Way, Lekki Phase 1"
+                      placeholder="e.g. No 12, Ereja Square / Imo Road, Ilesa, Osun State"
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     />
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      State *
+                      Delivery Location (Ilesa & Osun State) *
                     </label>
                     <select
                       value={state}
                       onChange={(e) => setState(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
-                      <option value="Lagos">Lagos State</option>
-                      <option value="Abuja">Abuja (FCT)</option>
-                      <option value="Ogun">Ogun State</option>
-                      <option value="Oyo">Oyo State (Ibadan)</option>
-                      <option value="Rivers">Rivers (Port Harcourt)</option>
-                      <option value="Kaduna">Kaduna State</option>
-                      <option value="Other">Other State</option>
+                      <option value="Ilesa Central (Roundabout, Isokun, Imo)">Ilesa Central (Roundabout, Isokun, Imo)</option>
+                      <option value="Ilesa West (Breweries, Omi Aladiye, Ereja)">Ilesa West (Breweries, Omi Aladiye, Ereja)</option>
+                      <option value="Ilesa East (Grammar School, Bolorunduro, Irojo)">Ilesa East (Grammar School, Bolorunduro, Irojo)</option>
+                      <option value="Ijebu-Jesa / Oriade">Ijebu-Jesa / Oriade</option>
+                      <option value="Ipetu-Ijesha">Ipetu-Ijesha</option>
+                      <option value="Ibokun / Obokun">Ibokun / Obokun</option>
+                      <option value="Osogbo (State Capital)">Osogbo (State Capital)</option>
+                      <option value="Ile-Ife (Campus & Town)">Ile-Ife (Campus & Town)</option>
+                      <option value="Other Osun State Locations">Other Osun State Locations</option>
                     </select>
                   </div>
                 </div>
