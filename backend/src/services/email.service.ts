@@ -432,7 +432,7 @@ export async function sendOtpEmail(params: {
         Enter these 6 numbers in the Affy FoodBank verification screen.
       </p>
       <p style="margin: 8px 0 0; font-size: 12px; color: #64748b;">
-        ⏱️ This code expires in <strong>10 minutes</strong>. Never share this code with anyone.
+        ⏱️ This code expires in <strong>5 minutes</strong>. Never share this code with anyone.
       </p>
     </div>
 
@@ -445,7 +445,7 @@ export async function sendOtpEmail(params: {
     to,
     subject: `Affy FoodBank Verification Code: ${otp}`,
     html: emailWrapper('One-Time Password Verification', bodyContent),
-    text: `Hi ${firstName}, your Affy FoodBank verification code is ${otp}. It expires in 10 minutes. If you did not request this, please ignore this email.`,
+    text: `Hi ${firstName}, your Affy FoodBank verification code is ${otp}. It expires in 5 minutes. If you did not request this, please ignore this email.`,
     replyTo: ADMIN_NOTIFICATION_EMAIL,
   });
 }

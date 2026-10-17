@@ -14,6 +14,8 @@ export interface JwtPayload {
   role?: string | null;
   permissions: string[]; // e.g. ['product:read', 'wallet:deposit']
   profileId: string | null; // CustomerProfile ID
+  iat?: number;
+  exp?: number;
 }
 
 // Extend Express's Request type
@@ -27,19 +29,53 @@ declare global {
 }
 
 /**
- * authenticate – verifies the Bearer JWT and attaches `req.user`.
+ * Extract token from HttpOnly cookies (affy_session, token) or Bearer header
+ */
+export function extractTokenFromRequest(req: Request): string | null {
+  // 1. Check parsed cookies
+  if (req.cookies?.affy_session) {
+    return req.cookies.affy_session;
+  }
+  if (req.cookies?.token) {
+    return req.cookies.token;
+  }
+
+  // 2. Fallback cookie header parse (if cookie-parser was bypassed)
+  const cookieHeader = req.headers.cookie;
+  if (cookieHeader) {
+    const sessionMatch = cookieHeader.match(/(^|;\s*)affy_session=([^;]*)/);
+    if (sessionMatch) return decodeURIComponent(sessionMatch[2]);
+
+    const tokenMatch = cookieHeader.match(/(^|;\s*)token=([^;]*)/);
+    if (tokenMatch) return decodeURIComponent(tokenMatch[2]);
+  }
+
+  // 3. Check Authorization header Bearer token
+  const authHeader = req.headers.authorization;
+  if (authHeader?.startsWith('Bearer ')) {
+    return authHeader.slice(7).trim();
+  }
+
+  return null;
+}
+
+/**
+ * authenticate – verifies HttpOnly session cookie or Bearer JWT and attaches `req.user`.
  * Throws UnauthorizedError for missing / invalid / expired tokens.
  */
 export const authenticate = (req: Request, _res: Response, next: NextFunction): void => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader?.startsWith('Bearer ')) {
-    return next(new UnauthorizedError('No token provided'));
+  const token = extractTokenFromRequest(req);
+  if (!token) {
+    return next(new UnauthorizedError('Authentication session required. Please sign in.'));
   }
 
-  const token = authHeader.slice(7);
   const secret = process.env.JWT_SECRET;
   if (!secret) {
-    return next(new Error('Server configuration error: JWT_SECRET environment variable is not set. Please add it to your Vercel environment variables.'));
+    return next(
+      new Error(
+        'Server configuration error: JWT_SECRET environment variable is not set.'
+      )
+    );
   }
 
   try {
@@ -48,8 +84,8 @@ export const authenticate = (req: Request, _res: Response, next: NextFunction): 
     next();
   } catch (err: any) {
     if (err.name === 'TokenExpiredError') {
-      return next(new UnauthorizedError('Token expired'));
+      return next(new UnauthorizedError('Session has expired. Please sign in again.'));
     }
-    return next(new UnauthorizedError('Invalid token'));
+    return next(new UnauthorizedError('Invalid authentication token'));
   }
 };

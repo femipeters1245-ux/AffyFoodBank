@@ -17,6 +17,7 @@ export const apiClient = axios.create({
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true,
 });
 
 // Attach Authorization Bearer token if present
@@ -47,19 +48,46 @@ apiClient.interceptors.response.use(
 );
 
 export const authApi = {
+  // Unified 6-digit Resend OTP endpoints
+  sendOtp: async (data: {
+    email: string;
+    purpose?: 'LOGIN' | 'SIGNUP' | string;
+    firstName?: string;
+    lastName?: string;
+    password?: string;
+  }): Promise<{ message: string; email: string; expiresInMinutes: number; expiresInSeconds: number; cooldownSeconds: number; verificationTicket?: string }> => {
+    const res = await apiClient.post('/auth/send-otp', data);
+    return res.data;
+  },
+  verifyOtp: async (payload: {
+    email: string;
+    otp: string;
+    purpose?: 'LOGIN' | 'SIGNUP' | string;
+    verificationTicket?: string;
+    firstName?: string;
+    lastName?: string;
+    password?: string;
+  }): Promise<AuthResponse> => {
+    const res = await apiClient.post<AuthResponse>('/auth/verify-otp', payload);
+    return res.data;
+  },
+  getSession: async (): Promise<{ authenticated: boolean; user: User | null; session: any }> => {
+    const res = await apiClient.get('/auth/session');
+    return res.data;
+  },
   login: async (credentials: { email: string; password: string }): Promise<AuthResponse> => {
     const res = await apiClient.post<AuthResponse>('/auth/login', credentials);
     return res.data;
   },
   sendLoginOtp: async (credentials: {
     email: string;
-    password: string;
+    password?: string;
   }): Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string; previewOtp?: string }> => {
-    const res = await apiClient.post('/auth/otp/send-login-otp', credentials);
+    const res = await apiClient.post('/auth/send-otp', { ...credentials, purpose: 'LOGIN' });
     return res.data;
   },
   verifyLoginOtp: async (payload: { email: string; otp: string; verificationTicket?: string }): Promise<AuthResponse> => {
-    const res = await apiClient.post<AuthResponse>('/auth/otp/verify-login-otp', payload);
+    const res = await apiClient.post<AuthResponse>('/auth/verify-otp', { ...payload, purpose: 'LOGIN' });
     return res.data;
   },
   sendSignupOtp: async (data: {
@@ -68,11 +96,18 @@ export const authApi = {
     firstName?: string;
     lastName?: string;
   }): Promise<{ message: string; email: string; expiresInMinutes: number; verificationTicket?: string; previewOtp?: string }> => {
-    const res = await apiClient.post('/auth/otp/send-signup-otp', data);
+    const res = await apiClient.post('/auth/send-otp', { ...data, purpose: 'SIGNUP' });
     return res.data;
   },
-  verifySignupOtp: async (payload: { email: string; otp: string; verificationTicket?: string }): Promise<AuthResponse> => {
-    const res = await apiClient.post<AuthResponse>('/auth/otp/verify-signup-otp', payload);
+  verifySignupOtp: async (payload: {
+    email: string;
+    otp: string;
+    verificationTicket?: string;
+    firstName?: string;
+    lastName?: string;
+    password?: string;
+  }): Promise<AuthResponse> => {
+    const res = await apiClient.post<AuthResponse>('/auth/verify-otp', { ...payload, purpose: 'SIGNUP' });
     return res.data;
   },
   register: async (data: {
@@ -94,20 +129,10 @@ export const authApi = {
       localStorage.removeItem('affy_user');
     }
   },
-  supabaseExchange: async (payload: {
-    access_token: string;
-    firstName?: string;
-    lastName?: string;
-    password?: string;
-  }): Promise<AuthResponse> => {
-    const res = await apiClient.post<AuthResponse>('/auth/supabase-exchange', payload);
-    return res.data;
-  },
   getMe: async (): Promise<User> => {
     const res = await apiClient.get<User>('/me');
     return res.data;
   },
-
 };
 
 export const productsApi = {

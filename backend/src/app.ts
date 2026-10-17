@@ -4,6 +4,7 @@ import express, { Request, Response } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
+import cookieParser from 'cookie-parser';
 import dotenv from 'dotenv';
 
 // Routes
@@ -51,6 +52,7 @@ app.use(
 );
 
 app.use(express.json());
+app.use(cookieParser());
 app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 
 // ─── Path Normalization ────────────────────────────────────────────────────────
@@ -65,7 +67,8 @@ app.use((req, _res, next) => {
 // ─── API Routes ────────────────────────────────────────────────────────────────
 const API = '/api/v1';
 
-app.use(`${API}/auth`, authRouter);
+// Unified Auth routes (supports /api/auth, /auth, /api/v1/auth)
+app.use(['/api/auth', '/auth', `${API}/auth`], authRouter);
 app.use(`${API}/products`, productRouter);
 app.use(`${API}/me`, meRouter);
 app.use(`${API}/wallet`, walletRouter);

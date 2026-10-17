@@ -10,7 +10,6 @@ import {
   UnauthorizedError,
 } from '../utils/errors';
 import { z } from 'zod';
-import { supabaseAdmin, isSupabaseAdminConfigured } from './supabase-admin.service';
 
 // ─── Validation Schemas ────────────────────────────────────────────────────────
 
@@ -35,10 +34,15 @@ export const loginSchema = z.object({
 async function loadPermissions(roleId: string | null): Promise<string[]> {
   if (!roleId) return [];
   try {
-    const rolePerms = await prisma.rolePermission.findMany({
+    let timer: NodeJS.Timeout;
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('timeout')), 1000);
+    });
+    const query = prisma.rolePermission.findMany({
       where: { roleId },
       include: { permission: true },
     });
+    const rolePerms = await Promise.race([query, timeoutPromise]).finally(() => clearTimeout(timer));
     return rolePerms.map((rp) => `${rp.permission.action}:${rp.permission.resource}`);
   } catch {
     return [];
@@ -181,46 +185,6 @@ export async function loginUser(body: unknown) {
           role: user.role?.name ?? null,
         },
       };
-    }
-  }
-
-  // Fallback: Verify against Supabase Auth (for users created/synced with Supabase)
-  if (isSupabaseAdminConfigured && supabaseAdmin) {
-    try {
-      const { data: supaAuth, error: supaErr } = await supabaseAdmin.auth.signInWithPassword({
-        email: email.trim().toLowerCase(),
-        password,
-      });
-
-      if (!supaErr && supaAuth?.user) {
-        const supaUser = supaAuth.user;
-        const isAdmin = email === 'affybrand@gmail.com' || email === 'admin@affyfoodbank.ng';
-        const roleName = isAdmin ? 'Admin' : 'Customer';
-        const permissions = isAdmin ? ['*'] : [];
-        const payload = {
-          sub: supaUser.id,
-          email: supaUser.email,
-          roleId: isAdmin ? 'admin-role' : 'customer-role',
-          role: roleName,
-          profileId: `prof-${supaUser.id}`,
-          permissions,
-        };
-        const token = signAccessToken(payload);
-        return {
-          token,
-          refreshToken: null,
-          user: {
-            id: supaUser.id,
-            email: supaUser.email,
-            firstName: supaUser.user_metadata?.first_name || email.split('@')[0],
-            lastName: supaUser.user_metadata?.last_name || '',
-            roleId: isAdmin ? 'admin-role' : 'customer-role',
-            role: roleName,
-          },
-        };
-      }
-    } catch (supaErr: any) {
-      console.warn('[loginUser] Supabase auth check note:', supaErr?.message);
     }
   }
 

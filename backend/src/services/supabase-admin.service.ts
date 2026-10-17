@@ -1,14 +1,11 @@
 // backend/src/services/supabase-admin.service.ts
-// Supabase Admin client (uses SERVICE_ROLE key - server-side only, never expose to browser)
+// Supabase Admin client for Database access only (RLS bypass for admin database tables)
+// Supabase Auth has been completely removed in favor of Resend OTP and native sessions.
 
 import { createClient } from '@supabase/supabase-js';
 
 const supabaseUrl = process.env.SUPABASE_URL || '';
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
-
-if (!supabaseServiceKey && process.env.NODE_ENV === 'production') {
-  console.warn('[SupabaseAdmin] SUPABASE_SERVICE_ROLE_KEY is not set. Token verification will be unavailable.');
-}
 
 export const isSupabaseAdminConfigured = Boolean(
   supabaseUrl &&
@@ -17,7 +14,7 @@ export const isSupabaseAdminConfigured = Boolean(
     supabaseUrl.startsWith('https://')
 );
 
-// Admin client bypasses RLS — only used server-side to verify tokens
+// Admin database client — used strictly for database operations (products, inventory, etc.)
 export const supabaseAdmin = isSupabaseAdminConfigured
   ? createClient(supabaseUrl!, supabaseServiceKey!, {
       auth: {
@@ -26,26 +23,3 @@ export const supabaseAdmin = isSupabaseAdminConfigured
       },
     })
   : null;
-
-/**
- * Verify a Supabase JWT access_token and return the authenticated user's email.
- * Used in the token-exchange endpoint.
- */
-export async function verifySupabaseToken(accessToken: string): Promise<{ email: string; id: string } | null> {
-  if (!supabaseAdmin) {
-    console.warn('[SupabaseAdmin] Admin client not configured — cannot verify token.');
-    return null;
-  }
-
-  const { data, error } = await supabaseAdmin.auth.getUser(accessToken);
-
-  if (error || !data?.user) {
-    console.warn('[SupabaseAdmin] Token verification failed:', error?.message);
-    return null;
-  }
-
-  return {
-    id: data.user.id,
-    email: data.user.email!,
-  };
-}

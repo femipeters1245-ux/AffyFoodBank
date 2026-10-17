@@ -1,5 +1,7 @@
 // backend/src/controllers/auth.controller.ts
 import { Request, Response, NextFunction } from 'express';
+import jwt from 'jsonwebtoken';
+import { v4 as uuidv4 } from 'uuid';
 import {
   registerUser,
   loginUser,
@@ -11,63 +13,108 @@ import {
 } from '../services/auth.service';
 import { otpService } from '../services/otp.service';
 import { sendWelcomeEmail } from '../services/email.service';
-import { verifySupabaseToken, supabaseAdmin } from '../services/supabase-admin.service';
+import { extractTokenFromRequest, JwtPayload } from '../middleware/authenticate';
 import prisma from '../prisma/client';
-import { BadRequestError, ConflictError } from '../utils/errors';
-
-export const register = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const user = await registerUser(req.body);
-    res.status(201).json({ user });
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const login = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { token, refreshToken, user } = await loginUser(req.body);
-    res.json({ token, refreshToken, user });
-  } catch (err) {
-    next(err);
-  }
-};
+import { BadRequestError, ConflictError, UnauthorizedError } from '../utils/errors';
 
 /**
- * POST /auth/otp/send-signup-otp
- * Step 1: Validate registration details and dispatch 6-digit OTP via Resend
+ * Configure secure HttpOnly session cookies for web clients
  */
-export const sendSignupOtp = async (req: Request, res: Response, next: NextFunction) => {
+const setSessionCookies = (res: Response, token: string) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? ('none' as const) : ('lax' as const),
+    path: '/',
+    maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+  };
+
+  res.cookie('affy_session', token, cookieOptions);
+  res.cookie('token', token, cookieOptions);
+};
+
+const clearSessionCookies = (res: Response) => {
+  const isProd = process.env.NODE_ENV === 'production';
+  const cookieOptions = {
+    httpOnly: true,
+    secure: isProd,
+    sameSite: isProd ? ('none' as const) : ('lax' as const),
+    path: '/',
+  };
+
+  res.clearCookie('affy_session', cookieOptions);
+  res.clearCookie('token', cookieOptions);
+};
+
+let lastDbErr = 0;
+async function safeDbQuery<T>(fn: () => Promise<T>, timeoutMs = 1500): Promise<T | null> {
+  if (Date.now() - lastDbErr < 15000) return null;
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      lastDbErr = Date.now();
+      resolve(null);
+    }, timeoutMs);
+  });
   try {
-    const { email, password, firstName, lastName } = req.body;
+    const res = await Promise.race([fn(), timeoutPromise]);
+    return res as T;
+  } catch {
+    lastDbErr = Date.now();
+    return null;
+  } finally {
+    clearTimeout(timer!);
+  }
+}
+
+/**
+ * POST /api/auth/send-otp
+ * Primary unified endpoint to generate and send 6-digit OTP via Resend directly
+ */
+export const sendOtp = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { email, purpose, firstName, lastName, password } = req.body;
     if (!email) throw new BadRequestError('Email address is required');
-    if (!password || password.length < 8) {
-      throw new BadRequestError('Password must be at least 8 characters');
-    }
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if user already exists in database safely
-    let existing: any = null;
+    // Check if user already exists safely
+    let existingUser: any = null;
     try {
-      existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+      existingUser = await safeDbQuery(() =>
+        prisma.user.findUnique({ where: { email: normalizedEmail } })
+      );
     } catch (dbErr: any) {
-      console.warn('[sendSignupOtp] Database check note:', dbErr?.message);
+      console.warn('[sendOtp] User check note:', dbErr?.message);
     }
 
-    if (existing) {
+    // Determine target purpose: explicitly provided or auto-detected
+    const targetPurpose: 'SIGNUP' | 'LOGIN' =
+      purpose === 'SIGNUP' || purpose === 'LOGIN'
+        ? purpose
+        : existingUser
+        ? 'LOGIN'
+        : 'SIGNUP';
+
+    if (targetPurpose === 'SIGNUP' && existingUser && purpose === 'SIGNUP') {
       throw new ConflictError('An account with this email already exists. Please log in.');
+    }
+
+    if (targetPurpose === 'SIGNUP' && password && password.length < 8) {
+      throw new BadRequestError('Password must be at least 8 characters long');
     }
 
     const result = await otpService.generateAndSendOtp({
       email: normalizedEmail,
-      purpose: 'SIGNUP',
-      firstName: firstName?.trim() || undefined,
+      purpose: targetPurpose,
+      firstName: firstName?.trim() || existingUser?.firstName || undefined,
       metadata: {
         email: normalizedEmail,
-        password,
-        firstName: firstName?.trim() || undefined,
-        lastName: lastName?.trim() || undefined,
+        password: password || undefined,
+        firstName: firstName?.trim() || existingUser?.firstName || undefined,
+        lastName: lastName?.trim() || existingUser?.lastName || undefined,
+        userId: existingUser?.id,
       },
     });
 
@@ -78,245 +125,80 @@ export const sendSignupOtp = async (req: Request, res: Response, next: NextFunct
 };
 
 /**
- * POST /auth/otp/verify-signup-otp
- * Step 2: Verify OTP, create user account + wallet with desired password, issue JWT session token
+ * POST /api/auth/verify-otp
+ * Verify 6-digit OTP independently and establish session with HttpOnly cookie
  */
-export const verifySignupOtp = async (req: Request, res: Response, next: NextFunction) => {
+export const verifyOtp = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { email, otp, verificationTicket } = req.body;
-    if (!email || !otp) throw new BadRequestError('Email and 6-digit OTP code are required');
+    const { email, otp, purpose, verificationTicket, firstName, lastName, password } = req.body;
+    if (!email || !otp) throw new BadRequestError('Email and 6-digit verification code are required');
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Verify OTP and retrieve stored user metadata (which contains user's desired password!)
-    const metadata = otpService.verifyOtp({
+    // 1. Verify OTP using durable hashed storage
+    const metadata = await otpService.verifyOtp({
       email: normalizedEmail,
       candidateOtp: otp,
-      purpose: 'SIGNUP',
-      verificationTicket,
-    });
-    if (!metadata) throw new BadRequestError('Invalid or expired verification session. Please request a new code.');
-
-    const { password, firstName, lastName } = metadata;
-
-    // 1. Sync or create user in Supabase Auth (if configured) so user can also sign in via Supabase
-    if (supabaseAdmin) {
-      try {
-        await supabaseAdmin.auth.admin.createUser({
-          email: normalizedEmail,
-          password: password,
-          email_confirm: true,
-          user_metadata: {
-            first_name: firstName || '',
-            last_name: lastName || '',
-          },
-        });
-        console.log(`[verifySignupOtp] User synced in Supabase Auth: ${normalizedEmail}`);
-      } catch (supaErr: any) {
-        // If user already exists in Supabase, update their password and confirm them
-        try {
-          const { data: userList } = await supabaseAdmin.auth.admin.listUsers();
-          const existingSupa = userList?.users?.find(
-            (u) => u.email?.toLowerCase() === normalizedEmail
-          );
-          if (existingSupa) {
-            await supabaseAdmin.auth.admin.updateUserById(existingSupa.id, {
-              password: password,
-              email_confirm: true,
-              user_metadata: {
-                first_name: firstName || existingSupa.user_metadata?.first_name || '',
-                last_name: lastName || existingSupa.user_metadata?.last_name || '',
-              },
-            });
-            console.log(`[verifySignupOtp] Existing Supabase user password updated: ${normalizedEmail}`);
-          }
-        } catch (updateErr: any) {
-          console.warn('[verifySignupOtp] Supabase admin update note:', updateErr?.message);
-        }
-      }
-    }
-
-    // 2. Create user in database with profile & wallet (with safe fallback)
-    let fullUser: any = null;
-    try {
-      const createdUser = await registerUser({
-        email: normalizedEmail,
-        password,
-        firstName: firstName || undefined,
-        lastName: lastName || undefined,
-      });
-
-      fullUser = await prisma.user.findUnique({
-        where: { id: createdUser.id },
-        include: { profile: true, role: true },
-      });
-    } catch (dbErr: any) {
-      console.warn('[verifySignupOtp] Database write error, using resilient fallback:', dbErr?.message);
-      const isAdmin = normalizedEmail === 'affybrand@gmail.com' || normalizedEmail === 'admin@affyfoodbank.ng';
-      fullUser = {
-        id: `user-${Date.now()}`,
-        email: normalizedEmail,
-        firstName: firstName || normalizedEmail.split('@')[0],
-        lastName: lastName || '',
-        roleId: isAdmin ? 'admin-role' : 'customer-role',
-        role: { name: isAdmin ? 'Admin' : 'Customer' },
-        profile: { id: `prof-${Date.now()}` },
-        isActive: true,
-      };
-    }
-
-    const authResponse = await generateAuthResponseForUser(fullUser);
-
-    // Send welcome email asynchronously
-    sendWelcomeEmail({
-      to: normalizedEmail,
-      firstName: firstName || undefined,
-    }).catch((e) => console.warn('[Email] Welcome email note:', e.message));
-
-    res.status(201).json(authResponse);
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * POST /auth/otp/send-login-otp
- * Step 1: Check credentials and dispatch 6-digit OTP via Resend
- */
-export const sendLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) throw new BadRequestError('Email and password are required');
-
-    // Validate credentials
-    const user = await validateLoginCredentials({ email, password });
-
-    const result = await otpService.generateAndSendOtp({
-      email: user.email,
-      purpose: 'LOGIN',
-      firstName: user.firstName || undefined,
-      metadata: { userId: user.id },
-    });
-
-    res.json(result);
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * POST /auth/otp/verify-login-otp
- * Step 2: Verify OTP, issue JWT token and complete user login
- */
-export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { email, otp, verificationTicket } = req.body;
-    if (!email || !otp) throw new BadRequestError('Email and 6-digit OTP code are required');
-
-    const metadata = otpService.verifyOtp({
-      email,
-      candidateOtp: otp,
-      purpose: 'LOGIN',
+      purpose: purpose || 'ANY',
       verificationTicket,
     });
 
-    // Build a safe unique query — Prisma findUnique requires exactly one unique field
-    const whereClause = metadata?.userId
-      ? { id: metadata.userId }
-      : { email };
+    const userPassword = password || metadata?.password;
+    const userFirstName = firstName?.trim() || metadata?.firstName;
+    const userLastName = lastName?.trim() || metadata?.lastName;
 
-    const user = await prisma.user.findUnique({
-      where: whereClause,
-      include: { profile: true, role: true },
-    });
-
-    if (!user || !user.isActive) {
-      throw new BadRequestError('User account not found or deactivated.');
-    }
-
-    const authResponse = await generateAuthResponseForUser(user);
-    res.json(authResponse);
-  } catch (err) {
-    next(err);
-  }
-};
-
-export const logout = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    await logoutUser(req.user!.sub);
-    res.status(200).json({ message: 'Logged out successfully' });
-  } catch (err) {
-    next(err);
-  }
-};
-
-/**
- * POST /auth/supabase-exchange
- * Exchange a verified Supabase Auth access_token for a backend JWT.
- * Called after frontend successfully verifies Supabase OTP.
- * Automatically creates the user in our DB if they don't exist yet.
- */
-export const exchangeSupabaseToken = async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const { access_token, firstName, lastName, password } = req.body;
-    if (!access_token) throw new BadRequestError('Supabase access_token is required');
-
-    // 1. Verify the Supabase token server-side
-    const supabaseUser = await verifySupabaseToken(access_token);
-    if (!supabaseUser?.email) {
-      throw new BadRequestError('Invalid or expired Supabase session. Please sign in again.');
-    }
-
-    const email = supabaseUser.email.trim().toLowerCase();
-    const isAdmin = email === 'affybrand@gmail.com' || email === 'admin@affyfoodbank.ng';
-
-    // 2. Find existing user or create a new one (with safe fallback if DB is unreachable)
+    // 2. Locate or auto-create user in database
     let user: any = null;
     try {
-      user = await prisma.user.findUnique({
-        where: { email },
-        include: { profile: true, role: true },
-      });
+      user = await safeDbQuery(() =>
+        prisma.user.findUnique({
+          where: { email: normalizedEmail },
+          include: { profile: true, role: true },
+        })
+      );
 
-      if (user && password) {
+      // Update password if a new password was provided
+      if (user && userPassword) {
         try {
           const { hashPassword } = await import('../utils/password');
-          const passwordHash = await hashPassword(password);
+          const passwordHash = await hashPassword(userPassword);
           await prisma.user.update({
             where: { id: user.id },
             data: { passwordHash },
           });
         } catch (pwdErr: any) {
-          console.warn('[SupabaseExchange] Password update note:', pwdErr?.message);
+          console.warn('[verifyOtp] Password update note:', pwdErr?.message);
         }
       }
 
+      // Auto-register user + customer profile + wallet if user does not exist yet
       if (!user) {
-        // Auto-register: create user + profile + wallet
-        const customerRole = await prisma.role.findFirst({
+        const isAdmin = normalizedEmail === 'affybrand@gmail.com' || normalizedEmail === 'admin@affyfoodbank.ng';
+        const role = await prisma.role.findFirst({
           where: { name: isAdmin ? 'Admin' : 'Customer' },
         });
-        const { v4: uuidv4 } = await import('uuid');
-        const { hashPassword } = await import('../utils/password');
 
-        // Set desired password if provided, or secure random fallback
-        const randomPwd = `SupaOTP-${supabaseUser.id.slice(0, 8)}-${Date.now()}`;
-        const passwordHash = await hashPassword(password || randomPwd);
+        const { hashPassword } = await import('../utils/password');
+        const defaultPwd = userPassword || `Affy-${uuidv4().slice(0, 8)}-${Date.now()}`;
+        const passwordHash = await hashPassword(defaultPwd);
 
         user = await prisma.$transaction(async (tx) => {
           const newUser = await tx.user.create({
             data: {
               id: uuidv4(),
-              email,
+              email: normalizedEmail,
               passwordHash,
-              firstName: firstName?.trim() || null,
-              lastName: lastName?.trim() || null,
-              roleId: customerRole?.id ?? null,
+              firstName: userFirstName || normalizedEmail.split('@')[0],
+              lastName: userLastName || '',
+              roleId: role?.id ?? null,
             },
           });
 
           const profile = await tx.customerProfile.create({
-            data: { id: uuidv4(), userId: newUser.id },
+            data: {
+              id: uuidv4(),
+              userId: newUser.id,
+            },
           });
 
           await tx.wallet.create({
@@ -334,44 +216,189 @@ export const exchangeSupabaseToken = async (req: Request, res: Response, next: N
             where: { id: newUser.id },
             include: { profile: true, role: true },
           });
-        }) as any;
+        });
 
-        // Send welcome email asynchronously
-        sendWelcomeEmail({ to: email, firstName: firstName?.trim() || undefined })
-          .catch((e) => console.warn('[Email] Welcome email note:', e.message));
+        // Dispatch welcome email asynchronously
+        sendWelcomeEmail({
+          to: normalizedEmail,
+          firstName: userFirstName || undefined,
+        }).catch((e) => console.warn('[Email] Welcome email note:', e?.message));
 
-        console.log(`[SupabaseExchange] New user auto-registered: ${email}`);
+        console.log(`[verifyOtp] New user account and wallet registered: ${normalizedEmail}`);
       }
     } catch (dbErr: any) {
-      console.warn('[SupabaseExchange] Database query error (using resilient fallback):', dbErr?.message);
+      console.warn('[verifyOtp] Database access error, using resilient session fallback:', dbErr?.message);
     }
 
-    // Resilient fallback if DB was unreachable or user record is null
-    // WARNING: This issues a JWT with synthetic IDs that won't match real DB records.
-    // Wallet, savings, and order endpoints will fail until the DB is reachable.
+    // Resilient fallback for dev or offline DB
     if (!user) {
-      console.warn(`[SupabaseExchange] FALLBACK: Issuing JWT with synthetic IDs for ${email}. DB was unreachable.`);
+      const isAdmin = normalizedEmail === 'affybrand@gmail.com' || normalizedEmail === 'admin@affyfoodbank.ng';
+      const syntheticId = metadata?.userId || uuidv4();
       user = {
-        id: supabaseUser.id,
-        email,
-        firstName: firstName?.trim() || email.split('@')[0],
-        lastName: lastName?.trim() || '',
+        id: syntheticId,
+        email: normalizedEmail,
+        firstName: userFirstName || normalizedEmail.split('@')[0],
+        lastName: userLastName || '',
         roleId: isAdmin ? 'admin-role' : 'customer-role',
         role: { name: isAdmin ? 'Admin' : 'Customer' },
-        profile: { id: `prof-${supabaseUser.id}` },
+        profile: { id: `prof-${syntheticId}` },
         isActive: true,
       };
     }
 
     if (!user.isActive) {
-      throw new BadRequestError('Your account has been deactivated. Please contact support.');
+      throw new BadRequestError('User account has been deactivated. Please contact support.');
     }
 
-    // 3. Generate backend JWT
+    // 3. Issue JWT session token
     const authResponse = await generateAuthResponseForUser(user);
-    console.log(`[SupabaseExchange] JWT issued for: ${email}`);
 
-    res.json(authResponse);
+    // 4. Set HttpOnly session cookies
+    setSessionCookies(res, authResponse.token);
+
+    // 5. Return authentication payload
+    res.json({
+      ...authResponse,
+      session: {
+        userId: user.id,
+        email: user.email,
+        role: user.role?.name ?? (user.role as any) ?? 'Customer',
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * GET /api/auth/session
+ * Return current session state inspected from HttpOnly cookie or Bearer token
+ */
+export const getSession = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const token = extractTokenFromRequest(req);
+    if (!token) {
+      return res.json({ authenticated: false, user: null, session: null });
+    }
+
+    const secret = process.env.JWT_SECRET;
+    if (!secret) {
+      return res.json({ authenticated: false, user: null, session: null });
+    }
+
+    let payload: JwtPayload;
+    try {
+      payload = jwt.verify(token, secret) as JwtPayload;
+    } catch {
+      return res.json({ authenticated: false, user: null, session: null });
+    }
+
+    // Try to get fresh user profile from DB
+    let user: any = null;
+    try {
+      user = await safeDbQuery(() =>
+        prisma.user.findUnique({
+          where: { id: payload.sub },
+          include: { profile: true, role: true },
+        })
+      );
+    } catch {
+      // Ignore DB errors
+    }
+
+    const userData = user
+      ? {
+          id: user.id,
+          email: user.email,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          roleId: user.roleId,
+          role: user.role?.name ?? null,
+          profileId: user.profile?.id ?? null,
+        }
+      : {
+          id: payload.sub,
+          email: payload.email,
+          firstName: payload.email.split('@')[0],
+          lastName: '',
+          roleId: payload.roleId,
+          role: payload.role ?? 'Customer',
+          profileId: payload.profileId,
+        };
+
+    res.json({
+      authenticated: true,
+      user: userData,
+      session: {
+        userId: payload.sub,
+        email: payload.email,
+        role: payload.role ?? 'Customer',
+        exp: payload.exp,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+};
+
+/**
+ * POST /api/auth/logout
+ * Invalidate session and clear HttpOnly cookies
+ */
+export const logout = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    clearSessionCookies(res);
+
+    if (req.user?.sub) {
+      try {
+        await logoutUser(req.user.sub);
+      } catch {
+        // Ignore user logout token revocation errors
+      }
+    }
+
+    res.status(200).json({ success: true, message: 'Logged out successfully' });
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ─── Legacy / Compatibility Wrappers ──────────────────────────────────────────
+
+export const sendSignupOtp = async (req: Request, res: Response, next: NextFunction) => {
+  req.body.purpose = 'SIGNUP';
+  return sendOtp(req, res, next);
+};
+
+export const verifySignupOtp = async (req: Request, res: Response, next: NextFunction) => {
+  req.body.purpose = 'SIGNUP';
+  return verifyOtp(req, res, next);
+};
+
+export const sendLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  req.body.purpose = 'LOGIN';
+  return sendOtp(req, res, next);
+};
+
+export const verifyLoginOtp = async (req: Request, res: Response, next: NextFunction) => {
+  req.body.purpose = 'LOGIN';
+  return verifyOtp(req, res, next);
+};
+
+export const register = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const user = await registerUser(req.body);
+    res.status(201).json({ user });
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const login = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token, refreshToken, user } = await loginUser(req.body);
+    setSessionCookies(res, token);
+    res.json({ token, refreshToken, user });
   } catch (err) {
     next(err);
   }

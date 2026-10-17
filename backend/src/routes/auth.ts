@@ -1,25 +1,35 @@
+// backend/src/routes/auth.ts
 import { Router } from 'express';
 import {
-  register,
-  login,
+  sendOtp,
+  verifyOtp,
+  getSession,
   logout,
   sendSignupOtp,
   verifySignupOtp,
   sendLoginOtp,
   verifyLoginOtp,
+  register,
+  login,
   requestPasswordReset,
   resetPassword,
-  exchangeSupabaseToken,
 } from '../controllers/auth.controller';
-import { authenticate } from '../middleware/authenticate';
 
 const router = Router();
 
-// ─── Supabase OTP Token Exchange (Primary Auth Method) ─────────────────────────
-// Frontend uses Supabase Auth OTP, then exchanges the session token for a backend JWT
-router.post('/supabase-exchange', exchangeSupabaseToken);
+// ─── Resend Direct OTP Endpoints (Native Independent Auth Flow) ───────────────
+router.post('/send-otp', sendOtp);
+router.post('/verify-otp', verifyOtp);
+router.get('/session', getSession);
+router.post('/logout', logout);
 
-// ─── One-Time Password (OTP) Authentication (Legacy Resend Email) ──────────────
+// ─── Specific Purpose OTP Endpoints ───────────────────────────────────────────
+router.post('/send-signup-otp', sendSignupOtp);
+router.post('/verify-signup-otp', verifySignupOtp);
+router.post('/send-login-otp', sendLoginOtp);
+router.post('/verify-login-otp', verifyLoginOtp);
+
+// ─── Nested Legacy Routes (Backward Compatibility) ───────────────────────────
 router.post('/otp/send-signup-otp', sendSignupOtp);
 router.post('/otp/verify-signup-otp', verifySignupOtp);
 router.post('/otp/send-login-otp', sendLoginOtp);
@@ -30,8 +40,5 @@ router.post('/register', register);
 router.post('/login', login);
 router.post('/password-reset-request', requestPasswordReset);
 router.post('/password-reset', resetPassword);
-
-// Protected – logout (requires valid token)
-router.post('/logout', authenticate, logout);
 
 export default router;

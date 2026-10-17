@@ -122,3 +122,25 @@ CREATE POLICY "Admin can delete products"     ON products    FOR DELETE USING (t
 CREATE POLICY "Admin can insert inventories"  ON inventories FOR INSERT WITH CHECK (true);
 CREATE POLICY "Admin can update inventories"  ON inventories FOR UPDATE USING (true);
 CREATE POLICY "Admin can delete inventories"  ON inventories FOR DELETE USING (true);
+
+-- ─── OTP Verifications (Independent Resend Email Flow) ────────────────────────
+CREATE TABLE IF NOT EXISTS otp_verifications (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  email        VARCHAR(255) NOT NULL,
+  hashed_otp   VARCHAR(255) NOT NULL,
+  purpose      VARCHAR(50) NOT NULL DEFAULT 'LOGIN',
+  attempts     INTEGER NOT NULL DEFAULT 0,
+  max_attempts INTEGER NOT NULL DEFAULT 5,
+  expires_at   TIMESTAMPTZ NOT NULL,
+  resend_after TIMESTAMPTZ NOT NULL,
+  consumed_at  TIMESTAMPTZ,
+  metadata     JSONB,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_otp_verifications_email ON otp_verifications(email);
+CREATE INDEX IF NOT EXISTS idx_otp_verifications_expires_at ON otp_verifications(expires_at);
+
+-- RLS: Secured server-side only; never expose OTP records to public or anonymous clients
+ALTER TABLE otp_verifications ENABLE ROW LEVEL SECURITY;
