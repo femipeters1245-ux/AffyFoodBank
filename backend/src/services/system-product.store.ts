@@ -2,7 +2,9 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prisma/client';
+import { supabaseAdmin } from './supabase-admin.service';
 
 export interface SystemProduct {
   id: string;
@@ -242,7 +244,8 @@ const INITIAL_CATALOG: SystemProduct[] = [
   },
 ];
 
-// Persistent file paths for system-managed inventory
+const isUuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 const dataDir = path.resolve(process.cwd(), '.data');
 const primaryFilePath = path.join(dataDir, 'system_products.json');
 const tempFilePath = path.join(os.tmpdir(), 'affy_system_products.json');
@@ -250,6 +253,7 @@ const tempFilePath = path.join(os.tmpdir(), 'affy_system_products.json');
 class SystemProductStore {
   private products: Map<string, SystemProduct> = new Map();
   private initialized = false;
+  private lastSupabaseSync = 0;
 
   constructor() {
     this.init();
@@ -258,7 +262,7 @@ class SystemProductStore {
   private init() {
     if (this.initialized) return;
 
-    // 1. Populate initial catalogue
+    // 1. Baseline catalogue
     for (const item of INITIAL_CATALOG) {
       this.products.set(item.id, { ...item });
     }
@@ -268,8 +272,8 @@ class SystemProductStore {
 
     this.initialized = true;
 
-    // 3. Sync from DB if available (non-blocking)
-    this.syncFromDbBackground();
+    // 3. Sync from Supabase in background
+    this.fetchFromSupabase().catch(() => {});
   }
 
   private loadFromDisk() {
@@ -287,9 +291,7 @@ class SystemProductStore {
             return;
           }
         }
-      } catch {
-        // Continue to next path
-      }
+      } catch {}
     }
   }
 
@@ -297,35 +299,97 @@ class SystemProductStore {
     const list = Array.from(this.products.values());
     const data = JSON.stringify(list, null, 2);
 
-    // Save to primary data directory
     try {
       if (!fs.existsSync(dataDir)) {
         fs.mkdirSync(dataDir, { recursive: true });
       }
       fs.writeFileSync(primaryFilePath, data, 'utf-8');
-    } catch {
-      // Ignored if readonly
-    }
+    } catch {}
 
-    // Save to /tmp for serverless persistence
     try {
       fs.writeFileSync(tempFilePath, data, 'utf-8');
-    } catch {
-      // Ignored
+    } catch {}
+  }
+
+  /**
+   * Primary source of truth: Sync products, categories, units, and inventory directly from Supabase
+   */
+  public async fetchFromSupabase(): Promise<boolean> {
+    if (!supabaseAdmin) {
+      // Fallback to Prisma if configured
+      return this.syncFromPrismaFallback();
+    }
+
+    try {
+      const [prodsRes, catsRes, unitsRes, invsRes] = await Promise.all([
+        supabaseAdmin.from('Product').select('*').order('name'),
+        supabaseAdmin.from('Category').select('*'),
+        supabaseAdmin.from('Unit').select('*'),
+        supabaseAdmin.from('Inventory').select('*'),
+      ]);
+
+      if (prodsRes.error || !prodsRes.data || prodsRes.data.length === 0) {
+        return this.syncFromPrismaFallback();
+      }
+
+      const cats = new Map((catsRes.data || []).map((c: any) => [c.id, c]));
+      const units = new Map((unitsRes.data || []).map((u: any) => [u.id, u]));
+      const invs = new Map((invsRes.data || []).map((i: any) => [i.productId, i]));
+
+      const freshMap = new Map<string, SystemProduct>();
+
+      for (const p of prodsRes.data) {
+        const inv = invs.get(p.id);
+        const cat = p.categoryId ? cats.get(p.categoryId) : null;
+        const unit = p.unitId ? units.get(p.unitId) : null;
+        const mapped: SystemProduct = {
+          id: p.id,
+          name: p.name,
+          description: p.description,
+          sku: p.sku || `SKU-${p.id.slice(0, 6)}`,
+          priceCents: Number(p.priceCents ?? 0),
+          currency: p.currency || 'NGN',
+          imageUrl: p.imageUrl,
+          unitId: p.unitId,
+          categoryId: p.categoryId,
+          isActive: p.isActive !== false,
+          createdAt: typeof p.createdAt === 'string' ? p.createdAt : new Date(p.createdAt).toISOString(),
+          updatedAt: typeof p.updatedAt === 'string' ? p.updatedAt : new Date(p.updatedAt).toISOString(),
+          unit: unit ? { id: unit.id, name: unit.name, symbol: unit.symbol } : null,
+          category: cat ? { id: cat.id, name: cat.name, description: cat.description } : null,
+          inventory: inv
+            ? [{
+                id: inv.id || `inv-${p.id}`,
+                productId: p.id,
+                quantity: Number(inv.quantity ?? 0),
+                lowStockThreshold: Number(inv.lowStockThreshold ?? 10),
+              }]
+            : [{ id: `inv-${p.id}`, productId: p.id, quantity: 50, lowStockThreshold: 10 }],
+        };
+
+        freshMap.set(p.id, mapped);
+      }
+
+      this.products = freshMap;
+      this.lastSupabaseSync = Date.now();
+      this.saveToDisk();
+      return true;
+    } catch (err: any) {
+      console.warn('[SystemProductStore] Supabase sync warning:', err.message);
+      return this.syncFromPrismaFallback();
     }
   }
 
-  private async syncFromDbBackground() {
+  private async syncFromPrismaFallback(): Promise<boolean> {
     try {
       const dbProducts = await prisma.product.findMany({
-        where: { isActive: true },
         include: { unit: true, category: true, inventory: true },
         take: 100,
       });
 
       if (dbProducts && dbProducts.length > 0) {
         for (const p of dbProducts) {
-          const invQty = p.inventory?.[0]?.quantity ?? 50;
+          const invQty = p.inventory?.quantity ? Number(p.inventory.quantity) : 50;
           const mapped: SystemProduct = {
             id: p.id,
             name: p.name,
@@ -343,31 +407,65 @@ class SystemProductStore {
             category: p.category ? { id: p.category.id, name: p.category.name, description: p.category.description } : null,
             inventory: [{ id: `inv-${p.id}`, productId: p.id, quantity: invQty, lowStockThreshold: 10 }],
           };
-
-          // If we don't already have an edited version with this ID, or to align DB ids
-          const existing = this.products.get(p.id) || Array.from(this.products.values()).find(x => x.name.toLowerCase() === p.name.toLowerCase());
-          if (existing) {
-            this.products.set(p.id, {
-              ...mapped,
-              priceCents: existing.priceCents || mapped.priceCents,
-              name: existing.name || mapped.name,
-              imageUrl: existing.imageUrl || mapped.imageUrl,
-              inventory: existing.inventory || mapped.inventory,
-            });
-          } else {
-            this.products.set(p.id, mapped);
-          }
+          this.products.set(p.id, mapped);
         }
+        this.saveToDisk();
+        return true;
       }
-    } catch {
-      // DB sync failure is completely fine — store operates self-sufficiently
+    } catch {}
+    return false;
+  }
+
+  private async resolveCategory(categoryId?: string | null, categoryName?: string | null): Promise<string | null> {
+    if (categoryId && isUuidRegex.test(categoryId)) return categoryId;
+    if (!categoryName) return null;
+
+    if (supabaseAdmin) {
+      const { data: existing } = await supabaseAdmin.from('Category').select('id').ilike('name', categoryName.trim()).maybeSingle();
+      if (existing) return existing.id;
+
+      const newId = uuidv4();
+      const { data: created } = await supabaseAdmin.from('Category').insert({
+        id: newId,
+        name: categoryName.trim(),
+        description: null,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).select('id').single();
+
+      if (created) return created.id;
     }
+    return null;
+  }
+
+  private async resolveUnit(unitId?: string | null, unitName?: string | null): Promise<string | null> {
+    if (unitId && isUuidRegex.test(unitId)) return unitId;
+    if (!unitName) return null;
+
+    if (supabaseAdmin) {
+      const { data: existing } = await supabaseAdmin.from('Unit').select('id').ilike('name', unitName.trim()).maybeSingle();
+      if (existing) return existing.id;
+
+      const newId = uuidv4();
+      const { data: created } = await supabaseAdmin.from('Unit').insert({
+        id: newId,
+        name: unitName.trim(),
+        symbol: unitName.trim().toLowerCase(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }).select('id').single();
+
+      if (created) return created.id;
+    }
+    return null;
   }
 
   /**
    * List products with search, pagination, and category filtering.
+   * Pulls fresh data from Supabase.
    */
-  public list(params: {
+  public async list(params: {
     page?: number;
     limit?: number;
     search?: string;
@@ -375,6 +473,12 @@ class SystemProductStore {
     includeInactive?: boolean;
   } = {}) {
     const { page = 1, limit = 50, search = '', categoryId, includeInactive = false } = params;
+
+    // Refresh from Supabase if cache is cold or older than 10 seconds
+    if (Date.now() - this.lastSupabaseSync > 10000 || this.products.size === 0) {
+      await this.fetchFromSupabase();
+    }
+
     let all = Array.from(this.products.values());
 
     if (!includeInactive) {
@@ -405,19 +509,23 @@ class SystemProductStore {
   /**
    * Get single product by ID or name
    */
-  public getById(id: string): SystemProduct | null {
+  public async getById(id: string): Promise<SystemProduct | null> {
     if (this.products.has(id)) return this.products.get(id)!;
-    const found = Array.from(this.products.values()).find(
-      (p) => p.id === id || p.name.toLowerCase() === id.toLowerCase()
+    const byName = Array.from(this.products.values()).find(
+      (p) => p.name.toLowerCase() === id.toLowerCase()
     );
-    return found || null;
+    if (byName) return byName;
+
+    await this.fetchFromSupabase();
+    return this.products.get(id) || Array.from(this.products.values()).find(
+      (p) => p.name.toLowerCase() === id.toLowerCase()
+    ) || null;
   }
 
   /**
-   * Push and persist product edit directly in the system.
-   * Completely self-sufficient — does not rely on Supabase.
+   * Update an existing product directly in Supabase and return the persisted record
    */
-  public update(id: string, updates: Partial<{
+  public async update(id: string, updates: Partial<{
     name: string;
     description: string | null;
     priceCents: number;
@@ -428,92 +536,122 @@ class SystemProductStore {
     categoryId: string | null;
     categoryName: string | null;
     isActive: boolean;
-  }>): SystemProduct {
-    let existing = this.getById(id);
+  }>): Promise<SystemProduct> {
+    // 1. Locate existing product in memory or Supabase
+    let targetId = id;
+    let existing = this.products.get(id);
 
-    if (!existing) {
-      // If updating by name or create on-the-fly
-      if (updates.name) {
-        existing = Array.from(this.products.values()).find(
-          (p) => p.name.toLowerCase() === updates.name!.toLowerCase()
-        ) || null;
+    if (!existing && !isUuidRegex.test(id)) {
+      existing = Array.from(this.products.values()).find(
+        (p) => p.id === id || (updates.name && p.name.toLowerCase() === updates.name.toLowerCase()) || p.name.toLowerCase() === id.toLowerCase()
+      );
+      if (existing) {
+        targetId = existing.id;
       }
     }
 
-    if (!existing) {
-      // Create new system product
-      const newId = id && id.length > 5 ? id : `prod-${Date.now()}`;
-      existing = {
-        id: newId,
+    // Check directly in Supabase if not found by UUID
+    if (supabaseAdmin && (!existing || !isUuidRegex.test(targetId))) {
+      if (isUuidRegex.test(id)) {
+        const { data: dbProd } = await supabaseAdmin.from('Product').select('*').eq('id', id).maybeSingle();
+        if (dbProd) targetId = dbProd.id;
+      } else {
+        const searchName = updates.name || existing?.name || id;
+        const { data: dbProd } = await supabaseAdmin.from('Product').select('*').ilike('name', searchName).maybeSingle();
+        if (dbProd) targetId = dbProd.id;
+      }
+    }
+
+    // If still not a UUID or not found in Supabase, create new product instead
+    if (!isUuidRegex.test(targetId)) {
+      return this.create({
         name: updates.name || 'Food Item',
-        description: updates.description || null,
-        sku: `SKU-${Date.now().toString().slice(-6)}`,
+        description: updates.description || undefined,
         priceCents: updates.priceCents ?? 100000,
-        currency: 'NGN',
-        imageUrl: updates.imageUrl || 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-        unitId: updates.unitId || 'unit-bag',
-        categoryId: updates.categoryId || 'cat-grains',
-        isActive: updates.isActive !== undefined ? updates.isActive : true,
-        createdAt: new Date().toISOString(),
+        stock: updates.stock,
+        imageUrl: updates.imageUrl || undefined,
+        unitId: updates.unitId || undefined,
+        unitName: updates.unitName || undefined,
+        categoryId: updates.categoryId || undefined,
+        categoryName: updates.categoryName || undefined,
+      });
+    }
+
+    const resolvedCategoryId = await this.resolveCategory(updates.categoryId, updates.categoryName);
+    const resolvedUnitId = await this.resolveUnit(updates.unitId, updates.unitName);
+
+    // 2. Persist to Supabase "Product"
+    if (supabaseAdmin) {
+      const productPayload: Record<string, any> = {
         updatedAt: new Date().toISOString(),
-        unit: { id: updates.unitId || 'unit-bag', name: updates.unitName || '50kg Bag', symbol: 'bag' },
-        category: { id: updates.categoryId || 'cat-grains', name: updates.categoryName || 'Grains & Flours', description: null },
-        inventory: [{ id: `inv-${newId}`, productId: newId, quantity: updates.stock ?? 50, lowStockThreshold: 10 }],
       };
-      this.products.set(newId, existing);
-    } else {
-      // Apply updates to existing product
-      if (updates.name !== undefined) existing.name = updates.name;
-      if (updates.description !== undefined) existing.description = updates.description;
-      if (updates.priceCents !== undefined) existing.priceCents = Number(updates.priceCents);
-      if (updates.imageUrl !== undefined) existing.imageUrl = updates.imageUrl;
-      if (updates.isActive !== undefined) existing.isActive = Boolean(updates.isActive);
-      if (updates.unitId !== undefined) existing.unitId = updates.unitId;
-      if (updates.categoryId !== undefined) existing.categoryId = updates.categoryId;
+      if (updates.name !== undefined) productPayload.name = updates.name;
+      if (updates.description !== undefined) productPayload.description = updates.description;
+      if (updates.priceCents !== undefined) productPayload.priceCents = Number(updates.priceCents);
+      if (updates.imageUrl !== undefined) productPayload.imageUrl = updates.imageUrl;
+      if (updates.isActive !== undefined) productPayload.isActive = Boolean(updates.isActive);
+      if (resolvedCategoryId) productPayload.categoryId = resolvedCategoryId;
+      if (resolvedUnitId) productPayload.unitId = resolvedUnitId;
 
-      if (updates.unitName && existing.unit) {
-        existing.unit.name = updates.unitName;
-      } else if (updates.unitName) {
-        existing.unit = { id: existing.unitId || 'unit-custom', name: updates.unitName, symbol: 'unit' };
+      const { error: prodErr } = await supabaseAdmin.from('Product').update(productPayload).eq('id', targetId);
+      if (prodErr) {
+        console.error('[SystemProductStore] Supabase product update error:', prodErr.message);
       }
 
-      if (updates.categoryName && existing.category) {
-        existing.category.name = updates.categoryName;
-      } else if (updates.categoryName) {
-        existing.category = { id: existing.categoryId || 'cat-custom', name: updates.categoryName, description: null };
-      }
-
+      // 3. Persist to Supabase "Inventory"
       if (updates.stock !== undefined) {
         const stockQty = Number(updates.stock);
-        if (existing.inventory && existing.inventory.length > 0) {
-          existing.inventory[0].quantity = stockQty;
+        const { data: existingInv } = await supabaseAdmin.from('Inventory').select('id').eq('productId', targetId).maybeSingle();
+        if (existingInv) {
+          await supabaseAdmin.from('Inventory').update({
+            quantity: stockQty,
+            updatedAt: new Date().toISOString(),
+          }).eq('id', existingInv.id);
         } else {
-          existing.inventory = [{
-            id: `inv-${existing.id}`,
-            productId: existing.id,
+          await supabaseAdmin.from('Inventory').insert({
+            id: uuidv4(),
+            productId: targetId,
             quantity: stockQty,
             lowStockThreshold: 10,
-          }];
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
         }
       }
-
-      existing.updatedAt = new Date().toISOString();
-      this.products.set(existing.id, existing);
     }
 
-    // Persist immediately to disk
+    // 4. Update Prisma in background (best effort)
+    this.persistToPrismaAsync(targetId, updates);
+
+    // 5. Refresh local in-memory representation
+    await this.fetchFromSupabase();
+
+    const result = this.products.get(targetId);
+    if (result) return result;
+
+    // Fallback constructed return
+    const fallback: SystemProduct = {
+      ...(existing || INITIAL_CATALOG[0]),
+      id: targetId,
+      name: updates.name ?? existing?.name ?? 'Food Item',
+      description: updates.description ?? existing?.description ?? null,
+      priceCents: updates.priceCents !== undefined ? Number(updates.priceCents) : existing?.priceCents ?? 0,
+      imageUrl: updates.imageUrl ?? existing?.imageUrl ?? null,
+      isActive: updates.isActive !== undefined ? Boolean(updates.isActive) : existing?.isActive ?? true,
+      updatedAt: new Date().toISOString(),
+      inventory: updates.stock !== undefined
+        ? [{ id: `inv-${targetId}`, productId: targetId, quantity: Number(updates.stock), lowStockThreshold: 10 }]
+        : existing?.inventory ?? null,
+    };
+    this.products.set(targetId, fallback);
     this.saveToDisk();
-
-    // Background push to database (best-effort, non-blocking)
-    this.persistToDbAsync(existing, updates.stock);
-
-    return existing;
+    return fallback;
   }
 
   /**
-   * Create new product
+   * Create new product directly in Supabase
    */
-  public create(data: {
+  public async create(data: {
     name: string;
     description?: string;
     priceCents: number;
@@ -523,58 +661,96 @@ class SystemProductStore {
     unitName?: string;
     categoryId?: string;
     categoryName?: string;
-  }): SystemProduct {
-    const id = `prod-${Date.now()}`;
-    const product: SystemProduct = {
+  }): Promise<SystemProduct> {
+    const id = uuidv4();
+    const resolvedCategoryId = await this.resolveCategory(data.categoryId, data.categoryName);
+    const resolvedUnitId = await this.resolveUnit(data.unitId, data.unitName);
+    const stockQty = data.stock !== undefined ? Number(data.stock) : 50;
+
+    if (supabaseAdmin) {
+      await supabaseAdmin.from('Product').insert({
+        id,
+        name: data.name,
+        description: data.description || null,
+        sku: `SKU-${Date.now().toString().slice(-6)}`,
+        priceCents: Number(data.priceCents),
+        currency: 'NGN',
+        imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
+        unitId: resolvedUnitId,
+        categoryId: resolvedCategoryId,
+        isActive: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+
+      await supabaseAdmin.from('Inventory').insert({
+        id: uuidv4(),
+        productId: id,
+        quantity: stockQty,
+        lowStockThreshold: 10,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+    }
+
+    await this.fetchFromSupabase();
+    const created = this.products.get(id);
+    if (created) return created;
+
+    const fallback: SystemProduct = {
       id,
       name: data.name,
       description: data.description || null,
       sku: `SKU-${Date.now().toString().slice(-6)}`,
       priceCents: Number(data.priceCents),
       currency: 'NGN',
-      imageUrl: data.imageUrl || 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
-      unitId: data.unitId || 'unit-bag',
-      categoryId: data.categoryId || 'cat-grains',
+      imageUrl: data.imageUrl || null,
+      unitId: resolvedUnitId,
+      categoryId: resolvedCategoryId,
       isActive: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
-      unit: { id: data.unitId || 'unit-bag', name: data.unitName || '50kg Bag', symbol: 'bag' },
-      category: { id: data.categoryId || 'cat-grains', name: data.categoryName || 'Grains & Flours', description: null },
-      inventory: [{ id: `inv-${id}`, productId: id, quantity: data.stock ?? 50, lowStockThreshold: 10 }],
+      inventory: [{ id: `inv-${id}`, productId: id, quantity: stockQty, lowStockThreshold: 10 }],
     };
-
-    this.products.set(id, product);
+    this.products.set(id, fallback);
     this.saveToDisk();
-    this.persistToDbAsync(product, data.stock);
-    return product;
+    return fallback;
   }
 
   /**
    * Delete or deactivate product
    */
-  public delete(id: string): boolean {
-    const p = this.getById(id);
-    if (!p) return false;
+  public async delete(id: string): Promise<boolean> {
+    let targetId = id;
+    const existing = this.products.get(id);
+    if (!existing && !isUuidRegex.test(id)) {
+      const found = Array.from(this.products.values()).find(p => p.name.toLowerCase() === id.toLowerCase());
+      if (found) targetId = found.id;
+    }
 
-    p.isActive = false;
-    p.updatedAt = new Date().toISOString();
-    this.products.set(p.id, p);
-    this.saveToDisk();
+    if (supabaseAdmin && isUuidRegex.test(targetId)) {
+      await supabaseAdmin.from('Product').update({ isActive: false, updatedAt: new Date().toISOString() }).eq('id', targetId);
+    }
 
-    // Best effort DB deactivation
     prisma.product.updateMany({
-      where: { id: p.id },
+      where: { id: targetId },
       data: { isActive: false },
     }).catch(() => {});
 
+    if (this.products.has(targetId)) {
+      const p = this.products.get(targetId)!;
+      p.isActive = false;
+      this.products.set(targetId, p);
+      this.saveToDisk();
+    }
     return true;
   }
 
   /**
    * Quick restock
    */
-  public restock(id: string, amount: number): SystemProduct | null {
-    const p = this.getById(id);
+  public async restock(id: string, amount: number): Promise<SystemProduct | null> {
+    const p = await this.getById(id);
     if (!p) return null;
 
     const current = p.inventory?.[0]?.quantity ?? 0;
@@ -583,39 +759,27 @@ class SystemProductStore {
     return this.update(p.id, { stock: newQty });
   }
 
-  private async persistToDbAsync(product: SystemProduct, stock?: number) {
+  private async persistToPrismaAsync(productId: string, updates: any) {
+    if (!isUuidRegex.test(productId)) return;
     try {
-      const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(product.id);
-      let dbRecord = isUuid ? await prisma.product.findUnique({ where: { id: product.id } }) : null;
-
-      if (!dbRecord) {
-        dbRecord = await prisma.product.findFirst({
-          where: { name: { equals: product.name, mode: 'insensitive' } },
+      await prisma.product.update({
+        where: { id: productId },
+        data: {
+          name: updates.name,
+          description: updates.description,
+          priceCents: updates.priceCents !== undefined ? BigInt(updates.priceCents) : undefined,
+          imageUrl: updates.imageUrl,
+          isActive: updates.isActive,
+        },
+      });
+      if (updates.stock !== undefined) {
+        await prisma.inventory.upsert({
+          where: { productId },
+          update: { quantity: Number(updates.stock) },
+          create: { productId, quantity: Number(updates.stock), lowStockThreshold: 10 },
         });
       }
-
-      if (dbRecord) {
-        await prisma.product.update({
-          where: { id: dbRecord.id },
-          data: {
-            name: product.name,
-            description: product.description,
-            priceCents: BigInt(product.priceCents),
-            imageUrl: product.imageUrl,
-            isActive: product.isActive,
-          },
-        });
-        if (stock !== undefined) {
-          await prisma.inventory.upsert({
-            where: { productId: dbRecord.id },
-            update: { quantity: Number(stock) },
-            create: { productId: dbRecord.id, quantity: Number(stock), lowStockThreshold: 10 },
-          });
-        }
-      }
-    } catch {
-      // Non-blocking
-    }
+    } catch {}
   }
 }
 

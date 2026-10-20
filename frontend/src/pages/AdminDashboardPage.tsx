@@ -540,30 +540,13 @@ export const AdminDashboardPage: React.FC = () => {
     setTimeout(() => setToast(null), 3500);
   };
 
-  // 1 & 6. Handle Editing Price, Stock, Image & Product Details → pushes directly to system engine
+  // Handle Editing Price, Stock, Image & Product Details → persists to Supabase
   const handleSaveProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingProduct) return;
     setSavingProduct(true);
 
     const edited = { ...editingProduct };
-
-    // Update local table immediately for instant UI responsiveness
-    setProducts((prev) =>
-      prev.map((p) =>
-        p.id === edited.id
-          ? {
-              ...p,
-              name: edited.name,
-              description: edited.description,
-              priceCents: Number(edited.priceCents),
-              imageUrl: edited.imageUrl,
-              stock: Number(edited.stock),
-              status: Number(edited.stock) > 20 ? 'In Stock' : Number(edited.stock) > 0 ? 'Low Stock' : 'Out of Stock',
-            }
-          : p
-      )
-    );
 
     try {
       await supabaseProducts.update(edited.id, {
@@ -575,6 +558,8 @@ export const AdminDashboardPage: React.FC = () => {
         category_id: edited.category_id,
         unit_id: edited.unit_id,
       });
+      // Reload admin table from Supabase so we see the confirmed persisted values
+      await loadProducts();
       setEditingProduct(null);
       showToast(`✅ Updated "${edited.name}" — live on marketplace!`);
     } catch (err: any) {
@@ -584,21 +569,11 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
-  // Quick Restock (+20 or +50) → pushes directly to system engine
+  // Quick Restock (+20 or +50) → persists to Supabase
   const handleQuickRestock = async (id: string, amount: number) => {
-    setProducts((prev) =>
-      prev.map((p) => {
-        if (p.id !== id) return p;
-        const newStock = p.stock + amount;
-        return {
-          ...p,
-          stock: newStock,
-          status: newStock > 20 ? 'In Stock' : 'Low Stock',
-        };
-      })
-    );
     try {
       await supabaseProducts.restock(id, amount);
+      await loadProducts();
       showToast(`📦 +${amount} units added — inventory synced to marketplace!`);
     } catch (err: any) {
       showToast(`❌ Restock failed: ${err.message ?? 'Unknown error'}`);

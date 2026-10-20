@@ -348,13 +348,15 @@ function normalizeProductFromDb(p: any): SupabaseProduct {
 }
 
 export const supabaseProducts = {
-  /** List all active products with unit, category, and inventory directly from system store */
+  /** List all active products — always fetches fresh from Supabase via backend */
   async list(): Promise<SupabaseProduct[]> {
     try {
       const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
         const normalized = items.map(normalizeProductFromDb).filter((p: SupabaseProduct) => p.is_active);
+        // Replace (not merge) the localStorage cache with the fresh server data
+        try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
         return normalized;
       }
@@ -365,13 +367,15 @@ export const supabaseProducts = {
     return getLocalFallbackProducts().filter((p) => p.is_active);
   },
 
-  /** Get all products (including inactive) for admin inventory control */
+  /** Get all products (including inactive) for admin inventory control — always fetches fresh */
   async listAll(): Promise<SupabaseProduct[]> {
     try {
       const res = await apiClient.get<any>('/admin/products');
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
         const normalized = items.map(normalizeProductFromDb);
+        // Replace (not merge) the localStorage cache with fresh data from Supabase
+        try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
         return normalized;
       }
@@ -382,6 +386,7 @@ export const supabaseProducts = {
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
         const normalized = items.map(normalizeProductFromDb);
+        try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
         return normalized;
       }
@@ -470,68 +475,27 @@ export const supabaseProducts = {
       stock: number;
     }>
   ): Promise<SupabaseProduct> {
-    try {
-      const res = await apiClient.put(`/admin/products/${id}`, {
-        name: payload.name,
-        description: payload.description,
-        priceCents: payload.price_cents,
-        imageUrl: payload.image_url,
-        stock: payload.stock,
-        categoryId: payload.category_id,
-        unitId: payload.unit_id,
-        isActive: payload.is_active,
-      });
-
-      if (res.data) {
-        const updated = normalizeProductFromDb(res.data);
-        const list = getLocalFallbackProducts();
-        const idx = list.findIndex((p) => p.id === id || p.name === payload.name);
-        if (idx !== -1) {
-          list[idx] = updated;
-          saveLocalFallbackProducts(list);
-        } else {
-          list.unshift(updated);
-          saveLocalFallbackProducts(list);
-        }
-        window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: updated }));
-        return updated;
-      }
-    } catch (err: any) {
-      console.warn('[System Inventory Engine] Update product API warning:', err.message);
-    }
-
-    // Update local storage fallback
-    const list = getLocalFallbackProducts();
-    const idx = list.findIndex((p) => p.id === id);
-    if (idx !== -1) {
-      list[idx] = {
-        ...list[idx],
-        ...payload,
-        price_cents: payload.price_cents ?? list[idx].price_cents,
-        image_url: payload.image_url ?? list[idx].image_url,
-        inventory:
-          payload.stock !== undefined
-            ? [{ ...list[idx].inventory?.[0]!, quantity: payload.stock, product_id: id, id: 'inv', low_stock_threshold: 10, created_at: '', updated_at: '' }]
-            : list[idx].inventory,
-      };
-      saveLocalFallbackProducts(list);
-      window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: list[idx] }));
-      return list[idx];
-    }
-
-    // If item was not found locally, create it with updates
-    const createdItem = normalizeProductFromDb({
-      id,
-      name: payload.name || 'Food Item',
+    const res = await apiClient.put(`/admin/products/${id}`, {
+      name: payload.name,
       description: payload.description,
       priceCents: payload.price_cents,
       imageUrl: payload.image_url,
-      stock: payload.stock ?? 50,
+      stock: payload.stock,
+      categoryId: payload.category_id,
+      unitId: payload.unit_id,
+      isActive: payload.is_active,
     });
-    list.unshift(createdItem);
-    saveLocalFallbackProducts(list);
-    window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: createdItem }));
-    return createdItem;
+
+    if (res.data) {
+      const updated = normalizeProductFromDb(res.data);
+      // Invalidate the localStorage cache so the next list() re-fetches fresh data
+      try { localStorage.removeItem('affy_fallback_products'); } catch {}
+      // Notify the Marketplace to reload its product list
+      window.dispatchEvent(new CustomEvent('affy_inventory_updated', { detail: updated }));
+      return updated;
+    }
+
+    throw new Error('Update returned no data from server');
   },
 
   /** Increment stock */

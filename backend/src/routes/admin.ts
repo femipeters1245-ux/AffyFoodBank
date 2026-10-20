@@ -9,19 +9,18 @@ import { systemProductStore } from '../services/system-product.store';
 
 const router = Router();
 
-// ─── Foodstuff Inventory & Pricing Control (Self-pushing System Store) ──────────
-// Bypasses Supabase and allows immediate self-pushing of inventory and prices
-router.get('/products', (_req: Request, res: Response) => {
-  const result = systemProductStore.list({ includeInactive: true, limit: 100 });
+// ─── Foodstuff Inventory & Pricing Control (Supabase-backed product store) ─────
+router.get('/products', async (_req: Request, res: Response) => {
+  const result = await systemProductStore.list({ includeInactive: true, limit: 100 });
   res.json(result.items);
 });
 
-router.post('/products', (req: Request, res: Response) => {
+router.post('/products', async (req: Request, res: Response) => {
   const { name, description, priceCents, stock, imageUrl, unitId, unitName, categoryId, categoryName } = req.body;
   if (!name || priceCents === undefined) {
     return res.status(400).json({ error: 'Name and price are required' });
   }
-  const created = systemProductStore.create({
+  const created = await systemProductStore.create({
     name,
     description,
     priceCents: Number(priceCents),
@@ -35,28 +34,28 @@ router.post('/products', (req: Request, res: Response) => {
   res.status(201).json(created);
 });
 
-router.put('/products/:id', (req: Request, res: Response) => {
+router.put('/products/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const updated = systemProductStore.update(id, req.body);
+  const updated = await systemProductStore.update(id, req.body);
   res.json(updated);
 });
 
-router.patch('/products/:id', (req: Request, res: Response) => {
+router.patch('/products/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const updated = systemProductStore.update(id, req.body);
+  const updated = await systemProductStore.update(id, req.body);
   res.json(updated);
 });
 
-router.delete('/products/:id', (req: Request, res: Response) => {
+router.delete('/products/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
-  const ok = systemProductStore.delete(id);
+  const ok = await systemProductStore.delete(id);
   res.json({ message: 'Product deleted successfully', id, success: ok });
 });
 
-router.post('/products/:id/restock', (req: Request, res: Response) => {
+router.post('/products/:id/restock', async (req: Request, res: Response) => {
   const { id } = req.params;
   const amount = Number(req.body.amount || 20);
-  const updated = systemProductStore.restock(id, amount);
+  const updated = await systemProductStore.restock(id, amount);
   res.json(updated);
 });
 

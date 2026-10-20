@@ -18,7 +18,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
       return res.status(400).json({ error: 'Name and priceCents are required' });
     }
 
-    const created = systemProductStore.create({
+    const created = await systemProductStore.create({
       name,
       description,
       priceCents: Number(priceCents),
@@ -39,7 +39,7 @@ export async function createProduct(req: Request, res: Response, next: NextFunct
 export async function getProducts(req: Request, res: Response, next: NextFunction) {
   try {
     const params = listQuerySchema.parse(req.query);
-    const result = systemProductStore.list(params);
+    const result = await systemProductStore.list(params);
     res.json(result);
   } catch (err) {
     next(err);
@@ -49,7 +49,7 @@ export async function getProducts(req: Request, res: Response, next: NextFunctio
 export async function getProductById(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const product = systemProductStore.getById(id);
+    const product = await systemProductStore.getById(id);
     if (!product || !product.isActive) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -75,7 +75,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
       isActive,
     } = req.body;
 
-    const updated = systemProductStore.update(id, {
+    const updated = await systemProductStore.update(id, {
       name,
       description,
       priceCents: priceCents !== undefined ? Number(priceCents) : undefined,
@@ -97,7 +97,7 @@ export async function updateProduct(req: Request, res: Response, next: NextFunct
 export async function deleteProduct(req: Request, res: Response, next: NextFunction) {
   try {
     const { id } = req.params;
-    const success = systemProductStore.delete(id);
+    const success = await systemProductStore.delete(id);
     if (!success) {
       return res.status(404).json({ error: 'Product not found' });
     }
@@ -111,7 +111,7 @@ export async function restockProduct(req: Request, res: Response, next: NextFunc
   try {
     const { id } = req.params;
     const amount = Number(req.body.amount || 20);
-    const updated = systemProductStore.restock(id, amount);
+    const updated = await systemProductStore.restock(id, amount);
     if (!updated) {
       return res.status(404).json({ error: 'Product not found' });
     }
