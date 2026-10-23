@@ -596,6 +596,7 @@ export const AdminDashboardPage: React.FC = () => {
       });
       // Reload admin table from Supabase so we see the confirmed persisted values
       await loadProducts();
+      await loadPackages(); // Refresh bundle totals to reflect new prices
       setEditingProduct(null);
       showToast(`✅ Updated "${edited.name}" — live on marketplace!`);
     } catch (err: any) {
@@ -666,6 +667,7 @@ export const AdminDashboardPage: React.FC = () => {
     try {
       await supabaseProducts.delete(id);
       await loadProducts();
+      await loadPackages(); // Refresh bundle totals after product removal
       showToast(`🗑️ "${name}" deleted from Supabase and marketplace.`);
     } catch (err: any) {
       showToast(`❌ Delete failed: ${err.message ?? 'Unknown error'}`);
@@ -1225,6 +1227,11 @@ export const AdminDashboardPage: React.FC = () => {
                       </div>
                       <h3 className="text-xl font-extrabold text-slate-900 mt-1.5">{pkg.name}</h3>
                       <p className="text-xs text-slate-500 mt-0.5">{pkg.description}</p>
+                      {pkg.unavailableItems && pkg.unavailableItems.length > 0 && (
+                        <span className="mt-1.5 inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-50 text-orange-700 border border-orange-200">
+                          🚫 {pkg.unavailableItems.length} item(s) out of stock
+                        </span>
+                      )}
                     </div>
 
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
@@ -1318,6 +1325,10 @@ export const AdminDashboardPage: React.FC = () => {
                                   {isMissing ? (
                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
                                       ❌ Missing from Inventory
+                                    </span>
+                                  ) : (it as any).unavailableFromInventory ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                                      🚫 Out of Stock
                                     </span>
                                   ) : hasDiscrepancy ? (
                                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title={`Inventory ₦${it.inventoryPriceCents ? it.inventoryPriceCents/100 : 180} vs Allocated ₦${it.allocatedPriceCents ? it.allocatedPriceCents/100 : 300}`}>

@@ -12,9 +12,17 @@ export interface PackageItemDetail {
   displayName?: string;
   quantity: number;
   unit?: { id: string; name: string; symbol: string | null };
-  product?: { id: string; name: string; priceCents: number; sku?: string };
+  product?: {
+    id: string;
+    name: string;
+    priceCents: number;
+    imageUrl?: string | null;
+    isActive?: boolean;
+    sku?: string;
+  };
   amountCents: number;
   missingFromInventory?: boolean;
+  unavailableFromInventory?: boolean;
   priceDiscrepancy?: boolean;
   inventoryPriceCents?: number;
   allocatedPriceCents?: number;
@@ -33,6 +41,7 @@ export interface PackageRecord {
   bestFor: string;
   items: PackageItemDetail[];
   missingItems?: string[];
+  unavailableItems?: string[];
   priceDiscrepancies?: Array<{
     item: string;
     inventoryPriceNaira: number;
@@ -185,7 +194,7 @@ class PackageService {
       const [pkgRes, piRes, prodRes, unitRes] = await Promise.all([
         supabaseAdmin.from('Package').select('*'),
         supabaseAdmin.from('PackageItem').select('*'),
-        supabaseAdmin.from('Product').select('id, name, priceCents, sku'),
+        supabaseAdmin.from('Product').select('id, name, priceCents, imageUrl, isActive, sku'),
         supabaseAdmin.from('Unit').select('id, name, symbol'),
       ]);
 
@@ -201,57 +210,108 @@ class PackageService {
         const specKey = (p.name || '').trim().toLowerCase();
         const spec = BUNDLE_SPECS[specKey] || {};
 
+        // Build live DB items — always use current inventory priceCents × qty
         const linkedDbItems = rawItems
           .filter((it: any) => it.packageId === p.id)
           .map((it: any) => {
             const prod = productMap.get(it.productId);
             const unit = unitMap.get(it.unitId);
+            const qty = Number(it.quantity || 1);
+            const livePriceCents = prod ? Number(prod.priceCents) : 0;
             return {
               id: it.id,
               name: prod?.name || 'Food item',
-              quantity: Number(it.quantity || 1),
+              quantity: qty,
               unit: unit ? { id: unit.id, name: unit.name, symbol: unit.symbol } : undefined,
-              product: prod ? { id: prod.id, name: prod.name, priceCents: Number(prod.priceCents) } : undefined,
-              amountCents: prod ? Number(prod.priceCents) * Number(it.quantity) : 0,
+              product: prod
+                ? {
+                    id: prod.id,
+                    name: prod.name,
+                    priceCents: livePriceCents,
+                    imageUrl: prod.imageUrl ?? null,
+                    isActive: prod.isActive ?? true,
+                  }
+                : undefined,
+              // Always compute from live price
+              amountCents: livePriceCents * qty,
+              // Flag if the linked product is inactive/deleted
+              unavailableFromInventory: prod ? (prod.isActive === false) : true,
             };
           });
 
-        // Use spec items as the comprehensive item definition (which includes items pending inventory import)
-        const finalItems: PackageItemDetail[] = spec.items
-          ? spec.items.map((specIt) => {
-              const matchedDb = linkedDbItems.find(
-                (d) => d.name.toLowerCase() === specIt.name.toLowerCase()
-              );
+        let finalItems: PackageItemDetail[];
+
+        if (spec.items && linkedDbItems.length > 0) {
+          // For named bundles: merge spec metadata with live DB prices.
+          // If an item exists in DB (has product.id), use its live amountCents.
+          // If it only exists in spec (missingFromInventory), keep spec amount.
+          finalItems = spec.items.map((specIt) => {
+            const matchedDb = linkedDbItems.find(
+              (d) => d.name.toLowerCase() === specIt.name.toLowerCase()
+            );
+            if (matchedDb) {
+              // Use live price from DB
               return {
                 name: specIt.name,
                 displayName: specIt.displayName || specIt.name,
-                quantity: specIt.quantity,
-                amountCents: specIt.amountCents,
-                unit: matchedDb?.unit,
-                product: matchedDb?.product,
-                missingFromInventory: specIt.missingFromInventory,
-                priceDiscrepancy: specIt.priceDiscrepancy,
-                inventoryPriceCents: specIt.inventoryPriceCents,
-                allocatedPriceCents: specIt.allocatedPriceCents,
+                quantity: matchedDb.quantity,
+                // live computed total
+                amountCents: matchedDb.amountCents,
+                unit: matchedDb.unit,
+                product: matchedDb.product,
+                unavailableFromInventory: matchedDb.unavailableFromInventory,
               };
-            })
-          : linkedDbItems;
+            }
+            // Item not linked to DB — keep spec definition (missing/discrepancy)
+            return {
+              name: specIt.name,
+              displayName: specIt.displayName || specIt.name,
+              quantity: specIt.quantity,
+              amountCents: specIt.amountCents,
+              missingFromInventory: specIt.missingFromInventory,
+              priceDiscrepancy: specIt.priceDiscrepancy,
+              inventoryPriceCents: specIt.inventoryPriceCents,
+              allocatedPriceCents: specIt.allocatedPriceCents,
+            };
+          });
+        } else if (linkedDbItems.length > 0) {
+          // Custom bundle (no spec) — all items from DB with live prices
+          finalItems = linkedDbItems;
+        } else if (spec.items) {
+          // Named bundle not yet saved to PackageItems — use spec as reference
+          finalItems = spec.items.map((specIt) => ({
+            name: specIt.name,
+            displayName: specIt.displayName || specIt.name,
+            quantity: specIt.quantity,
+            amountCents: specIt.amountCents,
+            missingFromInventory: specIt.missingFromInventory,
+            priceDiscrepancy: specIt.priceDiscrepancy,
+            inventoryPriceCents: specIt.inventoryPriceCents,
+            allocatedPriceCents: specIt.allocatedPriceCents,
+          }));
+        } else {
+          finalItems = [];
+        }
 
-        const calculatedPriceCents = spec.priceCents ?? finalItems.reduce((acc, it) => acc + it.amountCents, 0);
+        // Always recalculate total from live item amounts
+        const calculatedPriceCents = finalItems.reduce((acc, it) => acc + (it.missingFromInventory ? 0 : it.amountCents), 0);
+        // missingItems: items that are in spec but have no DB linkage and are flagged
+        const hasMissingItems = finalItems.some((it) => it.missingFromInventory);
+        const hasUnavailableItems = finalItems.some((it) => it.unavailableFromInventory);
 
         return {
           id: p.id,
           name: p.name,
           description: p.description || '',
-          badge: spec.badge || 'Curated Bundle',
+          badge: spec.badge || p.badge || 'Curated Bundle',
           imageUrl: p.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
-          status: p.status || 'ACTIVE',
+          status: (hasMissingItems || hasUnavailableItems) && p.status === 'ACTIVE' ? 'DRAFT' : (p.status || 'ACTIVE'),
           priceCents: calculatedPriceCents,
           originalPriceCents: spec.originalPriceCents || Math.round(calculatedPriceCents * 1.15),
           savingsPercentage: spec.savingsPercentage || 14,
-          bestFor: spec.bestFor || 'Families and bulk buyers',
+          bestFor: spec.bestFor || p.bestFor || 'Families and bulk buyers',
           items: finalItems,
-          missingItems: spec.missingItems || [],
+          missingItems: finalItems.filter((it) => it.missingFromInventory).map((it) => it.name),
           priceDiscrepancies: spec.priceDiscrepancies || [],
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
@@ -458,6 +518,19 @@ class PackageService {
 
     await this.syncFromSupabase();
     return this.getById(packageId);
+  }
+
+  /**
+   * Triggered after any product is updated or deactivated.
+   * Re-syncs all package records from live Supabase data so bundle totals,
+   * names, images, and availability flags are immediately up to date.
+   * Does not modify the saved quantities in PackageItems.
+   */
+  public async recalculateBundlesContaining(_productId?: string): Promise<void> {
+    // Force a fresh sync — syncFromSupabase already computes live totals from Product.priceCents
+    this.lastSync = 0;
+    await this.syncFromSupabase();
+    console.log('[PackageService] Bundle prices/availability recalculated from live inventory.');
   }
 }
 

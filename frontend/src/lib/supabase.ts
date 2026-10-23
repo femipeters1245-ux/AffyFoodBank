@@ -833,9 +833,10 @@ export interface SupabasePackageItem {
   displayName?: string;
   quantity: number;
   unit?: { id: string; name: string; symbol: string | null };
-  product?: { id: string; name: string; priceCents: number; sku?: string };
+  product?: { id: string; name: string; priceCents: number; sku?: string; imageUrl?: string | null; isActive?: boolean };
   amountCents: number;
   missingFromInventory?: boolean;
+  unavailableFromInventory?: boolean;
   priceDiscrepancy?: boolean;
   inventoryPriceCents?: number;
   allocatedPriceCents?: number;
@@ -854,6 +855,7 @@ export interface SupabasePackage {
   bestFor: string;
   items: SupabasePackageItem[];
   missingItems?: string[];
+  unavailableItems?: string[];
   priceDiscrepancies?: Array<{
     item: string;
     inventoryPriceNaira: number;

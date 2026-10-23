@@ -13,6 +13,7 @@ export interface DisplayBundleItem {
   amountCents?: number;
   unitName?: string;
   missingFromInventory?: boolean;
+  unavailableFromInventory?: boolean;
   priceDiscrepancy?: boolean;
   inventoryPriceNaira?: number;
   allocatedPriceNaira?: number;
@@ -29,6 +30,7 @@ export interface DisplayPackage {
   status: 'ACTIVE' | 'DRAFT' | 'INACTIVE';
   items: DisplayBundleItem[];
   missingItems?: string[];
+  unavailableItems?: string[];
   priceDiscrepancies?: Array<{
     item: string;
     inventoryPriceNaira: number;
@@ -182,11 +184,13 @@ export const PackagesPage: React.FC = () => {
             amountNaira: it.amountNaira || (it.amountCents ? it.amountCents / 100 : undefined),
             unitName: it.unit?.name || it.unitName || 'Pack',
             missingFromInventory: it.missingFromInventory,
+            unavailableFromInventory: it.unavailableFromInventory,
             priceDiscrepancy: it.priceDiscrepancy,
             inventoryPriceNaira: it.inventoryPriceNaira || (it.inventoryPriceCents ? it.inventoryPriceCents / 100 : undefined),
             allocatedPriceNaira: it.allocatedPriceNaira || (it.allocatedPriceCents ? it.allocatedPriceCents / 100 : undefined),
           })),
           missingItems: pkg.missingItems || [],
+          unavailableItems: pkg.unavailableItems || [],
           priceDiscrepancies: pkg.priceDiscrepancies || [],
           bestFor: pkg.bestFor || 'Families and bulk buyers',
         }));
@@ -293,7 +297,7 @@ export const PackagesPage: React.FC = () => {
                 </div>
 
                 {/* Validation Warnings (Part 3) */}
-                {isDraft && (
+                {(isDraft || (pkg.unavailableItems && pkg.unavailableItems.length > 0)) && (
                   <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 space-y-1">
                     <div className="font-bold flex items-center space-x-1">
                       <span>⚠️ Validation Notice:</span>
@@ -301,6 +305,11 @@ export const PackagesPage: React.FC = () => {
                     {pkg.missingItems && pkg.missingItems.length > 0 && (
                       <p className="text-[11px] text-amber-800">
                         • Items pending inventory stock: <strong>{pkg.missingItems.join(', ')}</strong> (bundle amounts preserved).
+                      </p>
+                    )}
+                    {pkg.unavailableItems && pkg.unavailableItems.length > 0 && (
+                      <p className="text-[11px] text-orange-800">
+                        • Items currently unavailable (out of stock): <strong>{pkg.unavailableItems.join(', ')}</strong>. This bundle cannot be ordered until restocked.
                       </p>
                     )}
                     {pkg.priceDiscrepancies && pkg.priceDiscrepancies.length > 0 && (
@@ -337,6 +346,8 @@ export const PackagesPage: React.FC = () => {
                           <div className="flex items-center space-x-2.5 min-w-0">
                             {isMissing ? (
                               <span className="text-amber-500 font-bold" title="Pending inventory linkage">⚠️</span>
+                            ) : item.unavailableFromInventory ? (
+                              <span className="text-orange-500 font-bold" title="Out of stock — unavailable">🚫</span>
                             ) : hasDiscrepancy ? (
                               <span className="text-amber-500 font-bold" title="Price discrepancy pending confirmation">ℹ️</span>
                             ) : (
@@ -352,6 +363,11 @@ export const PackagesPage: React.FC = () => {
                               {isMissing && (
                                 <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold">
                                   Pending Stock
+                                </span>
+                              )}
+                              {item.unavailableFromInventory && (
+                                <span className="ml-1.5 text-[10px] text-orange-700 bg-orange-100 px-1.5 py-0.2 rounded font-semibold">
+                                  Out of Stock
                                 </span>
                               )}
                               {hasDiscrepancy && (
@@ -410,13 +426,17 @@ export const PackagesPage: React.FC = () => {
                   </Link>
                   <button
                     onClick={() => handleOrder(pkg)}
+                    disabled={!!(pkg.unavailableItems && pkg.unavailableItems.length > 0)}
+                    title={pkg.unavailableItems && pkg.unavailableItems.length > 0 ? `Cannot order: ${pkg.unavailableItems.join(', ')} out of stock` : undefined}
                     className={`w-1/2 sm:w-auto px-5 py-3 rounded-xl font-bold text-xs shadow-sm hover:shadow transition-all flex items-center justify-center space-x-1.5 ${
-                      isDraft
+                      pkg.unavailableItems && pkg.unavailableItems.length > 0
+                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                        : isDraft
                         ? 'bg-amber-600 hover:bg-amber-700 text-white'
                         : 'bg-brand-600 hover:bg-brand-700 text-white'
                     }`}
                   >
-                    <span>{isDraft ? 'Order Bundle (Draft)' : 'Order Bundle'}</span>
+                    <span>{pkg.unavailableItems && pkg.unavailableItems.length > 0 ? '🚫 Unavailable' : isDraft ? 'Order Bundle (Draft)' : 'Order Bundle'}</span>
                   </button>
                 </div>
               </div>

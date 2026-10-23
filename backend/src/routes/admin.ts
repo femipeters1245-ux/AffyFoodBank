@@ -78,18 +78,21 @@ router.post('/products', async (req: Request, res: Response) => {
 router.put('/products/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const updated = await systemProductStore.update(id, req.body);
+  packageService.recalculateBundlesContaining(id).catch(() => {});
   res.json(updated);
 });
 
 router.patch('/products/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const updated = await systemProductStore.update(id, req.body);
+  packageService.recalculateBundlesContaining(id).catch(() => {});
   res.json(updated);
 });
 
 router.delete('/products/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   const ok = await systemProductStore.delete(id);
+  packageService.recalculateBundlesContaining(id).catch(() => {});
   res.json({ message: 'Product deleted successfully', id, success: ok });
 });
 
