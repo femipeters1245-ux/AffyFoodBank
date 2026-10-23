@@ -164,11 +164,23 @@ export const productsApi = {
 
 export const packagesApi = {
   list: async () => {
-    const res = await apiClient.get<Package[]>('/packages');
+    const res = await apiClient.get<any>('/packages');
     return res.data;
   },
   getById: async (id: string) => {
-    const res = await apiClient.get<Package>(`/packages/${id}`);
+    const res = await apiClient.get<any>(`/packages/${id}`);
+    return res.data;
+  },
+  create: async (data: any) => {
+    const res = await apiClient.post<any>('/packages', data);
+    return res.data;
+  },
+  update: async (id: string, data: any) => {
+    const res = await apiClient.put<any>(`/packages/${id}`, data);
+    return res.data;
+  },
+  delete: async (id: string) => {
+    const res = await apiClient.delete<any>(`/packages/${id}`);
     return res.data;
   },
 };
@@ -355,6 +367,22 @@ export const adminApi = {
   },
   updateDeliveryFee: async (data: any) => {
     const res = await apiClient.post('/admin/delivery-fee', data);
+    return res.data;
+  },
+  getPackages: async () => {
+    const res = await apiClient.get('/admin/packages');
+    return res.data;
+  },
+  updatePackage: async (id: string, data: any) => {
+    const res = await apiClient.put(`/admin/packages/${id}`, data);
+    return res.data;
+  },
+  createPackage: async (data: any) => {
+    const res = await apiClient.post('/admin/packages', data);
+    return res.data;
+  },
+  deactivatePackage: async (id: string) => {
+    const res = await apiClient.delete(`/admin/packages/${id}`);
     return res.data;
   },
 };

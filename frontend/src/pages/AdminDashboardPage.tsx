@@ -8,9 +8,11 @@ import {
   supabaseProducts,
   supabaseCategories,
   supabaseUnits,
+  supabasePackages,
   SupabaseProduct,
   SupabaseCategory,
   SupabaseUnit,
+  SupabasePackage,
 } from '../lib/supabase';
 
 export interface AdminProduct {
@@ -372,7 +374,7 @@ const INITIAL_TRANSACTIONS: TransactionRecord[] = [
 
 export const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<'inventory' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>('inventory');
+  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>('inventory');
 
   // ─── Products state — sourced exclusively from Supabase ──────────────────────
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -380,6 +382,12 @@ export const AdminDashboardPage: React.FC = () => {
   const [productsError, setProductsError] = useState<string | null>(null);
   const [categories, setCategories] = useState<SupabaseCategory[]>([]);
   const [units, setUnits] = useState<SupabaseUnit[]>([]);
+
+  // ─── Food Bundles & Packages state — sourced from Supabase ───────────────────
+  const [packages, setPackages] = useState<SupabasePackage[]>([]);
+  const [packagesLoading, setPackagesLoading] = useState(false);
+  const [editingPackage, setEditingPackage] = useState<SupabasePackage | null>(null);
+  const [savingPackage, setSavingPackage] = useState(false);
 
   const [customers, setCustomers] = useState<CustomerKYC[]>(INITIAL_CUSTOMERS);
   const [orders, setOrders] = useState<AdminOrder[]>(INITIAL_ORDERS);
@@ -409,15 +417,35 @@ export const AdminDashboardPage: React.FC = () => {
     }
   }, []);
 
+  const loadPackages = useCallback(async () => {
+    try {
+      setPackagesLoading(true);
+      const pkgs = await supabasePackages.listAll();
+      setPackages(pkgs);
+    } catch (err: any) {
+      console.error('[Admin] Failed to load packages:', err);
+    } finally {
+      setPackagesLoading(false);
+    }
+  }, []);
+
   useEffect(() => {
     loadProducts();
+    loadPackages();
 
     const handleInventoryChange = () => {
       loadProducts();
     };
+    const handlePackagesChange = () => {
+      loadPackages();
+    };
     window.addEventListener('affy_inventory_updated', handleInventoryChange);
-    return () => window.removeEventListener('affy_inventory_updated', handleInventoryChange);
-  }, [loadProducts]);
+    window.addEventListener('affy_packages_updated', handlePackagesChange);
+    return () => {
+      window.removeEventListener('affy_inventory_updated', handleInventoryChange);
+      window.removeEventListener('affy_packages_updated', handlePackagesChange);
+    };
+  }, [loadProducts, loadPackages]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
@@ -638,6 +666,49 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // ─── Food Bundle Handlers (Supabase-backed Package Management) ────────────────
+  const handleTogglePackageStatus = async (pkg: SupabasePackage) => {
+    const newStatus = pkg.status === 'ACTIVE' ? 'DRAFT' : 'ACTIVE';
+    if (newStatus === 'ACTIVE' && pkg.missingItems && pkg.missingItems.length > 0) {
+      const confirm = window.confirm(
+        `⚠️ Validation Notice (Part 3):\n\n"${pkg.name}" contains items not yet registered in Food Inventory (${pkg.missingItems.join(', ')}).\n\nDo you want to proceed and publish this bundle to the public page?`
+      );
+      if (!confirm) return;
+    }
+
+    try {
+      await supabasePackages.update(pkg.id, { status: newStatus });
+      await loadPackages();
+      showToast(`✅ "${pkg.name}" status changed to ${newStatus === 'ACTIVE' ? 'Published' : 'Draft'}!`);
+    } catch (err: any) {
+      showToast(`❌ Status update failed: ${err.message ?? 'Unknown error'}`);
+    }
+  };
+
+  const handleSavePackage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingPackage) return;
+    setSavingPackage(true);
+
+    try {
+      await supabasePackages.update(editingPackage.id, {
+        name: editingPackage.name,
+        description: editingPackage.description,
+        badge: editingPackage.badge,
+        status: editingPackage.status,
+        imageUrl: editingPackage.imageUrl,
+        priceCents: Number(editingPackage.priceCents),
+      });
+      await loadPackages();
+      setEditingPackage(null);
+      showToast(`✅ Bundle "${editingPackage.name}" saved live to Supabase! Synchronized to public page.`);
+    } catch (err: any) {
+      showToast(`❌ Package update failed: ${err.message ?? 'Unknown error'}`);
+    } finally {
+      setSavingPackage(false);
+    }
+  };
+
   // 3. KYC Approval & Tier Upgrades
   const handleUpdateKYC = (customerId: string, newStatus: CustomerKYC['kycStatus']) => {
     setCustomers((prev) =>
@@ -745,6 +816,18 @@ export const AdminDashboardPage: React.FC = () => {
         >
           <span>📦 Inventory & Food Pictures</span>
           <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{products.length}</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab('bundles')}
+          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+            activeTab === 'bundles'
+              ? 'bg-brand-700 text-white shadow-sm'
+              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+          }`}
+        >
+          <span>🍱 Food Bundles & Packages</span>
+          <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{packages.length}</span>
         </button>
 
         <button
@@ -990,7 +1073,217 @@ export const AdminDashboardPage: React.FC = () => {
       )}
 
       {/* =========================================================================
-          TAB 2: CUSTOMER DATABASE FOR KYC SAKE (Req 3)
+          TAB 2: FOOD BUNDLES & PRE-CURATED PACKAGES MANAGEMENT (PART 2, 3, 4)
+      ========================================================================= */}
+      {activeTab === 'bundles' && (
+        <div className="space-y-6">
+          {/* Quick Metrics */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-xs text-slate-500 font-semibold">Total Curated Bundles</span>
+              <div className="text-xl font-black text-slate-900 mt-1">{packages.length}</div>
+            </div>
+            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-xs text-emerald-600 font-semibold">Published (Active)</span>
+              <div className="text-xl font-black text-emerald-700 mt-1">
+                {packages.filter((p) => p.status === 'ACTIVE').length}
+              </div>
+            </div>
+            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-xs text-amber-600 font-semibold">Draft (Pending Validation)</span>
+              <div className="text-xl font-black text-amber-700 mt-1">
+                {packages.filter((p) => p.status === 'DRAFT').length}
+              </div>
+            </div>
+            <div className="p-4 bg-white rounded-2xl border border-slate-200 shadow-2xs">
+              <span className="text-xs text-purple-600 font-semibold">Database Engine</span>
+              <div className="text-xs font-black text-purple-700 mt-2">Supabase Package Tables</div>
+            </div>
+          </div>
+
+          {/* Validation & Discrepancies Notice Banner (Part 3) */}
+          <div className="bg-amber-50 border border-amber-300 rounded-3xl p-6 shadow-sm space-y-3">
+            <div className="flex items-center space-x-2 text-amber-900 font-extrabold text-sm">
+              <span className="text-base">⚠️</span>
+              <span>Validation Alerts & Discrepancy Monitoring (Operational Safeguards)</span>
+            </div>
+            <p className="text-xs text-amber-800 leading-relaxed">
+              Per system validation rules, bundles with missing inventory links or price variances are safely retained as <strong>DRAFT</strong> to protect exact requested customer package totals (₦20,070 and ₦50,500) until officially resolved.
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-white/80 rounded-2xl border border-amber-200">
+                <span className="font-bold text-amber-900 block mb-1">🔍 Price Discrepancy Flagged:</span>
+                <p className="text-slate-700 text-[11px] leading-relaxed">
+                  <strong>Milo Ordinary</strong> is registered at <strong>₦180</strong> in Food Inventory, while the <strong>Affy Family & Kids Package</strong> allocates <strong>₦300</strong> per unit (₦3,000 for 10 units). This discrepancy is flagged for administrative review and neither price has been silently modified.
+                </p>
+              </div>
+              <div className="p-3 bg-white/80 rounded-2xl border border-amber-200">
+                <span className="font-bold text-amber-900 block mb-1">📦 Missing Inventory Products:</span>
+                <ul className="text-slate-700 text-[11px] space-y-0.5 list-disc list-inside">
+                  <li><strong>Sardines</strong>: 2 units in Solo Living Package (allocated ₦2,000)</li>
+                  <li><strong>Golden Morn</strong>: 10 units in Family & Kids Package (allocated ₦2,500)</li>
+                  <li><strong>Dano Milk</strong>: 10 units in Family & Kids Package (allocated ₦1,300)</li>
+                </ul>
+              </div>
+            </div>
+          </div>
+
+          {/* Bundles Grid */}
+          <div className="grid grid-cols-1 gap-6">
+            {packages.map((pkg) => {
+              const isDraft = pkg.status === 'DRAFT';
+              return (
+                <div
+                  key={pkg.id}
+                  className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden"
+                >
+                  <div className="p-6 border-b border-slate-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50/50">
+                    <div>
+                      <div className="flex items-center space-x-2">
+                        <span className="text-xs font-bold px-3 py-1 bg-brand-50 border border-brand-200 text-brand-700 rounded-full">
+                          {pkg.badge}
+                        </span>
+                        <span
+                          className={`text-xs font-bold px-3 py-1 rounded-full border flex items-center space-x-1 ${
+                            isDraft
+                              ? 'bg-amber-50 text-amber-800 border-amber-200'
+                              : 'bg-emerald-50 text-emerald-800 border-emerald-200'
+                          }`}
+                        >
+                          <span>{isDraft ? '⏳ Draft (Pending Validation)' : '✓ Published (Active)'}</span>
+                        </span>
+                      </div>
+                      <h3 className="text-xl font-extrabold text-slate-900 mt-1.5">{pkg.name}</h3>
+                      <p className="text-xs text-slate-500 mt-0.5">{pkg.description}</p>
+                    </div>
+
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                      <div className="text-right sm:mr-2">
+                        <div className="text-xs text-slate-400 font-semibold">Bundle Selling Price</div>
+                        <div className="text-2xl font-black text-slate-900">{formatNaira(pkg.priceCents)}</div>
+                      </div>
+
+                      <div className="flex items-center space-x-2">
+                        <button
+                          type="button"
+                          onClick={() => handleTogglePackageStatus(pkg)}
+                          className={`px-3.5 py-2 text-xs font-bold rounded-xl transition-colors ${
+                            isDraft
+                              ? 'bg-emerald-600 hover:bg-emerald-700 text-white shadow-2xs'
+                              : 'bg-amber-100 hover:bg-amber-200 text-amber-900'
+                          }`}
+                        >
+                          {isDraft ? 'Publish Bundle' : 'Revert to Draft'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingPackage(pkg)}
+                          className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors"
+                        >
+                          Edit Details
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Items Table */}
+                  <div className="p-6">
+                    <div className="flex justify-between items-center mb-3">
+                      <h4 className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                        Constituent Inventory Items Breakdown ({pkg.items?.length || 0} items)
+                      </h4>
+                      <span className="text-[11px] text-slate-400">
+                        Target Audience: <strong className="text-slate-700">{pkg.bestFor}</strong>
+                      </span>
+                    </div>
+
+                    <div className="overflow-x-auto border border-slate-200 rounded-2xl">
+                      <table className="w-full text-left text-xs">
+                        <thead className="bg-slate-50 text-slate-600 uppercase font-bold text-[10px] border-b border-slate-200">
+                          <tr>
+                            <th className="px-4 py-3">Item Name</th>
+                            <th className="px-4 py-3 text-center">Quantity</th>
+                            <th className="px-4 py-3 text-right">Bundle Amount</th>
+                            <th className="px-4 py-3">Linked Inventory Product</th>
+                            <th className="px-4 py-3 text-right">Inventory Unit Price</th>
+                            <th className="px-4 py-3 text-center">Validation Status</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {(pkg.items || []).map((it, idx) => {
+                            const isMissing = it.missingFromInventory;
+                            const hasDiscrepancy = it.priceDiscrepancy;
+                            const invProduct = products.find(
+                              (p) => p.name.trim().toLowerCase() === it.name.trim().toLowerCase()
+                            );
+
+                            return (
+                              <tr key={idx} className="hover:bg-slate-50/70 transition-colors">
+                                <td className="px-4 py-3 font-bold text-slate-900">
+                                  {it.displayName || it.name}
+                                </td>
+                                <td className="px-4 py-3 text-center font-semibold text-slate-700">
+                                  {it.quantity} {it.unit?.name || (it as any).unitName || 'Units'}
+                                </td>
+                                <td className="px-4 py-3 text-right font-black text-slate-900">
+                                  {it.amountCents ? formatNaira(it.amountCents) : (it as any).amountNaira ? formatNaira((it as any).amountNaira * 100) : ''}
+                                </td>
+                                <td className="px-4 py-3">
+                                  {invProduct ? (
+                                    <span className="text-slate-800 font-semibold">{invProduct.name}</span>
+                                  ) : isMissing ? (
+                                    <span className="text-rose-600 font-medium italic">⚠️ Product not in inventory</span>
+                                  ) : (
+                                    <span className="text-slate-400">Unlinked</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-right font-semibold">
+                                  {invProduct ? (
+                                    formatNaira(invProduct.priceCents)
+                                  ) : (
+                                    <span className="text-slate-400">—</span>
+                                  )}
+                                </td>
+                                <td className="px-4 py-3 text-center">
+                                  {isMissing ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                                      ❌ Missing from Inventory
+                                    </span>
+                                  ) : hasDiscrepancy ? (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200" title={`Inventory ₦${it.inventoryPriceCents ? it.inventoryPriceCents/100 : 180} vs Allocated ₦${it.allocatedPriceCents ? it.allocatedPriceCents/100 : 300}`}>
+                                      ⚠️ Price Discrepancy (₦180 vs ₦300)
+                                    </span>
+                                  ) : (
+                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                      ✅ Linked & Verified
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot className="bg-slate-100 font-black border-t border-slate-200 text-xs">
+                          <tr>
+                            <td colSpan={2} className="px-4 py-3 text-slate-700">Calculated Total Package Amount:</td>
+                            <td className="px-4 py-3 text-right text-brand-700 text-sm font-black">{formatNaira(pkg.priceCents)}</td>
+                            <td colSpan={3} className="px-4 py-3 text-right text-slate-500 font-normal">
+                              Synchronized with Supabase Package table & customer cart
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB 3: CUSTOMER DATABASE FOR KYC SAKE (Req 3)
       ========================================================================= */}
       {activeTab === 'kyc' && (
         <div className="space-y-6">
@@ -2004,6 +2297,137 @@ export const AdminDashboardPage: React.FC = () => {
                   className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl shadow-md"
                 >
                   Update Delivery Process
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL 4: EDIT FOOD BUNDLE (PART 2 & 4)
+      ========================================================================= */}
+      {editingPackage && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <h3 className="text-lg font-black text-slate-900">Edit Food Bundle Package</h3>
+                <p className="text-xs text-slate-500">Live synchronization with Supabase & Public Food Bundle page</p>
+              </div>
+              <button onClick={() => setEditingPackage(null)} className="p-1.5 text-slate-400 hover:text-slate-700">
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSavePackage} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Bundle Name</label>
+                <input
+                  type="text"
+                  value={editingPackage.name}
+                  onChange={(e) => setEditingPackage({ ...editingPackage, name: e.target.value })}
+                  required
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Badge</label>
+                <input
+                  type="text"
+                  value={editingPackage.badge || ''}
+                  onChange={(e) => setEditingPackage({ ...editingPackage, badge: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Total Bundle Price (₦)</label>
+                  <input
+                    type="number"
+                    value={editingPackage.priceCents / 100}
+                    onChange={(e) =>
+                      setEditingPackage({
+                        ...editingPackage,
+                        priceCents: Math.round(Number(e.target.value) * 100),
+                      })
+                    }
+                    required
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-black text-slate-900"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-bold text-slate-700 mb-1">Publication Status</label>
+                  <select
+                    value={editingPackage.status}
+                    onChange={(e) =>
+                      setEditingPackage({
+                        ...editingPackage,
+                        status: e.target.value as 'ACTIVE' | 'DRAFT' | 'INACTIVE',
+                      })
+                    }
+                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold bg-white"
+                  >
+                    <option value="ACTIVE">Published (ACTIVE)</option>
+                    <option value="DRAFT">Draft (Pending Validation)</option>
+                    <option value="INACTIVE">Inactive (Archived)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Description</label>
+                <textarea
+                  rows={2}
+                  value={editingPackage.description}
+                  onChange={(e) => setEditingPackage({ ...editingPackage, description: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl"
+                />
+              </div>
+
+              <div>
+                <label className="block font-bold text-slate-700 mb-1">Bundle Image URL</label>
+                <input
+                  type="text"
+                  value={editingPackage.imageUrl}
+                  onChange={(e) => setEditingPackage({ ...editingPackage, imageUrl: e.target.value })}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-[11px]"
+                />
+              </div>
+
+              {editingPackage.missingItems && editingPackage.missingItems.length > 0 && (
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                  <span className="font-bold">⚠️ Missing Items Notice:</span>
+                  <p>Items not in inventory: {editingPackage.missingItems.join(', ')}.</p>
+                </div>
+              )}
+
+              {editingPackage.priceDiscrepancies && editingPackage.priceDiscrepancies.length > 0 && (
+                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px] space-y-1">
+                  <span className="font-bold">ℹ️ Price Discrepancy Notice:</span>
+                  {editingPackage.priceDiscrepancies.map((d, i) => (
+                    <p key={i}>{d.message}</p>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingPackage(null)}
+                  className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingPackage}
+                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
+                >
+                  {savingPackage ? 'Saving to Supabase...' : 'Save & Publish Live'}
                 </button>
               </div>
             </form>

@@ -6,8 +6,38 @@ import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors'
 import { v4 as uuidv4 } from 'uuid';
 import { sendDeliveryStageUpdateEmail } from '../services/email.service';
 import { systemProductStore } from '../services/system-product.store';
+import { packageService } from '../services/package.service';
 
 const router = Router();
+
+// ─── Food Bundles Management (Supabase-backed package store) ───────────────────
+router.get('/packages', async (_req: Request, res: Response) => {
+  const pkgs = await packageService.list({ includeDrafts: true });
+  res.json(pkgs);
+});
+
+router.post('/packages', async (req: Request, res: Response) => {
+  const created = await packageService.create(req.body);
+  res.status(201).json(created);
+});
+
+router.put('/packages/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updated = await packageService.update(id, req.body);
+  res.json(updated);
+});
+
+router.patch('/packages/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const updated = await packageService.update(id, req.body);
+  res.json(updated);
+});
+
+router.delete('/packages/:id', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  await packageService.deactivate(id);
+  res.json({ message: 'Package deactivated successfully', id, success: true });
+});
 
 // ─── Foodstuff Inventory & Pricing Control (Supabase-backed product store) ─────
 router.get('/products', async (_req: Request, res: Response) => {

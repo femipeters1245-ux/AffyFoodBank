@@ -18,6 +18,7 @@ router.get('/:id', getPackage);
 // Protected: management endpoints require auth & permissions
 router.post('/', authenticate, authorize('package:create'), createPackage);
 router.patch('/:id', authenticate, authorize('package:update'), updatePackage);
+router.put('/:id', authenticate, authorize('package:update'), updatePackage);
 router.delete('/:id', authenticate, authorize('package:deactivate'), deactivatePackage);
 
 export default router;

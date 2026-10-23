@@ -279,6 +279,261 @@ export const INITIAL_FALLBACK_PRODUCTS: SupabaseProduct[] = [
     category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
     inventory: [{ id: 'inv-12', product_id: 'prod-yellow-garri', quantity: 65, low_stock_threshold: 12, created_at: '', updated_at: '' }],
   },
+  {
+    id: 'df912956-2067-4471-876a-50588d84bea6',
+    name: 'Rice',
+    description: 'High-quality stone-free parboiled white rice measured per portion.',
+    sku: 'RICE-RET-001',
+    price_cents: 200000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1586201375761-83865001e31c?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-derica',
+    category_id: 'cat-grains',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-derica', name: 'Derica', symbol: 'derica', created_at: '', updated_at: '' },
+    category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-rice', product_id: 'df912956-2067-4471-876a-50588d84bea6', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: 'e0a46d6a-22de-4cc0-a18f-58150ba84e3d',
+    name: 'Garri',
+    description: 'Crisp, sand-free Ijebu white garri with authentic tangy punch.',
+    sku: 'GARRI-RET-002',
+    price_cents: 40000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1594998893017-36147cbcae05?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-derica',
+    category_id: 'cat-grains',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-derica', name: 'Derica', symbol: 'derica', created_at: '', updated_at: '' },
+    category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-garri', product_id: 'e0a46d6a-22de-4cc0-a18f-58150ba84e3d', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '1316321b-c828-4623-a1f7-45aff8f2f4e3',
+    name: 'Beans',
+    description: 'Sweet honey Oloyin fast-cooking brown beans.',
+    sku: 'BEANS-RET-003',
+    price_cents: 220000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1551462147-37885acc36f1?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-derica',
+    category_id: 'cat-grains',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-derica', name: 'Derica', symbol: 'derica', created_at: '', updated_at: '' },
+    category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-beans', product_id: '1316321b-c828-4623-a1f7-45aff8f2f4e3', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: 'bd8659e2-3f1f-4161-8ad8-f44176fa5530',
+    name: 'Spaghetti',
+    description: '500g premium enriched long durum wheat spaghetti.',
+    sku: 'SPAG-500G-004',
+    price_cents: 95000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1621996346565-e3d5d6281691?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-grains',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-spag', product_id: 'bd8659e2-3f1f-4161-8ad8-f44176fa5530', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: 'fc7872e0-2f5d-4cbf-9e68-da7c9fc2fab1',
+    name: 'Noodles',
+    description: 'Instant chicken-flavoured noodle single meal pack.',
+    sku: 'NOOD-SGL-005',
+    price_cents: 37000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1612927601601-6638404737ce?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-grains',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-nood', product_id: 'fc7872e0-2f5d-4cbf-9e68-da7c9fc2fab1', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '900896cf-7867-4894-9fba-d39261527c1e',
+    name: 'Egg',
+    description: 'Fresh farm-laid poultry brown egg.',
+    sku: 'EGG-SGL-006',
+    price_cents: 25000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1582722872445-44dc5f7e3c8f?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pcs',
+    category_id: 'cat-prov',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pcs', name: 'Piece', symbol: 'pcs', created_at: '', updated_at: '' },
+    category: { id: 'cat-prov', name: 'Provisions & Breakfast', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-egg', product_id: '900896cf-7867-4894-9fba-d39261527c1e', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '7218cfd0-c320-40e8-b835-70450f16ddc6',
+    name: 'Butter',
+    description: 'Creamy salted cooking & baking margarine butter spread.',
+    sku: 'BTR-250G-007',
+    price_cents: 150000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1589985270826-4b7bb135bc9d?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-oils',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-oils', name: 'Oils & Fats', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-btr', product_id: '7218cfd0-c320-40e8-b835-70450f16ddc6', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '5aadd6d7-1a61-4740-b8f6-99d07e15e8a4',
+    name: 'Maggi',
+    description: 'Classic star seasoning cubes for traditional West African cooking.',
+    sku: 'MAGGI-STR-008',
+    price_cents: 35000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-soup',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-maggi', product_id: '5aadd6d7-1a61-4740-b8f6-99d07e15e8a4', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '2627f89d-5f18-461a-a54b-678536760d15',
+    name: 'Salt',
+    description: 'Refined iodized kitchen table salt.',
+    sku: 'SALT-500G-009',
+    price_cents: 25000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1626197031507-c17099753214?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-soup',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-salt', product_id: '2627f89d-5f18-461a-a54b-678536760d15', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '2cf5c1dc-0e63-4d62-8e49-85dac080cfae',
+    name: 'Curry',
+    description: 'Aromatic curry spice blend powder for jollof and fried rice.',
+    sku: 'CURRY-SACH-010',
+    price_cents: 10000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1596040033282-be23666f272a?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-sachet',
+    category_id: 'cat-soup',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-sachet', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
+    category: { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-curry', product_id: '2cf5c1dc-0e63-4d62-8e49-85dac080cfae', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '45838585-51c4-46e7-b7a3-80041fb706ac',
+    name: 'Thyme',
+    description: 'Dried fragrant thyme leaves for meat marinades and stews.',
+    sku: 'THYME-SACH-011',
+    price_cents: 10000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1509358271058-acd22cc93898?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-sachet',
+    category_id: 'cat-soup',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-sachet', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
+    category: { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-thyme', product_id: '45838585-51c4-46e7-b7a3-80041fb706ac', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: 'df1d1155-fd53-4590-adca-72a00a1eeca3',
+    name: 'Milo Ordinary',
+    description: 'Fortified chocolate malt energy drink single sachet.',
+    sku: 'MILO-SACH-012',
+    price_cents: 18000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1544787219-7f47ccb76574?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-sachet',
+    category_id: 'cat-prov',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-sachet', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
+    category: { id: 'cat-prov', name: 'Provisions & Breakfast', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-milo', product_id: 'df1d1155-fd53-4590-adca-72a00a1eeca3', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: '95673474-e64b-4834-a461-d5246a8ceb66',
+    name: 'Chicken Flavor Maggi',
+    description: 'Rich chicken flavour bouillon seasoning cubes.',
+    sku: 'MAGGI-CHK-013',
+    price_cents: 35000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1596040033229-a9821ebd058d?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-soup',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-chkmaggi', product_id: '95673474-e64b-4834-a461-d5246a8ceb66', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: 'b1aded4b-b746-4621-99a7-c913d0d09805',
+    name: 'Sachet Tomato',
+    description: 'Double concentrated thick red tomato and pepper paste sachet.',
+    sku: 'TOM-SACH-014',
+    price_cents: 17000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-sachet',
+    category_id: 'cat-soup',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-sachet', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
+    category: { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-tom', product_id: 'b1aded4b-b746-4621-99a7-c913d0d09805', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
+  {
+    id: 'df9cdcfd-e29d-4417-b9ff-ae14009a5a24',
+    name: 'Semo',
+    description: 'Smooth milled fortified durum wheat semolina flour.',
+    sku: 'SEMO-1KG-015',
+    price_cents: 155000,
+    currency: 'NGN',
+    image_url: 'https://images.unsplash.com/photo-1574323347407-f5e1ad6d020b?auto=format&fit=crop&w=800&q=80',
+    unit_id: 'unit-pack',
+    category_id: 'cat-grains',
+    is_active: true,
+    created_at: '2026-10-23T00:00:00Z',
+    updated_at: '2026-10-23T00:00:00Z',
+    unit: { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+    category: { id: 'cat-grains', name: 'Grains & Flours', description: null, is_active: true, created_at: '', updated_at: '' },
+    inventory: [{ id: 'inv-ret-semo', product_id: 'df9cdcfd-e29d-4417-b9ff-ae14009a5a24', quantity: 0, low_stock_threshold: 10, created_at: '', updated_at: '' }],
+  },
 ];
 
 // Helper to get local storage fallback items if edited in admin while offline
@@ -531,6 +786,7 @@ const FALLBACK_CATEGORIES: SupabaseCategory[] = [
   { id: 'cat-oils', name: 'Oils & Fats', description: null, is_active: true, created_at: '', updated_at: '' },
   { id: 'cat-tubers', name: 'Tubers & Roots', description: null, is_active: true, created_at: '', updated_at: '' },
   { id: 'cat-soup', name: 'Soup Ingredients', description: null, is_active: true, created_at: '', updated_at: '' },
+  { id: 'cat-prov', name: 'Provisions & Breakfast', description: null, is_active: true, created_at: '', updated_at: '' },
 ];
 
 const FALLBACK_UNITS: SupabaseUnit[] = [
@@ -538,9 +794,12 @@ const FALLBACK_UNITS: SupabaseUnit[] = [
   { id: 'unit-rubber', name: 'Paint Rubber', symbol: 'rubber', created_at: '', updated_at: '' },
   { id: 'unit-keg', name: '25L Keg', symbol: 'keg', created_at: '', updated_at: '' },
   { id: 'unit-bundle', name: 'Bundle (5 Tubers)', symbol: 'bundle', created_at: '', updated_at: '' },
-  { id: 'unit-pack', name: 'Bundle Pack', symbol: 'pack', created_at: '', updated_at: '' },
+  { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
   { id: 'unit-basket', name: 'Farm Basket', symbol: 'basket', created_at: '', updated_at: '' },
   { id: 'unit-bunch', name: 'Bunch (80 Fingers)', symbol: 'bunch', created_at: '', updated_at: '' },
+  { id: 'unit-pcs', name: 'Piece', symbol: 'pcs', created_at: '', updated_at: '' },
+  { id: 'unit-sachet', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
+  { id: 'unit-derica', name: 'Derica', symbol: 'derica', created_at: '', updated_at: '' },
 ];
 
 export const supabaseCategories = {
@@ -566,4 +825,291 @@ export const supabaseUnits = {
     return { id: `unit-${Date.now()}`, name, symbol: symbol ?? null, created_at: '', updated_at: '' };
   },
 };
+
+// ─── Packages & Bundles Service ────────────────────────────────────────────────
+export interface SupabasePackageItem {
+  id?: string;
+  name: string;
+  displayName?: string;
+  quantity: number;
+  unit?: { id: string; name: string; symbol: string | null };
+  product?: { id: string; name: string; priceCents: number; sku?: string };
+  amountCents: number;
+  missingFromInventory?: boolean;
+  priceDiscrepancy?: boolean;
+  inventoryPriceCents?: number;
+  allocatedPriceCents?: number;
+}
+
+export interface SupabasePackage {
+  id: string;
+  name: string;
+  description: string;
+  badge: string;
+  imageUrl: string;
+  status: 'ACTIVE' | 'DRAFT' | 'INACTIVE';
+  priceCents: number;
+  originalPriceCents: number;
+  savingsPercentage: number;
+  bestFor: string;
+  items: SupabasePackageItem[];
+  missingItems?: string[];
+  priceDiscrepancies?: Array<{
+    item: string;
+    inventoryPriceNaira: number;
+    allocatedPriceNaira: number;
+    message: string;
+  }>;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export const INITIAL_FALLBACK_PACKAGES: SupabasePackage[] = [
+  {
+    id: '8556e5fd-1440-4874-b2b8-b9d2a1157159',
+    name: 'Affy Student Essentials',
+    description: 'An affordable mix of staples and quick meals.',
+    badge: 'Budget Student Essential',
+    imageUrl: 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
+    status: 'ACTIVE',
+    priceCents: 1153000, // ₦11,530
+    originalPriceCents: 1350000,
+    savingsPercentage: 15,
+    bestFor: 'Students & singles needing reliable weekly staple groceries',
+    items: [
+      { name: 'Rice', quantity: 1, amountCents: 200000 },
+      { name: 'Garri', quantity: 2, amountCents: 80000 },
+      { name: 'Beans', quantity: 1, amountCents: 220000 },
+      { name: 'Spaghetti', quantity: 2, amountCents: 190000 },
+      { name: 'Noodles', quantity: 5, amountCents: 185000 },
+      { name: 'Egg', displayName: 'Eggs', quantity: 6, amountCents: 150000 },
+      { name: 'Maggi', quantity: 1, amountCents: 35000 },
+      { name: 'Salt', quantity: 1, amountCents: 25000 },
+      { name: 'Sachet Tomato', quantity: 4, amountCents: 68000 },
+    ],
+  },
+  {
+    id: '1ed4a86e-a795-47b4-a68c-68947f4c6da4',
+    name: 'Affy Solo Living Package',
+    description: 'For bachelors and spinsters who want variety for everyday cooking.',
+    badge: 'Solo Living',
+    imageUrl: 'https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&w=800&q=80',
+    status: 'DRAFT', // Saved as draft per Part 3 pending Sardines resolution
+    priceCents: 2007000, // ₦20,070
+    originalPriceCents: 2350000,
+    savingsPercentage: 15,
+    bestFor: 'Bachelors and spinsters who want variety for everyday cooking',
+    missingItems: ['Sardines'],
+    items: [
+      { name: 'Rice', quantity: 2, amountCents: 400000 },
+      { name: 'Garri', quantity: 2, amountCents: 80000 },
+      { name: 'Beans', quantity: 1, amountCents: 220000 },
+      { name: 'Spaghetti', quantity: 3, amountCents: 285000 },
+      { name: 'Noodles', quantity: 5, amountCents: 185000 },
+      { name: 'Egg', displayName: 'Eggs', quantity: 10, amountCents: 250000 },
+      { name: 'Butter', quantity: 1, amountCents: 150000 },
+      { name: 'Maggi', quantity: 2, amountCents: 70000 },
+      { name: 'Salt', quantity: 1, amountCents: 25000 },
+      { name: 'Curry', quantity: 2, amountCents: 20000 },
+      { name: 'Thyme', quantity: 2, amountCents: 20000 },
+      { name: 'Sardines', quantity: 2, amountCents: 200000, missingFromInventory: true },
+      { name: 'Sachet Tomato', quantity: 6, amountCents: 102000 },
+    ],
+  },
+  {
+    id: '450521bd-6cd8-40ca-9831-f495ad82df5b',
+    name: 'Affy Family & Kids Package',
+    description: 'Household staples with breakfast options for the children.',
+    badge: 'Family & Kids Package',
+    imageUrl: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=800&q=80',
+    status: 'DRAFT', // Saved as draft per Part 3 pending missing items & Milo price confirmation
+    priceCents: 5050000, // ₦50,500
+    originalPriceCents: 5800000,
+    savingsPercentage: 13,
+    bestFor: 'Household staples with breakfast options for the children',
+    missingItems: ['Golden Morn', 'Dano Milk'],
+    priceDiscrepancies: [
+      {
+        item: 'Milo',
+        inventoryPriceNaira: 180,
+        allocatedPriceNaira: 300,
+        message: 'Milo Ordinary is ₦180 in inventory, but Family & Kids Package allocates ₦300 per unit (₦3,000 for 10).',
+      },
+    ],
+    items: [
+      { name: 'Rice', quantity: 5, amountCents: 1000000 },
+      { name: 'Garri', quantity: 3, amountCents: 120000 },
+      { name: 'Beans', quantity: 3, amountCents: 660000 },
+      { name: 'Spaghetti', quantity: 5, amountCents: 475000 },
+      { name: 'Noodles', quantity: 10, amountCents: 370000 },
+      { name: 'Egg', displayName: 'Eggs', quantity: 30, amountCents: 750000 },
+      { name: 'Butter', quantity: 2, amountCents: 300000 },
+      { name: 'Maggi', quantity: 3, amountCents: 105000 },
+      { name: 'Salt', quantity: 2, amountCents: 50000 },
+      { name: 'Curry', quantity: 3, amountCents: 30000 },
+      { name: 'Thyme', quantity: 3, amountCents: 30000 },
+      { name: 'Sachet Tomato', quantity: 10, amountCents: 170000 },
+      { name: 'Semo', quantity: 2, amountCents: 310000 },
+      { name: 'Golden Morn', quantity: 10, amountCents: 250000, missingFromInventory: true },
+      {
+        name: 'Milo Ordinary',
+        displayName: 'Milo',
+        quantity: 10,
+        amountCents: 300000,
+        priceDiscrepancy: true,
+        inventoryPriceCents: 18000,
+        allocatedPriceCents: 30000,
+      },
+      { name: 'Dano Milk', quantity: 10, amountCents: 130000, missingFromInventory: true },
+    ],
+  },
+  {
+    id: 'd3f0df28-b8e6-4e1c-8c4e-375a0ab9f2e4',
+    name: 'Affy Party Cooking Starter',
+    description: 'A base package for a rice-and-spaghetti party menu.',
+    badge: 'Party Starter',
+    imageUrl: 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=800&q=80',
+    status: 'ACTIVE',
+    priceCents: 3140000, // ₦31,400
+    originalPriceCents: 3600000,
+    savingsPercentage: 13,
+    bestFor: 'A base package for a rice-and-spaghetti party menu',
+    items: [
+      { name: 'Rice', quantity: 10, amountCents: 2000000 },
+      { name: 'Spaghetti', quantity: 5, amountCents: 475000 },
+      { name: 'Maggi', quantity: 5, amountCents: 175000 },
+      { name: 'Salt', quantity: 2, amountCents: 50000 },
+      { name: 'Curry', quantity: 5, amountCents: 50000 },
+      { name: 'Thyme', quantity: 5, amountCents: 50000 },
+      { name: 'Sachet Tomato', quantity: 20, amountCents: 340000 },
+    ],
+  },
+];
+
+function getLocalFallbackPackages(): SupabasePackage[] {
+  try {
+    const saved = localStorage.getItem('affy_fallback_packages');
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return INITIAL_FALLBACK_PACKAGES;
+}
+
+function saveLocalFallbackPackages(items: SupabasePackage[]) {
+  try {
+    localStorage.setItem('affy_fallback_packages', JSON.stringify(items));
+  } catch {}
+}
+
+export const supabasePackages = {
+  /** List all packages (active & drafts for operational control, always fresh) */
+  async listAll(): Promise<SupabasePackage[]> {
+    try {
+      const res = await apiClient.get<any>('/admin/packages');
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        saveLocalFallbackPackages(res.data);
+        return res.data;
+      }
+    } catch {}
+
+    try {
+      const res = await apiClient.get<any>('/packages');
+      if (Array.isArray(res.data) && res.data.length > 0) {
+        saveLocalFallbackPackages(res.data);
+        return res.data;
+      }
+    } catch {}
+
+    return getLocalFallbackPackages();
+  },
+
+  /** List active published packages for public customer page */
+  async list(): Promise<SupabasePackage[]> {
+    const all = await this.listAll();
+    return all;
+  },
+
+  /** Get package by ID */
+  async getById(id: string): Promise<SupabasePackage | null> {
+    const all = await this.listAll();
+    return all.find((p) => p.id === id) || null;
+  },
+
+  /** Update package */
+  async update(
+    id: string,
+    payload: Partial<{
+      name: string;
+      description: string;
+      imageUrl: string;
+      status: 'ACTIVE' | 'DRAFT' | 'INACTIVE';
+      priceCents: number;
+    }>
+  ): Promise<SupabasePackage> {
+    try {
+      const res = await apiClient.put(`/admin/packages/${id}`, payload);
+      if (res.data) {
+        const list = getLocalFallbackPackages().map((p) => (p.id === id ? { ...p, ...res.data } : p));
+        saveLocalFallbackPackages(list);
+        window.dispatchEvent(new CustomEvent('affy_packages_updated', { detail: res.data }));
+        return res.data;
+      }
+    } catch {}
+
+    const list = getLocalFallbackPackages();
+    const idx = list.findIndex((p) => p.id === id);
+    if (idx !== -1) {
+      list[idx] = { ...list[idx], ...payload, updatedAt: new Date().toISOString() };
+      saveLocalFallbackPackages(list);
+      window.dispatchEvent(new CustomEvent('affy_packages_updated', { detail: list[idx] }));
+      return list[idx];
+    }
+    throw new Error('Package not found');
+  },
+
+  /** Create package */
+  async create(payload: Partial<SupabasePackage>): Promise<SupabasePackage> {
+    try {
+      const res = await apiClient.post('/admin/packages', payload);
+      if (res.data) {
+        const list = getLocalFallbackPackages();
+        list.push(res.data);
+        saveLocalFallbackPackages(list);
+        window.dispatchEvent(new CustomEvent('affy_packages_updated', { detail: res.data }));
+        return res.data;
+      }
+    } catch {}
+
+    const newPkg: SupabasePackage = {
+      id: `pkg-${Date.now()}`,
+      name: payload.name || 'Custom Bundle',
+      description: payload.description || '',
+      badge: payload.badge || 'Curated Bundle',
+      imageUrl: payload.imageUrl || '',
+      status: payload.status || 'DRAFT',
+      priceCents: payload.priceCents || 0,
+      originalPriceCents: payload.originalPriceCents || 0,
+      savingsPercentage: payload.savingsPercentage || 14,
+      bestFor: payload.bestFor || 'Families and bulk buyers',
+      items: payload.items || [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    const list = getLocalFallbackPackages();
+    list.push(newPkg);
+    saveLocalFallbackPackages(list);
+    window.dispatchEvent(new CustomEvent('affy_packages_updated', { detail: newPkg }));
+    return newPkg;
+  },
+
+  /** Deactivate package */
+  async deactivate(id: string): Promise<void> {
+    try {
+      await apiClient.delete(`/admin/packages/${id}`);
+    } catch {}
+    const list = getLocalFallbackPackages().map((p) => (p.id === id ? { ...p, status: 'INACTIVE' as const } : p));
+    saveLocalFallbackPackages(list);
+    window.dispatchEvent(new CustomEvent('affy_packages_updated', { detail: { id, status: 'INACTIVE' } }));
+  },
+};
+
 
