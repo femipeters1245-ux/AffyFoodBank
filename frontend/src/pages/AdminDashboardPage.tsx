@@ -388,6 +388,14 @@ export const AdminDashboardPage: React.FC = () => {
   const [packagesLoading, setPackagesLoading] = useState(false);
   const [editingPackage, setEditingPackage] = useState<SupabasePackage | null>(null);
   const [savingPackage, setSavingPackage] = useState(false);
+  // Draft items list inside the editor — each entry links to an inventory product
+  const [draftItems, setDraftItems] = useState<Array<{
+    productId: string;
+    name: string;
+    priceCents: number;
+    quantity: number;
+  }>>([]);
+  const [itemSearch, setItemSearch] = useState('');
 
   const [customers, setCustomers] = useState<CustomerKYC[]>(INITIAL_CUSTOMERS);
   const [orders, setOrders] = useState<AdminOrder[]>(INITIAL_ORDERS);
@@ -685,25 +693,87 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // Open the bundle editor and seed draft items from the existing bundle
+  const handleOpenBundleEditor = (pkg: SupabasePackage) => {
+    setEditingPackage(pkg);
+    setItemSearch('');
+    // Seed draft items from the package's linked items (those with a real product.id)
+    const seeded = (pkg.items || []).flatMap((it) => {
+      if (it.product?.id) {
+        return [{
+          productId: it.product.id,
+          name: it.product.name || it.name,
+          priceCents: it.product.priceCents ?? it.amountCents / it.quantity,
+          quantity: it.quantity,
+        }];
+      }
+      return [];
+    });
+    setDraftItems(seeded);
+  };
+
+  // Add an inventory product to the draft items; increment qty if already present
+  const handleAddDraftItem = (prod: AdminProduct) => {
+    setDraftItems((prev) => {
+      const existing = prev.find((d) => d.productId === prod.id);
+      if (existing) {
+        return prev.map((d) =>
+          d.productId === prod.id ? { ...d, quantity: d.quantity + 1 } : d
+        );
+      }
+      return [
+        ...prev,
+        { productId: prod.id, name: prod.name, priceCents: prod.priceCents, quantity: 1 },
+      ];
+    });
+    setItemSearch('');
+  };
+
+  // Remove a draft item
+  const handleRemoveDraftItem = (productId: string) => {
+    setDraftItems((prev) => prev.filter((d) => d.productId !== productId));
+  };
+
+  // Change quantity of a draft item
+  const handleDraftQtyChange = (productId: string, qty: number) => {
+    if (qty < 1) return;
+    setDraftItems((prev) =>
+      prev.map((d) => (d.productId === productId ? { ...d, quantity: qty } : d))
+    );
+  };
+
+  // Calculate live total from draft items (integer cents to avoid float errors)
+  const draftTotalCents = draftItems.reduce(
+    (acc, d) => acc + d.priceCents * d.quantity,
+    0
+  );
+
   const handleSavePackage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingPackage) return;
     setSavingPackage(true);
 
     try {
+      // Step 1: Save metadata
       await supabasePackages.update(editingPackage.id, {
         name: editingPackage.name,
         description: editingPackage.description,
         badge: editingPackage.badge,
         status: editingPackage.status,
         imageUrl: editingPackage.imageUrl,
-        priceCents: Number(editingPackage.priceCents),
       });
+
+      // Step 2: Save items — backend recalculates price from live inventory
+      await supabasePackages.updateItems(
+        editingPackage.id,
+        draftItems.map((d) => ({ productId: d.productId, quantity: d.quantity }))
+      );
+
       await loadPackages();
       setEditingPackage(null);
-      showToast(`✅ Bundle "${editingPackage.name}" saved live to Supabase! Synchronized to public page.`);
+      showToast(`✅ Bundle "${editingPackage.name}" saved! Items & price synced from live inventory.`);
     } catch (err: any) {
-      showToast(`❌ Package update failed: ${err.message ?? 'Unknown error'}`);
+      showToast(`❌ Package save failed: ${err.message ?? 'Unknown error'}`);
     } finally {
       setSavingPackage(false);
     }
@@ -1177,10 +1247,10 @@ export const AdminDashboardPage: React.FC = () => {
                         </button>
                         <button
                           type="button"
-                          onClick={() => setEditingPackage(pkg)}
+                          onClick={() => handleOpenBundleEditor(pkg)}
                           className="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-800 text-xs font-bold rounded-xl transition-colors"
                         >
-                          Edit Details
+                          ✏️ Edit Details & Items
                         </button>
                       </div>
                     </div>
@@ -2305,130 +2375,240 @@ export const AdminDashboardPage: React.FC = () => {
       )}
 
       {/* =========================================================================
-          MODAL 4: EDIT FOOD BUNDLE (PART 2 & 4)
+          MODAL 4: EDIT FOOD BUNDLE — Full Item Editor with Live Price Calculation
       ========================================================================= */}
       {editingPackage && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[90vh] flex flex-col">
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+          <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[93vh] flex flex-col">
+
+            {/* Header */}
+            <div className="p-5 border-b border-slate-100 flex items-center justify-between bg-gradient-to-r from-brand-50 to-slate-50 shrink-0">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Edit Food Bundle Package</h3>
-                <p className="text-xs text-slate-500">Live synchronization with Supabase & Public Food Bundle page</p>
+                <h3 className="text-base font-black text-slate-900">✏️ Edit Food Bundle</h3>
+                <p className="text-[11px] text-slate-500 mt-0.5">Changes sync live to Supabase & public Food Bundle page</p>
               </div>
-              <button onClick={() => setEditingPackage(null)} className="p-1.5 text-slate-400 hover:text-slate-700">
+              <button onClick={() => setEditingPackage(null)} className="p-2 rounded-full text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors" aria-label="Close">
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleSavePackage} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs">
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Bundle Name</label>
-                <input
-                  type="text"
-                  value={editingPackage.name}
-                  onChange={(e) => setEditingPackage({ ...editingPackage, name: e.target.value })}
-                  required
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold"
-                />
-              </div>
+            <form onSubmit={handleSavePackage} className="flex flex-col flex-1 overflow-hidden">
+              <div className="overflow-y-auto flex-1 p-5 space-y-5 text-xs">
 
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Badge</label>
-                <input
-                  type="text"
-                  value={editingPackage.badge || ''}
-                  onChange={(e) => setEditingPackage({ ...editingPackage, badge: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold"
-                />
-              </div>
+                {/* ── Bundle Details ─────────────────────────────────────── */}
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block font-bold text-slate-700 mb-1">Bundle Name *</label>
+                    <input
+                      type="text"
+                      value={editingPackage.name}
+                      onChange={(e) => setEditingPackage({ ...editingPackage, name: e.target.value })}
+                      required
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold text-sm"
+                    />
+                  </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block font-bold text-slate-700 mb-1">Total Bundle Price (₦)</label>
-                  <input
-                    type="number"
-                    value={editingPackage.priceCents / 100}
-                    onChange={(e) =>
-                      setEditingPackage({
-                        ...editingPackage,
-                        priceCents: Math.round(Number(e.target.value) * 100),
-                      })
-                    }
-                    required
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-black text-slate-900"
-                  />
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Badge Label</label>
+                    <input
+                      type="text"
+                      value={editingPackage.badge || ''}
+                      onChange={(e) => setEditingPackage({ ...editingPackage, badge: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-semibold"
+                      placeholder="e.g. Budget Student Essential"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block font-bold text-slate-700 mb-1">Publication Status</label>
+                    <select
+                      value={editingPackage.status}
+                      onChange={(e) =>
+                        setEditingPackage({ ...editingPackage, status: e.target.value as 'ACTIVE' | 'DRAFT' | 'INACTIVE' })
+                      }
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold bg-white"
+                    >
+                      <option value="ACTIVE">✅ Published (ACTIVE)</option>
+                      <option value="DRAFT">🔒 Draft (Pending Validation)</option>
+                      <option value="INACTIVE">📦 Inactive (Archived)</option>
+                    </select>
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block font-bold text-slate-700 mb-1">Description</label>
+                    <textarea
+                      rows={2}
+                      value={editingPackage.description}
+                      onChange={(e) => setEditingPackage({ ...editingPackage, description: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl resize-none"
+                      placeholder="Short description of what this bundle contains…"
+                    />
+                  </div>
+
+                  <div className="col-span-2">
+                    <label className="block font-bold text-slate-700 mb-1">Bundle Image URL</label>
+                    <input
+                      type="text"
+                      value={editingPackage.imageUrl}
+                      onChange={(e) => setEditingPackage({ ...editingPackage, imageUrl: e.target.value })}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-[11px]"
+                      placeholder="https://…"
+                    />
+                  </div>
                 </div>
 
+                {/* ── Add Food Item ─────────────────────────────────────── */}
                 <div>
-                  <label className="block font-bold text-slate-700 mb-1">Publication Status</label>
-                  <select
-                    value={editingPackage.status}
-                    onChange={(e) =>
-                      setEditingPackage({
-                        ...editingPackage,
-                        status: e.target.value as 'ACTIVE' | 'DRAFT' | 'INACTIVE',
-                      })
-                    }
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl font-bold bg-white"
+                  <label className="block font-bold text-slate-700 mb-1">➕ Add Food Item from Inventory</label>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      value={itemSearch}
+                      onChange={(e) => setItemSearch(e.target.value)}
+                      placeholder="Search inventory (e.g. Rice, Beans, Noodles…)"
+                      className="w-full px-3 py-2.5 border border-brand-300 rounded-xl text-sm focus:ring-2 focus:ring-brand-400 outline-none"
+                    />
+                    {itemSearch.trim().length > 0 && (
+                      <div className="absolute z-20 mt-1 w-full bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto">
+                        {products
+                          .filter((p) =>
+                            p.name.toLowerCase().includes(itemSearch.toLowerCase()) &&
+                            !draftItems.find((d) => d.productId === p.id)
+                          )
+                          .slice(0, 12)
+                          .map((p) => (
+                            <button
+                              key={p.id}
+                              type="button"
+                              onClick={() => handleAddDraftItem(p)}
+                              className="w-full flex items-center justify-between px-4 py-2.5 text-left hover:bg-brand-50 transition-colors border-b border-slate-50 last:border-0"
+                            >
+                              <span className="font-semibold text-slate-800">{p.name}</span>
+                              <span className="text-brand-700 font-bold">{formatNaira(p.priceCents)}</span>
+                            </button>
+                          ))}
+                        {products.filter((p) =>
+                          p.name.toLowerCase().includes(itemSearch.toLowerCase()) &&
+                          !draftItems.find((d) => d.productId === p.id)
+                        ).length === 0 && (
+                          <p className="px-4 py-3 text-slate-400 text-[11px]">No matching items found in inventory.</p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* ── Bundle Items Table ────────────────────────────────── */}
+                <div>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="font-bold text-slate-700">Bundle Items ({draftItems.length})</label>
+                    {draftItems.length > 0 && (
+                      <span className="text-[10px] text-slate-400">Prices are live from inventory</span>
+                    )}
+                  </div>
+
+                  {draftItems.length === 0 ? (
+                    <div className="text-center py-8 rounded-xl border-2 border-dashed border-slate-200 text-slate-400">
+                      <p className="text-2xl mb-1">🛒</p>
+                      <p className="text-xs">No items yet. Search above to add inventory items.</p>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-slate-200 overflow-hidden">
+                      <table className="w-full">
+                        <thead className="bg-slate-50 border-b border-slate-200">
+                          <tr className="text-[10px] text-slate-500 uppercase tracking-wide">
+                            <th className="px-3 py-2 text-left">Item</th>
+                            <th className="px-3 py-2 text-right">Unit Price</th>
+                            <th className="px-3 py-2 text-center">Qty</th>
+                            <th className="px-3 py-2 text-right">Subtotal</th>
+                            <th className="px-2 py-2"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {draftItems.map((d) => (
+                            <tr key={d.productId} className="hover:bg-slate-50 transition-colors">
+                              <td className="px-3 py-2.5 font-semibold text-slate-800">{d.name}</td>
+                              <td className="px-3 py-2.5 text-right text-slate-500">{formatNaira(d.priceCents)}</td>
+                              <td className="px-3 py-2.5 text-center">
+                                <div className="flex items-center justify-center gap-1">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDraftQtyChange(d.productId, d.quantity - 1)}
+                                    disabled={d.quantity <= 1}
+                                    className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 disabled:opacity-30 text-slate-700 font-black text-sm flex items-center justify-center transition-colors"
+                                    aria-label={`Decrease qty for ${d.name}`}
+                                  >
+                                    −
+                                  </button>
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    value={d.quantity}
+                                    onChange={(e) => handleDraftQtyChange(d.productId, Number(e.target.value))}
+                                    className="w-12 text-center border border-slate-200 rounded-lg py-0.5 font-bold text-slate-900 focus:outline-none focus:ring-1 focus:ring-brand-400"
+                                    aria-label={`Quantity for ${d.name}`}
+                                  />
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDraftQtyChange(d.productId, d.quantity + 1)}
+                                    className="w-6 h-6 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 font-black text-sm flex items-center justify-center transition-colors"
+                                    aria-label={`Increase qty for ${d.name}`}
+                                  >
+                                    +
+                                  </button>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2.5 text-right font-bold text-slate-800">{formatNaira(d.priceCents * d.quantity)}</td>
+                              <td className="px-2 py-2.5 text-center">
+                                <button
+                                  type="button"
+                                  onClick={() => handleRemoveDraftItem(d.productId)}
+                                  className="p-1 rounded-lg text-red-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                                  aria-label={`Remove ${d.name}`}
+                                >
+                                  🗑
+                                </button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                        <tfoot className="bg-brand-50 border-t-2 border-brand-200">
+                          <tr>
+                            <td colSpan={3} className="px-3 py-3 font-black text-slate-700 text-xs">Bundle Total (auto-calculated)</td>
+                            <td className="px-3 py-3 text-right font-black text-brand-700 text-sm">{formatNaira(draftTotalCents)}</td>
+                            <td></td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+
+              {/* Footer */}
+              <div className="shrink-0 border-t border-slate-100 bg-slate-50 px-5 py-4 flex items-center justify-between gap-3">
+                <div className="text-xs text-slate-500">
+                  <span className="font-bold text-slate-700">Live Total: </span>
+                  <span className="font-black text-brand-700 text-sm">{formatNaira(draftTotalCents)}</span>
+                  {draftItems.length > 0 && <span className="ml-1 text-[10px]">({draftItems.length} items — server validates on save)</span>}
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEditingPackage(null)}
+                    className="px-4 py-2.5 bg-white border border-slate-300 text-slate-700 font-bold rounded-xl hover:bg-slate-50 transition-colors"
                   >
-                    <option value="ACTIVE">Published (ACTIVE)</option>
-                    <option value="DRAFT">Draft (Pending Validation)</option>
-                    <option value="INACTIVE">Inactive (Archived)</option>
-                  </select>
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={savingPackage}
+                    className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
+                  >
+                    {savingPackage ? '⏳ Saving to Supabase…' : '💾 Save & Publish Live'}
+                  </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Description</label>
-                <textarea
-                  rows={2}
-                  value={editingPackage.description}
-                  onChange={(e) => setEditingPackage({ ...editingPackage, description: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl"
-                />
-              </div>
-
-              <div>
-                <label className="block font-bold text-slate-700 mb-1">Bundle Image URL</label>
-                <input
-                  type="text"
-                  value={editingPackage.imageUrl}
-                  onChange={(e) => setEditingPackage({ ...editingPackage, imageUrl: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl font-mono text-[11px]"
-                />
-              </div>
-
-              {editingPackage.missingItems && editingPackage.missingItems.length > 0 && (
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px] space-y-1">
-                  <span className="font-bold">⚠️ Missing Items Notice:</span>
-                  <p>Items not in inventory: {editingPackage.missingItems.join(', ')}.</p>
-                </div>
-              )}
-
-              {editingPackage.priceDiscrepancies && editingPackage.priceDiscrepancies.length > 0 && (
-                <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-900 text-[11px] space-y-1">
-                  <span className="font-bold">ℹ️ Price Discrepancy Notice:</span>
-                  {editingPackage.priceDiscrepancies.map((d, i) => (
-                    <p key={i}>{d.message}</p>
-                  ))}
-                </div>
-              )}
-
-              <div className="flex justify-end space-x-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingPackage(null)}
-                  className="px-4 py-2.5 bg-slate-100 text-slate-700 font-bold rounded-xl"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingPackage}
-                  className="px-5 py-2.5 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold rounded-xl shadow-md transition-all"
-                >
-                  {savingPackage ? 'Saving to Supabase...' : 'Save & Publish Live'}
-                </button>
               </div>
             </form>
           </div>

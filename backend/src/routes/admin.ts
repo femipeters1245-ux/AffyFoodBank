@@ -33,6 +33,17 @@ router.patch('/packages/:id', async (req: Request, res: Response) => {
   res.json(updated);
 });
 
+// Replace all items in a bundle and recalculate price from live inventory
+router.put('/packages/:id/items', async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { items } = req.body;
+  if (!Array.isArray(items)) {
+    return res.status(400).json({ error: 'items must be an array of { productId, quantity }' });
+  }
+  const updated = await packageService.updateItems(id, items);
+  res.json(updated);
+});
+
 router.delete('/packages/:id', async (req: Request, res: Response) => {
   const { id } = req.params;
   await packageService.deactivate(id);

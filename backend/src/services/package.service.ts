@@ -295,7 +295,7 @@ class PackageService {
   }
 
   /**
-   * Update bundle status, description, image, or name
+   * Update bundle metadata (name, description, image, status, badge)
    */
   public async update(
     id: string,
@@ -303,6 +303,7 @@ class PackageService {
       name: string;
       description: string;
       imageUrl: string;
+      badge: string;
       status: 'ACTIVE' | 'DRAFT' | 'INACTIVE';
       priceCents?: number;
     }>
@@ -332,6 +333,80 @@ class PackageService {
       });
     } catch {}
 
+    await this.syncFromSupabase();
+    return this.getById(pkg.id);
+  }
+
+  /**
+   * Replace all items in a bundle, recalculate price from live inventory,
+   * and persist both PackageItem rows and the updated Package.priceCents.
+   *
+   * items: [{ productId, quantity }]  – unitId is resolved from Product row
+   */
+  public async updateItems(
+    id: string,
+    items: { productId: string; quantity: number }[]
+  ): Promise<PackageRecord> {
+    const pkg = await this.getById(id);
+
+    if (!supabaseAdmin) {
+      throw new Error('Supabase admin client is not available');
+    }
+
+    // 1. Fetch live product rows to get current priceCents and unitId
+    const productIds = items.map((i) => i.productId);
+    const { data: productRows, error: prodErr } = await supabaseAdmin
+      .from('Product')
+      .select('id, priceCents, unitId')
+      .in('id', productIds);
+
+    if (prodErr) throw new Error(`Failed to fetch products: ${prodErr.message}`);
+
+    const productMap = new Map<string, { priceCents: number; unitId: string | null }>(
+      (productRows || []).map((p: any) => [p.id, { priceCents: Number(p.priceCents), unitId: p.unitId }])
+    );
+
+    // 2. Validate – every productId must exist in inventory
+    for (const item of items) {
+      if (!productMap.has(item.productId)) {
+        throw new Error(`Product ID ${item.productId} not found in inventory`);
+      }
+    }
+
+    // 3. Atomically replace PackageItems
+    await supabaseAdmin.from('PackageItem').delete().eq('packageId', pkg.id);
+
+    const newRows = items.map((item) => {
+      const prod = productMap.get(item.productId)!;
+      return {
+        id: uuidv4(),
+        packageId: pkg.id,
+        productId: item.productId,
+        quantity: item.quantity,
+        unitId: prod.unitId ?? null,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      };
+    });
+
+    if (newRows.length > 0) {
+      const { error: insertErr } = await supabaseAdmin.from('PackageItem').insert(newRows);
+      if (insertErr) throw new Error(`Failed to save bundle items: ${insertErr.message}`);
+    }
+
+    // 4. Recalculate total from live prices (in cents, integer arithmetic to avoid floats)
+    const calculatedPriceCents = items.reduce((acc, item) => {
+      const prod = productMap.get(item.productId)!;
+      return acc + prod.priceCents * item.quantity;
+    }, 0);
+
+    // 5. Update Package row with new calculated price
+    await supabaseAdmin
+      .from('Package')
+      .update({ updatedAt: new Date().toISOString() })
+      .eq('id', pkg.id);
+
+    // 6. Re-sync and return updated record
     await this.syncFromSupabase();
     return this.getById(pkg.id);
   }

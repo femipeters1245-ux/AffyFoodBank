@@ -1034,13 +1034,14 @@ export const supabasePackages = {
     return all.find((p) => p.id === id) || null;
   },
 
-  /** Update package */
+  /** Update package metadata */
   async update(
     id: string,
     payload: Partial<{
       name: string;
       description: string;
       imageUrl: string;
+      badge: string;
       status: 'ACTIVE' | 'DRAFT' | 'INACTIVE';
       priceCents: number;
     }>
@@ -1064,6 +1065,23 @@ export const supabasePackages = {
       return list[idx];
     }
     throw new Error('Package not found');
+  },
+
+  /**
+   * Replace all PackageItems for a bundle.
+   * The backend recalculates the price from live inventory priceCents.
+   * items: [{ productId, quantity }]
+   */
+  async updateItems(
+    id: string,
+    items: { productId: string; quantity: number }[]
+  ): Promise<SupabasePackage> {
+    const res = await apiClient.put(`/admin/packages/${id}/items`, { items });
+    const updated = res.data as SupabasePackage;
+    const list = getLocalFallbackPackages().map((p) => (p.id === id ? { ...p, ...updated } : p));
+    saveLocalFallbackPackages(list);
+    window.dispatchEvent(new CustomEvent('affy_packages_updated', { detail: updated }));
+    return updated;
   },
 
   /** Create package */
