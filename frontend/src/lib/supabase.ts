@@ -896,12 +896,11 @@ export const INITIAL_FALLBACK_PACKAGES: SupabasePackage[] = [
     description: 'For bachelors and spinsters who want variety for everyday cooking.',
     badge: 'Solo Living',
     imageUrl: 'https://images.unsplash.com/photo-1506484381205-f7945653044d?auto=format&fit=crop&w=800&q=80',
-    status: 'DRAFT', // Saved as draft per Part 3 pending Sardines resolution
-    priceCents: 2007000, // ₦20,070
+    status: 'ACTIVE',
+    priceCents: 1807000, // ₦18,070 (Sardines removed — not in inventory)
     originalPriceCents: 2350000,
     savingsPercentage: 15,
     bestFor: 'Bachelors and spinsters who want variety for everyday cooking',
-    missingItems: ['Sardines'],
     items: [
       { name: 'Rice', quantity: 2, amountCents: 400000 },
       { name: 'Garri', quantity: 2, amountCents: 80000 },
@@ -914,7 +913,6 @@ export const INITIAL_FALLBACK_PACKAGES: SupabasePackage[] = [
       { name: 'Salt', quantity: 1, amountCents: 25000 },
       { name: 'Curry', quantity: 2, amountCents: 20000 },
       { name: 'Thyme', quantity: 2, amountCents: 20000 },
-      { name: 'Sardines', quantity: 2, amountCents: 200000, missingFromInventory: true },
       { name: 'Sachet Tomato', quantity: 6, amountCents: 102000 },
     ],
   },
@@ -924,20 +922,11 @@ export const INITIAL_FALLBACK_PACKAGES: SupabasePackage[] = [
     description: 'Household staples with breakfast options for the children.',
     badge: 'Family & Kids Package',
     imageUrl: 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=800&q=80',
-    status: 'DRAFT', // Saved as draft per Part 3 pending missing items & Milo price confirmation
-    priceCents: 5050000, // ₦50,500
+    status: 'ACTIVE',
+    priceCents: 4480000, // ₦44,800 (Golden Morn & Dano Milk removed; Milo at live ₦180×10=₦1,800)
     originalPriceCents: 5800000,
     savingsPercentage: 13,
     bestFor: 'Household staples with breakfast options for the children',
-    missingItems: ['Golden Morn', 'Dano Milk'],
-    priceDiscrepancies: [
-      {
-        item: 'Milo',
-        inventoryPriceNaira: 180,
-        allocatedPriceNaira: 300,
-        message: 'Milo Ordinary is ₦180 in inventory, but Family & Kids Package allocates ₦300 per unit (₦3,000 for 10).',
-      },
-    ],
     items: [
       { name: 'Rice', quantity: 5, amountCents: 1000000 },
       { name: 'Garri', quantity: 3, amountCents: 120000 },
@@ -952,17 +941,7 @@ export const INITIAL_FALLBACK_PACKAGES: SupabasePackage[] = [
       { name: 'Thyme', quantity: 3, amountCents: 30000 },
       { name: 'Sachet Tomato', quantity: 10, amountCents: 170000 },
       { name: 'Semo', quantity: 2, amountCents: 310000 },
-      { name: 'Golden Morn', quantity: 10, amountCents: 250000, missingFromInventory: true },
-      {
-        name: 'Milo Ordinary',
-        displayName: 'Milo',
-        quantity: 10,
-        amountCents: 300000,
-        priceDiscrepancy: true,
-        inventoryPriceCents: 18000,
-        allocatedPriceCents: 30000,
-      },
-      { name: 'Dano Milk', quantity: 10, amountCents: 130000, missingFromInventory: true },
+      { name: 'Milo Ordinary', displayName: 'Milo', quantity: 10, amountCents: 180000 },
     ],
   },
   {

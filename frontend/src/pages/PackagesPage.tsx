@@ -68,11 +68,10 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
     name: 'Affy Solo Living Package',
     badge: 'Solo Living',
     description: 'For bachelors and spinsters who want variety for everyday cooking.',
-    priceCents: 2007000, // ₦20,070.00
-    originalPriceCents: 2350000, // ₦23,500.00
+    priceCents: 1807000, // ₦18,070 (Sardines removed)
+    originalPriceCents: 2350000, // ₦23,500
     savingsPercentage: 15,
-    status: 'DRAFT', // Saved as draft per Part 3 pending Sardines resolution
-    missingItems: ['Sardines'],
+    status: 'ACTIVE',
     items: [
       { name: 'Rice', quantity: 2, amountNaira: 4000, unitName: 'Derica' },
       { name: 'Garri', quantity: 2, amountNaira: 800, unitName: 'Derica' },
@@ -85,7 +84,6 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
       { name: 'Salt', quantity: 1, amountNaira: 250, unitName: 'Pack' },
       { name: 'Curry', quantity: 2, amountNaira: 200, unitName: 'Sachet' },
       { name: 'Thyme', quantity: 2, amountNaira: 200, unitName: 'Sachet' },
-      { name: 'Sardines', quantity: 2, amountNaira: 2000, unitName: 'Can', missingFromInventory: true },
       { name: 'Sachet Tomato', quantity: 6, amountNaira: 1020, unitName: 'Sachet' },
     ],
     bestFor: 'Bachelors and spinsters who want variety for everyday cooking',
@@ -95,19 +93,10 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
     name: 'Affy Family & Kids Package',
     badge: 'Family & Breakfast',
     description: 'Household staples with breakfast options for the children.',
-    priceCents: 5050000, // ₦50,500.00
-    originalPriceCents: 5800000, // ₦58,000.00
+    priceCents: 4480000, // ₦44,800 (Golden Morn, Dano Milk removed; Milo at live price ₦180×10=₦1,800)
+    originalPriceCents: 5800000, // ₦58,000
     savingsPercentage: 13,
-    status: 'DRAFT', // Saved as draft per Part 3 pending missing items & Milo price confirmation
-    missingItems: ['Golden Morn', 'Dano Milk'],
-    priceDiscrepancies: [
-      {
-        item: 'Milo',
-        inventoryPriceNaira: 180,
-        allocatedPriceNaira: 300,
-        message: 'Milo Ordinary is ₦180 in inventory, but Family & Kids Package allocates ₦300 per unit (₦3,000 for 10).',
-      },
-    ],
+    status: 'ACTIVE',
     items: [
       { name: 'Rice', quantity: 5, amountNaira: 10000, unitName: 'Derica' },
       { name: 'Garri', quantity: 3, amountNaira: 1200, unitName: 'Derica' },
@@ -122,18 +111,7 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
       { name: 'Thyme', quantity: 3, amountNaira: 300, unitName: 'Sachet' },
       { name: 'Sachet Tomato', quantity: 10, amountNaira: 1700, unitName: 'Sachet' },
       { name: 'Semo', quantity: 2, amountNaira: 3100, unitName: 'Pack' },
-      { name: 'Golden Morn', quantity: 10, amountNaira: 2500, unitName: 'Sachet', missingFromInventory: true },
-      {
-        name: 'Milo Ordinary',
-        displayName: 'Milo',
-        quantity: 10,
-        amountNaira: 3000,
-        unitName: 'Sachet',
-        priceDiscrepancy: true,
-        inventoryPriceNaira: 180,
-        allocatedPriceNaira: 300,
-      },
-      { name: 'Dano Milk', quantity: 10, amountNaira: 1300, unitName: 'Sachet', missingFromInventory: true },
+      { name: 'Milo Ordinary', displayName: 'Milo', quantity: 10, amountNaira: 1800, unitName: 'Sachet' },
     ],
     bestFor: 'Household staples with breakfast options for the children',
   },

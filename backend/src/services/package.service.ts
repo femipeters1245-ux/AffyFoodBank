@@ -53,10 +53,11 @@ export interface PackageRecord {
 }
 
 // ─── Pre-configured Bundle Catalogue Specifications ───────────────────────────
+// NOTE: Only items that exist in the Product inventory will be included in bundles.
+// Items not found in inventory are automatically excluded; prices always come from live inventory.
 const BUNDLE_SPECS: Record<string, Partial<PackageRecord>> = {
   'affy student essentials': {
     badge: 'Budget Student Essential',
-    priceCents: 1153000, // ₦11,530
     originalPriceCents: 1350000, // ₦13,500
     savingsPercentage: 15,
     bestFor: 'Students & singles needing reliable weekly staple groceries',
@@ -74,11 +75,9 @@ const BUNDLE_SPECS: Record<string, Partial<PackageRecord>> = {
   },
   'affy solo living package': {
     badge: 'Solo Living',
-    priceCents: 2007000, // ₦20,070
     originalPriceCents: 2350000, // ₦23,500
     savingsPercentage: 15,
     bestFor: 'Bachelors and spinsters who want variety for everyday cooking',
-    missingItems: ['Sardines'],
     items: [
       { name: 'Rice', quantity: 2, amountCents: 400000 },
       { name: 'Garri', quantity: 2, amountCents: 80000 },
@@ -91,25 +90,15 @@ const BUNDLE_SPECS: Record<string, Partial<PackageRecord>> = {
       { name: 'Salt', quantity: 1, amountCents: 25000 },
       { name: 'Curry', quantity: 2, amountCents: 20000 },
       { name: 'Thyme', quantity: 2, amountCents: 20000 },
-      { name: 'Sardines', quantity: 2, amountCents: 200000, missingFromInventory: true },
+      // Sardines intentionally omitted — not in inventory
       { name: 'Sachet Tomato', quantity: 6, amountCents: 102000 },
     ],
   },
   'affy family & kids package': {
     badge: 'Family & Kids Package',
-    priceCents: 5050000, // ₦50,500
     originalPriceCents: 5800000, // ₦58,000
     savingsPercentage: 13,
     bestFor: 'Household staples with breakfast options for the children',
-    missingItems: ['Golden Morn', 'Dano Milk'],
-    priceDiscrepancies: [
-      {
-        item: 'Milo',
-        inventoryPriceNaira: 180,
-        allocatedPriceNaira: 300,
-        message: 'Milo Ordinary is ₦180 in inventory, but Family & Kids Package allocates ₦300 per unit (₦3,000 for 10).',
-      },
-    ],
     items: [
       { name: 'Rice', quantity: 5, amountCents: 1000000 },
       { name: 'Garri', quantity: 3, amountCents: 120000 },
@@ -124,22 +113,13 @@ const BUNDLE_SPECS: Record<string, Partial<PackageRecord>> = {
       { name: 'Thyme', quantity: 3, amountCents: 30000 },
       { name: 'Sachet Tomato', quantity: 10, amountCents: 170000 },
       { name: 'Semo', quantity: 2, amountCents: 310000 },
-      { name: 'Golden Morn', quantity: 10, amountCents: 250000, missingFromInventory: true },
-      {
-        name: 'Milo Ordinary',
-        displayName: 'Milo',
-        quantity: 10,
-        amountCents: 300000,
-        priceDiscrepancy: true,
-        inventoryPriceCents: 18000,
-        allocatedPriceCents: 30000,
-      },
-      { name: 'Dano Milk', quantity: 10, amountCents: 130000, missingFromInventory: true },
+      // Milo Ordinary included — live inventory price (₦180/unit) used automatically
+      { name: 'Milo Ordinary', displayName: 'Milo', quantity: 10, amountCents: 180000 },
+      // Golden Morn and Dano Milk intentionally omitted — not in inventory
     ],
   },
   'affy party cooking starter': {
     badge: 'Party Starter',
-    priceCents: 3140000, // ₦31,400
     originalPriceCents: 3600000, // ₦36,000
     savingsPercentage: 13,
     bestFor: 'A base package for a rice-and-spaghetti party menu',
@@ -242,62 +222,52 @@ class PackageService {
         let finalItems: PackageItemDetail[];
 
         if (spec.items && linkedDbItems.length > 0) {
-          // For named bundles: merge spec metadata with live DB prices.
-          // If an item exists in DB (has product.id), use its live amountCents.
-          // If it only exists in spec (missingFromInventory), keep spec amount.
-          finalItems = spec.items.map((specIt) => {
-            const matchedDb = linkedDbItems.find(
-              (d) => d.name.toLowerCase() === specIt.name.toLowerCase()
-            );
-            if (matchedDb) {
-              // Use live price from DB
+          // For named bundles: only include items that have a live DB product link.
+          // Items not found in inventory (Sardines, Golden Morn, Dano Milk, etc.) are silently dropped.
+          // Items with a price discrepancy always use the live inventory price — no separate flag needed.
+          finalItems = spec.items
+            .map((specIt) => {
+              const matchedDb = linkedDbItems.find(
+                (d) => d.name.toLowerCase() === specIt.name.toLowerCase()
+              );
+              if (!matchedDb) return null; // not in inventory — drop it
+              // Use live inventory price always
               return {
                 name: specIt.name,
                 displayName: specIt.displayName || specIt.name,
                 quantity: matchedDb.quantity,
-                // live computed total
-                amountCents: matchedDb.amountCents,
+                amountCents: matchedDb.amountCents, // live: priceCents × qty
                 unit: matchedDb.unit,
                 product: matchedDb.product,
                 unavailableFromInventory: matchedDb.unavailableFromInventory,
               };
-            }
-            // Item not linked to DB — keep spec definition (missing/discrepancy)
-            return {
-              name: specIt.name,
-              displayName: specIt.displayName || specIt.name,
-              quantity: specIt.quantity,
-              amountCents: specIt.amountCents,
-              missingFromInventory: specIt.missingFromInventory,
-              priceDiscrepancy: specIt.priceDiscrepancy,
-              inventoryPriceCents: specIt.inventoryPriceCents,
-              allocatedPriceCents: specIt.allocatedPriceCents,
-            };
-          });
+            })
+            .filter((it): it is PackageItemDetail => it !== null);
         } else if (linkedDbItems.length > 0) {
           // Custom bundle (no spec) — all items from DB with live prices
           finalItems = linkedDbItems;
         } else if (spec.items) {
-          // Named bundle not yet saved to PackageItems — use spec as reference
-          finalItems = spec.items.map((specIt) => ({
-            name: specIt.name,
-            displayName: specIt.displayName || specIt.name,
-            quantity: specIt.quantity,
-            amountCents: specIt.amountCents,
-            missingFromInventory: specIt.missingFromInventory,
-            priceDiscrepancy: specIt.priceDiscrepancy,
-            inventoryPriceCents: specIt.inventoryPriceCents,
-            allocatedPriceCents: specIt.allocatedPriceCents,
-          }));
+          // Named bundle not yet saved to PackageItems — use spec as reference,
+          // but exclude any item flagged as missing or with a price discrepancy.
+          finalItems = spec.items
+            .filter((specIt) => !specIt.missingFromInventory && !specIt.priceDiscrepancy)
+            .map((specIt) => ({
+              name: specIt.name,
+              displayName: specIt.displayName || specIt.name,
+              quantity: specIt.quantity,
+              amountCents: specIt.amountCents,
+            }));
         } else {
           finalItems = [];
         }
 
-        // Always recalculate total from live item amounts
-        const calculatedPriceCents = finalItems.reduce((acc, it) => acc + (it.missingFromInventory ? 0 : it.amountCents), 0);
-        // missingItems: items that are in spec but have no DB linkage and are flagged
-        const hasMissingItems = finalItems.some((it) => it.missingFromInventory);
+        // Recalculate total from live item amounts (all items in finalItems are valid inventory items)
+        const calculatedPriceCents = finalItems.reduce((acc, it) => acc + it.amountCents, 0);
+        // A bundle is unavailable only if it has out-of-stock items (not missing — missing are simply removed)
         const hasUnavailableItems = finalItems.some((it) => it.unavailableFromInventory);
+        const unavailableNames = finalItems
+          .filter((it) => it.unavailableFromInventory)
+          .map((it) => it.displayName || it.name);
 
         return {
           id: p.id,
@@ -305,14 +275,16 @@ class PackageService {
           description: p.description || '',
           badge: spec.badge || p.badge || 'Curated Bundle',
           imageUrl: p.imageUrl || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
-          status: (hasMissingItems || hasUnavailableItems) && p.status === 'ACTIVE' ? 'DRAFT' : (p.status || 'ACTIVE'),
+          // Only downgrade to DRAFT if there are out-of-stock (unavailable) items, not missing ones
+          status: hasUnavailableItems && p.status === 'ACTIVE' ? 'DRAFT' : (p.status || 'ACTIVE'),
           priceCents: calculatedPriceCents,
           originalPriceCents: spec.originalPriceCents || Math.round(calculatedPriceCents * 1.15),
           savingsPercentage: spec.savingsPercentage || 14,
           bestFor: spec.bestFor || p.bestFor || 'Families and bulk buyers',
           items: finalItems,
-          missingItems: finalItems.filter((it) => it.missingFromInventory).map((it) => it.name),
-          priceDiscrepancies: spec.priceDiscrepancies || [],
+          missingItems: [], // nothing is "pending" — items not in inventory are removed entirely
+          unavailableItems: unavailableNames,
+          priceDiscrepancies: [], // prices always use live inventory values now
           createdAt: p.createdAt,
           updatedAt: p.updatedAt,
         };
