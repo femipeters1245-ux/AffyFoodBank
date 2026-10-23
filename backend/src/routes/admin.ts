@@ -1,5 +1,7 @@
 // backend/src/routes/admin.ts
 import { Router, Request, Response, NextFunction } from 'express';
+import fs from 'fs';
+import path from 'path';
 import prisma from '../prisma/client';
 import { authenticate } from '../middleware/authenticate';
 import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors';
@@ -7,6 +9,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { sendDeliveryStageUpdateEmail } from '../services/email.service';
 import { systemProductStore } from '../services/system-product.store';
 import { packageService } from '../services/package.service';
+import { supabaseAdmin } from '../services/supabase-admin.service';
 
 const router = Router();
 
@@ -101,6 +104,99 @@ router.post('/products/:id/restock', async (req: Request, res: Response) => {
   const amount = Number(req.body.amount || 20);
   const updated = await systemProductStore.restock(id, amount);
   res.json(updated);
+});
+
+// ─── Unit Management (find or create a unit in Supabase) ─────────────────────
+router.post('/units/find-or-create', async (req: Request, res: Response) => {
+  const { name, symbol } = req.body;
+  if (!name || typeof name !== 'string') {
+    return res.status(400).json({ error: 'name is required' });
+  }
+
+  if (!supabaseAdmin) {
+    return res.status(503).json({ error: 'Database connection unavailable' });
+  }
+
+  // Try to find an existing Unit by name (case-insensitive)
+  const { data: existing } = await supabaseAdmin
+    .from('Unit')
+    .select('*')
+    .ilike('name', name.trim())
+    .maybeSingle();
+
+  if (existing) {
+    return res.json({
+      id: existing.id,
+      name: existing.name,
+      symbol: existing.symbol ?? null,
+      created_at: existing.createdAt ?? '',
+      updated_at: existing.updatedAt ?? '',
+    });
+  }
+
+  // Create a new Unit row
+  const newId = uuidv4();
+  const unitSymbol = (symbol as string | undefined)?.trim() || name.trim().toLowerCase().replace(/\s+/g, '_');
+  const { data: created, error } = await supabaseAdmin
+    .from('Unit')
+    .insert({
+      id: newId,
+      name: name.trim(),
+      symbol: unitSymbol,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    })
+    .select('*')
+    .single();
+
+  if (error || !created) {
+    return res.status(500).json({ error: error?.message || 'Failed to create unit' });
+  }
+
+  res.status(201).json({
+    id: created.id,
+    name: created.name,
+    symbol: created.symbol ?? null,
+    created_at: created.createdAt ?? '',
+    updated_at: created.updatedAt ?? '',
+  });
+});
+
+// ─── Product Sort Order (persistent JSON-backed, no schema migration required) ─
+const SORT_ORDER_FILE = path.resolve(process.cwd(), '.data', 'product_sort_order.json');
+
+function loadSortOrder(): Record<string, number> {
+  try {
+    if (fs.existsSync(SORT_ORDER_FILE)) {
+      return JSON.parse(fs.readFileSync(SORT_ORDER_FILE, 'utf-8'));
+    }
+  } catch {}
+  return {};
+}
+
+function saveSortOrder(order: Record<string, number>) {
+  try {
+    const dir = path.dirname(SORT_ORDER_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(SORT_ORDER_FILE, JSON.stringify(order, null, 2), 'utf-8');
+  } catch {}
+}
+
+// GET sort order map
+router.get('/products/sort-order', (_req: Request, res: Response) => {
+  res.json(loadSortOrder());
+});
+
+// PATCH sort order: body = { order: [id1, id2, id3, ...] }
+router.patch('/products/sort-order', (req: Request, res: Response) => {
+  const { order } = req.body;
+  if (!Array.isArray(order)) {
+    return res.status(400).json({ error: 'order must be an array of product IDs' });
+  }
+  const map: Record<string, number> = {};
+  order.forEach((id: string, idx: number) => { map[id] = idx; });
+  saveSortOrder(map);
+  res.json({ success: true, order: map });
 });
 
 // Middleware: restrict other admin endpoints to Admin or Operations Staff

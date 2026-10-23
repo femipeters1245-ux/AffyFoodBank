@@ -416,6 +416,57 @@ class SystemProductStore {
     return false;
   }
 
+  private loadSortMap(): Record<string, number> {
+    const candidates = [
+      path.resolve(process.cwd(), '.data', 'product_sort_order.json'),
+      path.resolve(process.cwd(), 'backend', '.data', 'product_sort_order.json'),
+      path.resolve(__dirname, '..', '..', '.data', 'product_sort_order.json'),
+    ];
+    for (const p of candidates) {
+      try {
+        if (fs.existsSync(p)) {
+          return JSON.parse(fs.readFileSync(p, 'utf-8'));
+        }
+      } catch {}
+    }
+    return {};
+  }
+
+  public getProductRank(p: { id: string; name: string }, sortMap?: Record<string, number>): number {
+    const map = sortMap || this.loadSortMap();
+    if (map[p.id] !== undefined) {
+      return map[p.id];
+    }
+    const CANONICAL_FOOD_NAMES = [
+      'Rice',
+      'Beans',
+      'Garri',
+      'Spaghetti',
+      'Noodles',
+      'Semo',
+      'Benue Giant White Yam (Set of 5 Huge Tubers)',
+      'Butter',
+      'Egg',
+      'Fresh Cooking Plantain',
+      'Maggi',
+      'Milo Ordinary',
+      'Refined Vegetable Cooking Oil',
+      'Sachet Tomato',
+      'Salt',
+      'Sardines',
+      'Thyme',
+      'Curry',
+    ];
+    const cleanName = (p.name || '').trim().toLowerCase();
+    for (let i = 0; i < CANONICAL_FOOD_NAMES.length; i++) {
+      const target = CANONICAL_FOOD_NAMES[i].trim().toLowerCase();
+      if (cleanName === target || cleanName.startsWith(target + ' ') || cleanName.startsWith(target)) {
+        return i;
+      }
+    }
+    return 100 + (p.name ? p.name.charCodeAt(0) : 0);
+  }
+
   private async resolveCategory(categoryId?: string | null, categoryName?: string | null): Promise<string | null> {
     if (categoryId && isUuidRegex.test(categoryId)) return categoryId;
     if (!categoryName) return null;
@@ -440,30 +491,58 @@ class SystemProductStore {
   }
 
   private async resolveUnit(unitId?: string | null, unitName?: string | null): Promise<string | null> {
-    if (unitId && isUuidRegex.test(unitId)) return unitId;
-    if (!unitName) return null;
+    if (!supabaseAdmin) return null;
 
-    if (supabaseAdmin) {
-      const { data: existing } = await supabaseAdmin.from('Unit').select('id').ilike('name', unitName.trim()).maybeSingle();
-      if (existing) return existing.id;
+    // 1. If valid UUID already, check if it matches an existing Unit
+    if (unitId && isUuidRegex.test(unitId)) {
+      const { data: byId } = await supabaseAdmin.from('Unit').select('id').eq('id', unitId).maybeSingle();
+      if (byId) return byId.id;
+    }
 
+    // 2. Identify search string candidates from unitName or unitId (e.g. 'unit-derica' -> 'derica')
+    const candidates: string[] = [];
+    if (unitName && typeof unitName === 'string' && unitName.trim()) {
+      candidates.push(unitName.trim());
+    }
+    if (unitId && typeof unitId === 'string' && !isUuidRegex.test(unitId)) {
+      const stripped = unitId.replace(/^unit[-_]/i, '').trim();
+      if (stripped && !candidates.includes(stripped)) candidates.push(stripped);
+      if (!candidates.includes(unitId.trim())) candidates.push(unitId.trim());
+    }
+
+    for (const cand of candidates) {
+      // Check by exact or case-insensitive name
+      const { data: byName } = await supabaseAdmin.from('Unit').select('id').ilike('name', cand).maybeSingle();
+      if (byName) return byName.id;
+
+      // Check by symbol
+      const { data: bySymbol } = await supabaseAdmin.from('Unit').select('id').ilike('symbol', cand).maybeSingle();
+      if (bySymbol) return bySymbol.id;
+    }
+
+    // 3. If a name was supplied but doesn't exist, create it in Supabase
+    const primaryName = unitName?.trim() || candidates[0];
+    if (primaryName) {
       const newId = uuidv4();
-      const { data: created } = await supabaseAdmin.from('Unit').insert({
+      const symbol = primaryName.toLowerCase().replace(/\s+/g, '_');
+      const { data: created, error } = await supabaseAdmin.from('Unit').insert({
         id: newId,
-        name: unitName.trim(),
-        symbol: unitName.trim().toLowerCase(),
+        name: primaryName,
+        symbol: symbol,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
       }).select('id').single();
 
       if (created) return created.id;
+      if (error) console.error('[SystemProductStore] Unit creation error:', error.message);
     }
+
     return null;
   }
 
   /**
    * List products with search, pagination, and category filtering.
-   * Pulls fresh data from Supabase.
+   * Pulls fresh data from Supabase and applies persistent canonical ordering.
    */
   public async list(params: {
     page?: number;
@@ -499,6 +578,10 @@ class SystemProductStore {
       all = all.filter((p) => p.categoryId === categoryId);
     }
 
+    // Sort by persistent canonical food bank order
+    const sortMap = this.loadSortMap();
+    all.sort((a, b) => this.getProductRank(a, sortMap) - this.getProductRank(b, sortMap));
+
     const total = all.length;
     const startIndex = (page - 1) * limit;
     const items = all.slice(startIndex, startIndex + limit);
@@ -533,6 +616,7 @@ class SystemProductStore {
     imageUrl: string | null;
     unitId: string | null;
     unitName: string | null;
+    unit: string | null;
     categoryId: string | null;
     categoryName: string | null;
     isActive: boolean;
@@ -571,14 +655,14 @@ class SystemProductStore {
         stock: updates.stock,
         imageUrl: updates.imageUrl || undefined,
         unitId: updates.unitId || undefined,
-        unitName: updates.unitName || undefined,
+        unitName: updates.unitName || (updates as any).unit || undefined,
         categoryId: updates.categoryId || undefined,
         categoryName: updates.categoryName || undefined,
       });
     }
 
     const resolvedCategoryId = await this.resolveCategory(updates.categoryId, updates.categoryName);
-    const resolvedUnitId = await this.resolveUnit(updates.unitId, updates.unitName);
+    const resolvedUnitId = await this.resolveUnit(updates.unitId, updates.unitName || (updates as any).unit);
 
     // 2. Persist to Supabase "Product"
     if (supabaseAdmin) {
@@ -596,6 +680,7 @@ class SystemProductStore {
       const { error: prodErr } = await supabaseAdmin.from('Product').update(productPayload).eq('id', targetId);
       if (prodErr) {
         console.error('[SystemProductStore] Supabase product update error:', prodErr.message);
+        throw new Error(`Failed to update product in Supabase: ${prodErr.message}`);
       }
 
       // 3. Persist to Supabase "Inventory"

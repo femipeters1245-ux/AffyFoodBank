@@ -602,6 +602,42 @@ function normalizeProductFromDb(p: any): SupabaseProduct {
   };
 }
 
+export const CANONICAL_FOOD_NAMES: string[] = [
+  'Rice',
+  'Beans',
+  'Garri',
+  'Spaghetti',
+  'Noodles',
+  'Semo',
+  'Benue Giant White Yam (Set of 5 Huge Tubers)',
+  'Butter',
+  'Egg',
+  'Fresh Cooking Plantain',
+  'Maggi',
+  'Milo Ordinary',
+  'Refined Vegetable Cooking Oil',
+  'Sachet Tomato',
+  'Salt',
+  'Sardines',
+  'Thyme',
+  'Curry',
+];
+
+export function getProductSortRank(product: { id?: string; name: string }): number {
+  const cleanName = (product.name || '').trim().toLowerCase();
+  for (let i = 0; i < CANONICAL_FOOD_NAMES.length; i++) {
+    const target = CANONICAL_FOOD_NAMES[i].trim().toLowerCase();
+    if (cleanName === target || cleanName.startsWith(target + ' ') || cleanName.startsWith(target)) {
+      return i;
+    }
+  }
+  return 100 + (product.name ? product.name.charCodeAt(0) : 0);
+}
+
+export function sortProductsCanonical<T extends { id?: string; name: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => getProductSortRank(a) - getProductSortRank(b));
+}
+
 export const supabaseProducts = {
   /** List all active products — always fetches fresh from Supabase via backend */
   async list(): Promise<SupabaseProduct[]> {
@@ -609,7 +645,9 @@ export const supabaseProducts = {
       const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
-        const normalized = items.map(normalizeProductFromDb).filter((p: SupabaseProduct) => p.is_active);
+        const normalized = sortProductsCanonical(
+          items.map(normalizeProductFromDb).filter((p: SupabaseProduct) => p.is_active)
+        );
         // Replace (not merge) the localStorage cache with the fresh server data
         try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
@@ -619,7 +657,7 @@ export const supabaseProducts = {
       console.warn('[System Inventory Engine] Products query fallback:', err.message);
     }
 
-    return getLocalFallbackProducts().filter((p) => p.is_active);
+    return sortProductsCanonical(getLocalFallbackProducts().filter((p) => p.is_active));
   },
 
   /** Get all products (including inactive) for admin inventory control — always fetches fresh */
@@ -628,7 +666,7 @@ export const supabaseProducts = {
       const res = await apiClient.get<any>('/admin/products');
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
-        const normalized = items.map(normalizeProductFromDb);
+        const normalized = sortProductsCanonical(items.map(normalizeProductFromDb));
         // Replace (not merge) the localStorage cache with fresh data from Supabase
         try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
@@ -640,7 +678,7 @@ export const supabaseProducts = {
       const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
-        const normalized = items.map(normalizeProductFromDb);
+        const normalized = sortProductsCanonical(items.map(normalizeProductFromDb));
         try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
         return normalized;
@@ -649,7 +687,7 @@ export const supabaseProducts = {
       console.warn('[System Inventory Engine] Admin products query warning:', err.message);
     }
 
-    return getLocalFallbackProducts();
+    return sortProductsCanonical(getLocalFallbackProducts());
   },
 
   /** Get a single product */
@@ -726,6 +764,8 @@ export const supabaseProducts = {
       image_url: string;
       category_id: string;
       unit_id: string;
+      unit: string;
+      unit_name: string;
       is_active: boolean;
       stock: number;
     }>
@@ -738,6 +778,8 @@ export const supabaseProducts = {
       stock: payload.stock,
       categoryId: payload.category_id,
       unitId: payload.unit_id,
+      unitName: payload.unit || payload.unit_name,
+      unit: payload.unit || payload.unit_name,
       isActive: payload.is_active,
     });
 
@@ -790,16 +832,18 @@ const FALLBACK_CATEGORIES: SupabaseCategory[] = [
 ];
 
 const FALLBACK_UNITS: SupabaseUnit[] = [
-  { id: 'unit-bag', name: '50kg Bag', symbol: 'bag', created_at: '', updated_at: '' },
-  { id: 'unit-rubber', name: 'Paint Rubber', symbol: 'rubber', created_at: '', updated_at: '' },
-  { id: 'unit-keg', name: '25L Keg', symbol: 'keg', created_at: '', updated_at: '' },
-  { id: 'unit-bundle', name: 'Bundle (5 Tubers)', symbol: 'bundle', created_at: '', updated_at: '' },
-  { id: 'unit-pack', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
-  { id: 'unit-basket', name: 'Farm Basket', symbol: 'basket', created_at: '', updated_at: '' },
-  { id: 'unit-bunch', name: 'Bunch (80 Fingers)', symbol: 'bunch', created_at: '', updated_at: '' },
-  { id: 'unit-pcs', name: 'Piece', symbol: 'pcs', created_at: '', updated_at: '' },
-  { id: 'unit-sachet', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
-  { id: 'unit-derica', name: 'Derica', symbol: 'derica', created_at: '', updated_at: '' },
+  { id: '7c705de6-88b7-465b-8176-c6f10d443110', name: '50kg Bag', symbol: 'bag', created_at: '', updated_at: '' },
+  { id: '1dc1445d-3eed-4bde-a5ea-d344e7cd753a', name: 'Paint Rubber', symbol: 'rubber', created_at: '', updated_at: '' },
+  { id: '5f45ffa2-bc66-4817-a569-8e8aa286a8a0', name: '25L Keg', symbol: 'keg', created_at: '', updated_at: '' },
+  { id: '0edfeffe-b98f-4a04-bd9b-64291cf3509b', name: 'Bundle (5 Tubers)', symbol: 'bundle', created_at: '', updated_at: '' },
+  { id: '56fed164-16f5-4721-b94f-0dbedf06ca77', name: 'Bundle Pack', symbol: 'pack', created_at: '', updated_at: '' },
+  { id: '58bf9a30-3937-48d4-bc78-db9c6fa4021c', name: 'Farm Basket', symbol: 'basket', created_at: '', updated_at: '' },
+  { id: '375e3e9f-b3b5-4f8a-a1eb-ca14d313fd73', name: 'Bunch (80 Fingers)', symbol: 'bunch', created_at: '', updated_at: '' },
+  { id: '82a3470a-dd65-479e-8575-240e5c6d6355', name: '5L Bottle', symbol: '5l bottle', created_at: '', updated_at: '' },
+  { id: '10836f10-4c42-4fcf-bb3f-2aa1ee91405f', name: 'Pack', symbol: 'pack', created_at: '', updated_at: '' },
+  { id: '723a3c7c-b664-4e4c-978a-c6408bdfed1a', name: 'Piece', symbol: 'pcs', created_at: '', updated_at: '' },
+  { id: '673cc18b-a1b0-43c7-aeab-060b9668228f', name: 'Sachet', symbol: 'sachet', created_at: '', updated_at: '' },
+  { id: '80495f4a-0262-4104-a957-352566b42c2d', name: 'Derica', symbol: 'derica', created_at: '', updated_at: '' },
 ];
 
 export const supabaseCategories = {
@@ -816,12 +860,32 @@ export const supabaseCategories = {
 
 export const supabaseUnits = {
   async list(): Promise<SupabaseUnit[]> {
+    try {
+      const res = await apiClient.get<SupabaseUnit[]>('/units');
+      if (Array.isArray(res.data) && res.data.length > 0) return res.data;
+    } catch {}
     return FALLBACK_UNITS;
   },
 
   async findOrCreate(name: string, symbol?: string): Promise<SupabaseUnit> {
-    const existing = FALLBACK_UNITS.find((u) => u.name.toLowerCase() === name.toLowerCase());
-    if (existing) return existing;
+    // 1. Call backend to find or create in Supabase (persisting real UUID)
+    try {
+      const res = await apiClient.post<SupabaseUnit>('/admin/units/find-or-create', {
+        name: name.trim(),
+        symbol: symbol ?? name.trim().toLowerCase().replace(/\s+/g, '_'),
+      });
+      if (res.data && res.data.id) return res.data;
+    } catch {}
+
+    // 2. Check local known list of Supabase units
+    const local = FALLBACK_UNITS.find(
+      (u) =>
+        u.name.toLowerCase() === name.toLowerCase() ||
+        (u.symbol && u.symbol.toLowerCase() === name.toLowerCase())
+    );
+    if (local) return local;
+
+    // 3. Last resort fallback
     return { id: `unit-${Date.now()}`, name, symbol: symbol ?? null, created_at: '', updated_at: '' };
   },
 };

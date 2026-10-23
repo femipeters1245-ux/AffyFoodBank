@@ -226,7 +226,7 @@ class PackageService {
           // Items not found in inventory (Sardines, Golden Morn, Dano Milk, etc.) are silently dropped.
           // Items with a price discrepancy always use the live inventory price — no separate flag needed.
           finalItems = spec.items
-            .map((specIt) => {
+            .map((specIt): PackageItemDetail | null => {
               const matchedDb = linkedDbItems.find(
                 (d) => d.name.toLowerCase() === specIt.name.toLowerCase()
               );

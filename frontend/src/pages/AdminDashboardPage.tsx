@@ -585,15 +585,30 @@ export const AdminDashboardPage: React.FC = () => {
     const edited = { ...editingProduct };
 
     try {
-      await supabaseProducts.update(edited.id, {
+      // Resolve the unit name the user typed to a real Unit row in Supabase.
+      // This is the fix for the Unit Scale bug: previously unit_id was never updated
+      // because the typed name was never resolved — only the old unit_id was sent.
+      let resolvedUnitId = edited.unit_id;
+      if (edited.unit && edited.unit.trim()) {
+        const resolvedUnit = await supabaseUnits.findOrCreate(edited.unit.trim());
+        resolvedUnitId = resolvedUnit.id;
+      }
+
+      const result = await supabaseProducts.update(edited.id, {
         name: edited.name,
         description: edited.description,
         price_cents: Number(edited.priceCents),
         image_url: edited.imageUrl,
         stock: Number(edited.stock),
         category_id: edited.category_id,
-        unit_id: edited.unit_id,
+        unit_id: resolvedUnitId,
+        unit: edited.unit,
       });
+
+      if (!result) {
+        throw new Error('No data returned from server after update');
+      }
+
       // Reload admin table from Supabase so we see the confirmed persisted values
       await loadProducts();
       await loadPackages(); // Refresh bundle totals to reflect new prices

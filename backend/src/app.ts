@@ -78,6 +78,24 @@ app.use(`${API}/payments`, paymentRouter);
 app.use(`${API}/admin`, adminRouter);
 app.use(`${API}/email`, emailRouter);
 
+// Public units endpoint
+app.get(['/units', '/api/units', `${API}/units`], async (_req: Request, res: Response) => {
+  const { supabaseAdmin } = await import('./services/supabase-admin.service');
+  if (supabaseAdmin) {
+    const { data } = await supabaseAdmin.from('Unit').select('*').order('name');
+    if (data && data.length > 0) {
+      return res.json(data.map((u: any) => ({
+        id: u.id,
+        name: u.name,
+        symbol: u.symbol ?? null,
+        created_at: u.createdAt ?? '',
+        updated_at: u.updatedAt ?? '',
+      })));
+    }
+  }
+  res.json([]);
+});
+
 // Public delivery fee endpoint for customer checkout
 app.get(['/delivery-fee', '/api/delivery-fee', `${API}/delivery-fee`], async (_req: Request, res: Response) => {
   const { getDeliveryFeeConfig } = await import('./services/deliveryFee.service');
