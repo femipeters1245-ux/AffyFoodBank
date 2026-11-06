@@ -12,7 +12,7 @@ export const MAX_VERIFICATION_ATTEMPTS = 5;
 
 export interface GenerateOtpParams {
   email: string;
-  purpose: 'SIGNUP' | 'LOGIN';
+  purpose: 'SIGNUP' | 'LOGIN' | 'PASSWORD_RESET';
   firstName?: string;
   metadata?: any;
 }
@@ -20,7 +20,7 @@ export interface GenerateOtpParams {
 export interface VerifyOtpParams {
   email: string;
   candidateOtp: string;
-  purpose?: 'SIGNUP' | 'LOGIN' | string;
+  purpose?: 'SIGNUP' | 'LOGIN' | 'PASSWORD_RESET' | string;
   verificationTicket?: string;
 }
 

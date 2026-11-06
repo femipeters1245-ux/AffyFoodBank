@@ -1,12 +1,11 @@
 // frontend/src/components/MobileBottomNav.tsx
 import React from 'react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
 
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
-  const navigate = useNavigate();
   const { isAuthenticated } = useAuth();
   const { totalItems, setIsCartOpen } = useCart();
 
@@ -14,26 +13,14 @@ export const MobileBottomNav: React.FC = () => {
 
   const isHomeActive = pathname === '/';
   const isSavingsActive = pathname === '/savings';
-  const isAccountActive = ['/wallet', '/login', '/register', '/admin'].includes(pathname);
-
-  const handleCategoriesClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    if (pathname === '/') {
-      const el = document.getElementById('categories-section');
-      if (el) {
-        el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      }
-    } else {
-      navigate('/?focus=categories');
-    }
-  };
+  const isWalletActive = ['/wallet', '/orders'].includes(pathname) || (!isAuthenticated && pathname === '/login');
 
   return (
     <nav
       className="md:hidden fixed bottom-0 inset-x-0 z-40 bg-white/95 backdrop-blur-md border-t border-slate-200/90 shadow-[0_-4px_20px_rgba(0,0,0,0.06)] px-2 pb-[env(safe-area-inset-bottom,0px)]"
       aria-label="Mobile Navigation"
     >
-      <div className="grid grid-cols-5 h-16 items-center">
+      <div className="grid grid-cols-4 h-16 items-center">
         {/* 1. Home */}
         <Link
           to="/"
@@ -63,63 +50,7 @@ export const MobileBottomNav: React.FC = () => {
           <span className="text-[10px] mt-1 tracking-tight">Home</span>
         </Link>
 
-        {/* 2. Categories */}
-        <button
-          onClick={handleCategoriesClick}
-          className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-slate-800 font-medium transition-colors"
-          aria-label="Browse Food Categories"
-        >
-          <div className="relative">
-            <svg
-              className="w-5 h-5"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.75}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"
-              />
-            </svg>
-          </div>
-          <span className="text-[10px] mt-1 tracking-tight">Categories</span>
-        </button>
-
-        {/* 3. Food Savings */}
-        <Link
-          to="/savings"
-          className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            isSavingsActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
-          }`}
-          aria-label="Food Savings"
-        >
-          <div className="relative">
-            <svg
-              className={`w-5 h-5 transition-transform ${isSavingsActive ? 'scale-110' : ''}`}
-              fill={isSavingsActive ? 'currentColor' : 'none'}
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={isSavingsActive ? 2 : 1.75}
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
-              />
-            </svg>
-            {!isAuthenticated && (
-              <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-accent-500 ring-2 ring-white" />
-            )}
-            {isSavingsActive && (
-              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-600" />
-            )}
-          </div>
-          <span className="text-[10px] mt-1 tracking-tight">Savings</span>
-        </Link>
-
-        {/* 4. Basket / Cart */}
+        {/* 2. Basket */}
         <button
           onClick={() => setIsCartOpen(true)}
           className="flex flex-col items-center justify-center py-1 text-slate-500 hover:text-slate-800 font-medium transition-colors"
@@ -148,35 +79,62 @@ export const MobileBottomNav: React.FC = () => {
           <span className="text-[10px] mt-1 tracking-tight">Basket</span>
         </button>
 
-        {/* 5. Account */}
+        {/* 3. Food Savings */}
         <Link
-          to={isAuthenticated ? '/wallet' : '/login'}
+          to="/savings"
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            isAccountActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
+            isSavingsActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
           }`}
-          aria-label="Account / Wallet"
+          aria-label="Food Savings"
         >
           <div className="relative">
             <svg
-              className={`w-5 h-5 transition-transform ${isAccountActive ? 'scale-110' : ''}`}
-              fill={isAccountActive ? 'currentColor' : 'none'}
+              className={`w-5 h-5 transition-transform ${isSavingsActive ? 'scale-110' : ''}`}
+              fill={isSavingsActive ? 'currentColor' : 'none'}
               viewBox="0 0 24 24"
               stroke="currentColor"
-              strokeWidth={isAccountActive ? 2 : 1.75}
+              strokeWidth={isSavingsActive ? 2 : 1.75}
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
               />
             </svg>
-            {isAccountActive && (
+            {isSavingsActive && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-600" />
             )}
           </div>
-          <span className="text-[10px] mt-1 tracking-tight">
-            {isAuthenticated ? 'Wallet' : 'Account'}
-          </span>
+          <span className="text-[10px] mt-1 tracking-tight">Food Savings</span>
+        </Link>
+
+        {/* 4. Wallet */}
+        <Link
+          to="/wallet"
+          className={`flex flex-col items-center justify-center py-1 transition-colors ${
+            isWalletActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
+          }`}
+          aria-label="My Wallet"
+        >
+          <div className="relative">
+            <svg
+              className={`w-5 h-5 transition-transform ${isWalletActive ? 'scale-110' : ''}`}
+              fill={isWalletActive ? 'currentColor' : 'none'}
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={isWalletActive ? 2 : 1.75}
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+              />
+            </svg>
+            {isWalletActive && (
+              <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-600" />
+            )}
+          </div>
+          <span className="text-[10px] mt-1 tracking-tight">Wallet</span>
         </Link>
       </div>
     </nav>

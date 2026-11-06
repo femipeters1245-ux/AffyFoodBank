@@ -10,6 +10,7 @@ import {
   UnauthorizedError,
 } from '../utils/errors';
 import { z } from 'zod';
+import { otpService } from './otp.service';
 
 // ─── Validation Schemas ────────────────────────────────────────────────────────
 
@@ -276,27 +277,74 @@ export async function logoutUser(_userId: string): Promise<void> {
 }
 
 /**
- * Send a password reset link.
- * Currently a stub — returns successfully regardless (avoids enumeration).
- * Wire up a real email provider (Nodemailer / SendGrid) here.
+ * Send a 6-digit password reset OTP via Resend.
+ * Always resolves gracefully to avoid account enumeration.
  */
-export async function requestPasswordReset(email: string): Promise<void> {
+export async function requestPasswordReset(email: string): Promise<{ success: boolean; message: string }> {
   if (!email) throw new BadRequestError('Email is required');
-  // Always resolve to avoid leaking whether an account exists.
-  // TODO: generate a signed reset token, persist it, send email.
+  const normalizedEmail = email.trim().toLowerCase();
+
+  let user: any = null;
+  try {
+    user = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+  } catch (err: any) {
+    console.warn('[requestPasswordReset] DB check note:', err?.message);
+  }
+
+  if (user && user.isActive) {
+    try {
+      await otpService.generateAndSendOtp({
+        email: normalizedEmail,
+        purpose: 'PASSWORD_RESET',
+        firstName: user.firstName || 'there',
+        metadata: { userId: user.id },
+      });
+    } catch (err: any) {
+      if (err instanceof BadRequestError) throw err;
+      console.error('[requestPasswordReset] Error sending OTP:', err?.message);
+    }
+  }
+
+  return {
+    success: true,
+    message: 'If that email address is registered, a 6-digit password reset code has been sent.',
+  };
 }
 
 /**
- * Apply a password reset using the signed token from the email link.
- * Currently a stub.
+ * Apply a password reset using the 6-digit OTP code sent via Resend.
  */
-export async function resetPassword(token: string, newPassword: string): Promise<void> {
-  if (!token || !newPassword) {
-    throw new BadRequestError('Token and new password are required');
+export async function resetPassword(body: { email?: string; otp?: string; token?: string; newPassword?: string; password?: string }): Promise<{ success: boolean; message: string }> {
+  const email = body.email;
+  const otp = body.otp || body.token;
+  const newPassword = body.newPassword || body.password;
+
+  if (!email || !otp || !newPassword) {
+    throw new BadRequestError('Email address, 6-digit code, and new password are required');
   }
   if (newPassword.length < 8) {
-    throw new BadRequestError('Password must be at least 8 characters');
+    throw new BadRequestError('New password must be at least 8 characters long');
   }
-  // TODO: verify token signature, look up user, hash & save new password.
-  throw new BadRequestError('Password reset is not yet implemented');
+
+  const normalizedEmail = email.trim().toLowerCase();
+
+  // Verify OTP from durable store
+  await otpService.verifyOtp({
+    email: normalizedEmail,
+    candidateOtp: otp.trim(),
+    purpose: 'PASSWORD_RESET',
+  });
+
+  // Hash new password and update user record
+  const passwordHash = await hashPassword(newPassword);
+
+  await prisma.user.update({
+    where: { email: normalizedEmail },
+    data: { passwordHash },
+  });
+
+  return {
+    success: true,
+    message: 'Your password has been reset successfully. You can now log in with your new password.',
+  };
 }

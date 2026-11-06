@@ -1,10 +1,11 @@
 // frontend/src/components/CheckoutModal.tsx
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
 import { TransactPayModal } from './TransactPayModal';
-import { paymentsApi, deliveryApi } from '../services/api';
+import { paymentsApi, deliveryApi, ordersApi } from '../services/api';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ interface CheckoutModalProps {
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose }) => {
   const { items, totalAmountCents, clearCart } = useCart();
   const { user, wallet } = useAuth();
+  const navigate = useNavigate();
 
   // Delivery form state
   const [fullName, setFullName] = useState(
@@ -103,16 +105,35 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
         );
         return;
       }
-      // Process wallet payment
-      const ref = `WLT_ORD_${Date.now()}`;
-      setCompletedOrder({
-        reference: ref,
-        paidAt: new Date().toISOString(),
-        channel: 'WALLET',
-        totalCents: grandTotalCents,
-        itemsCount: items.reduce((s, i) => s + i.quantity, 0),
-      });
-      clearCart();
+      setIsInitiating(true);
+      try {
+        const orderRes = await ordersApi.walletCheckout({
+          totalAmountCents: grandTotalCents,
+          name: fullName,
+          phone,
+          address: `${address}, ${state}`,
+          items: items.map((i: any) => ({
+            productId: i.product?.id || i.id,
+            name: i.product?.name || i.name,
+            quantity: i.quantity,
+            priceCents: i.product?.priceCents || i.priceCents,
+          })),
+        });
+
+        const activeOrderRef = orderRes?.orderReference || `WLT_ORD_${Date.now()}`;
+        setCompletedOrder({
+          reference: activeOrderRef,
+          paidAt: new Date().toISOString(),
+          channel: 'WALLET',
+          totalCents: grandTotalCents,
+          itemsCount: items.reduce((s, i) => s + i.quantity, 0),
+        });
+        clearCart();
+      } catch (err: any) {
+        alert(err.response?.data?.message || err.message || 'Failed to process wallet payment. Please try again.');
+      } finally {
+        setIsInitiating(false);
+      }
     } else {
       setIsInitiating(true);
       try {
@@ -302,6 +323,17 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
               <div className="flex flex-col sm:flex-row gap-3 pt-2">
                 <button
+                  onClick={() => {
+                    const ref = completedOrder.reference;
+                    onClose();
+                    navigate(`/orders/${ref}`);
+                  }}
+                  className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white rounded-xl font-bold text-xs shadow-md transition-all flex items-center justify-center space-x-1.5 touch-manipulation"
+                >
+                  <span>Track Order Status</span>
+                  <span>➔</span>
+                </button>
+                <button
                   onClick={() => window.print()}
                   className="flex-1 py-3 border border-slate-300 text-slate-700 hover:bg-slate-50 rounded-xl font-bold text-xs transition-all"
                 >
@@ -309,9 +341,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 </button>
                 <button
                   onClick={onClose}
-                  className="flex-1 py-3 bg-brand-600 hover:bg-brand-700 text-white rounded-xl font-bold text-xs shadow-md transition-all"
+                  className="sm:w-auto px-4 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl font-bold text-xs transition-all"
                 >
-                  Return to Marketplace
+                  Close
                 </button>
               </div>
             </div>

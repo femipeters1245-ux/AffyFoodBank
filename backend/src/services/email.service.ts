@@ -112,14 +112,14 @@ const emailWrapper = (title: string, bodyContent: string) => `
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #f8fafc; margin: 0; padding: 20px; color: #1e293b; }
     .card { max-width: 580px; margin: 0 auto; background: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -2px rgba(0, 0, 0, 0.05); border: 1px solid #e2e8f0; }
-    .header { background: linear-gradient(135deg, #15803d 0%, #166534 100%); color: #ffffff; padding: 28px 24px; text-align: center; }
+    .header { background: linear-gradient(135deg, #4c1d95 0%, #6d28d9 50%, #7c3aed 100%); color: #ffffff; padding: 28px 24px; text-align: center; }
     .header h1 { margin: 0 0 6px; font-size: 24px; font-weight: 800; letter-spacing: -0.5px; }
     .header p { margin: 0; font-size: 13px; opacity: 0.9; }
     .content { padding: 32px 24px; }
-    .btn { display: inline-block; background-color: #16a34a; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; margin-top: 20px; }
+    .btn { display: inline-block; background-color: #7c3aed; color: #ffffff !important; text-decoration: none; padding: 12px 28px; border-radius: 8px; font-weight: 600; font-size: 14px; margin-top: 20px; }
     .footer { background-color: #f1f5f9; padding: 20px; text-align: center; font-size: 12px; color: #64748b; border-top: 1px solid #e2e8f0; }
     .badge { display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; text-transform: uppercase; }
-    .badge-success { background-color: #dcfce7; color: #15803d; }
+    .badge-success { background-color: #f3e8ff; color: #6b21a8; }
     .table { width: 100%; border-collapse: collapse; margin: 16px 0; font-size: 14px; }
     .table th { text-align: left; padding: 8px 4px; border-bottom: 2px solid #e2e8f0; color: #64748b; font-size: 12px; text-transform: uppercase; }
     .table td { padding: 10px 4px; border-bottom: 1px solid #f1f5f9; }
@@ -136,7 +136,7 @@ const emailWrapper = (title: string, bodyContent: string) => `
     </div>
     <div class="footer">
       <p style="margin: 0 0 6px;">Affy FoodBank • Direct from Nigerian Farmers Collective</p>
-      <p style="margin: 0;">Support: <a href="mailto:affybrand@gmail.com" style="color: #16a34a;">affybrand@gmail.com</a> | Visit: <a href="https://affy-food-bank-czt6.vercel.app" style="color: #16a34a;">affyfoodbank.ng</a></p>
+      <p style="margin: 0;">Support: <a href="mailto:affybrand@gmail.com" style="color: #7c3aed;">affybrand@gmail.com</a> | Visit: <a href="https://affy-food-bank-czt6.vercel.app" style="color: #7c3aed;">affyfoodbank.ng</a></p>
     </div>
   </div>
 </body>
@@ -402,35 +402,47 @@ export async function sendAdminOrderAlert(params: {
 }
 
 /**
- * 5. One-Time Password (OTP) for Sign in & Login
+ * 5. One-Time Password (OTP) for Sign in, Signup & Password Reset
  */
 export async function sendOtpEmail(params: {
   to: string;
   otp: string;
-  purpose: 'SIGNUP' | 'LOGIN';
+  purpose: 'SIGNUP' | 'LOGIN' | 'PASSWORD_RESET' | string;
   firstName?: string;
 }) {
   const { to, otp, purpose, firstName = 'there' } = params;
   const isSignup = purpose === 'SIGNUP';
-  const actionText = isSignup ? 'complete your registration' : 'sign in to your account';
+  const isReset = purpose === 'PASSWORD_RESET';
+
+  const actionText = isReset
+    ? 'reset your account password'
+    : isSignup
+    ? 'complete your registration'
+    : 'sign in to your account';
+
+  const headingText = isReset
+    ? 'Password Reset Code'
+    : isSignup
+    ? 'Verify Your Email Address'
+    : 'Sign In Verification Code';
 
   const bodyContent = `
     <div style="text-align: center; margin-bottom: 24px;">
-      <span class="badge" style="background-color: #e0e7ff; color: #4338ca;">🔒 Security Verification</span>
+      <span class="badge" style="background-color: #ede9fe; color: #6d28d9;">🔒 Security Verification</span>
       <h2 style="margin: 12px 0 6px; font-size: 22px; color: #0f172a;">
-        ${isSignup ? 'Verify Your Email Address' : 'Sign In Verification Code'}
+        ${headingText}
       </h2>
       <p style="margin: 0; color: #64748b; font-size: 14px;">
         Hi ${firstName}, use the one-time code below to ${actionText}.
       </p>
     </div>
 
-    <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 2px dashed #16a34a; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
-      <span style="display: block; font-size: 12px; font-weight: 700; color: #166534; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Your 6-Digit One-Time Code</span>
-      <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #15803d; line-height: 1;">
+    <div style="background: linear-gradient(135deg, #faf5ff 0%, #f3e8ff 100%); border: 2px dashed #7c3aed; border-radius: 16px; padding: 24px; text-align: center; margin: 24px 0;">
+      <span style="display: block; font-size: 12px; font-weight: 700; color: #581c87; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 8px;">Your 6-Digit Verification Code</span>
+      <div style="font-family: 'Courier New', Courier, monospace; font-size: 38px; font-weight: 900; letter-spacing: 8px; color: #6d28d9; line-height: 1;">
         ${otp}
       </div>
-      <p style="margin: 8px 0 0; font-size: 13px; color: #166534; font-weight: 600;">
+      <p style="margin: 8px 0 0; font-size: 13px; color: #581c87; font-weight: 600;">
         Enter these 6 numbers in the Affy FoodBank verification screen.
       </p>
       <p style="margin: 8px 0 0; font-size: 12px; color: #64748b;">

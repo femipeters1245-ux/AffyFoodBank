@@ -129,6 +129,14 @@ export const authApi = {
       localStorage.removeItem('affy_user');
     }
   },
+  requestPasswordReset: async (email: string): Promise<{ success: boolean; message: string }> => {
+    const res = await apiClient.post('/auth/password-reset-request', { email });
+    return res.data;
+  },
+  resetPassword: async (data: { email: string; otp: string; newPassword: string }): Promise<{ success: boolean; message: string }> => {
+    const res = await apiClient.post('/auth/password-reset', data);
+    return res.data;
+  },
   getMe: async (): Promise<User> => {
     const res = await apiClient.get<User>('/me');
     return res.data;
@@ -383,6 +391,27 @@ export const adminApi = {
   },
   deactivatePackage: async (id: string) => {
     const res = await apiClient.delete(`/admin/packages/${id}`);
+    return res.data;
+  },
+};
+
+export const ordersApi = {
+  getMyOrders: async () => {
+    const res = await apiClient.get('/orders/me');
+    return res.data?.orders ?? [];
+  },
+  trackOrder: async (reference: string) => {
+    const res = await apiClient.get(`/orders/track/${reference}`);
+    return res.data;
+  },
+  walletCheckout: async (payload: {
+    totalAmountCents: number;
+    name?: string;
+    phone?: string;
+    address?: string;
+    items?: Array<{ productId?: string; name: string; quantity: number; priceCents: number }>;
+  }) => {
+    const res = await apiClient.post('/orders/wallet-checkout', payload);
     return res.data;
   },
 };

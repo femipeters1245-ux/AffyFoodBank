@@ -1,42 +1,57 @@
+// frontend/src/pages/LoginPage.tsx
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { AffyLogo } from '../components/AffyLogo';
+import { authApi } from '../services/api';
 
 export const LoginPage: React.FC = () => {
-  const { login, sendLoginOtp, verifyLoginOtp, isAuthenticated, user } = useAuth();
+  const { login, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as any)?.from?.pathname || '/';
+
+  // If redirecting from checkout
+  const isFromCheckout =
+    new URLSearchParams(location.search).get('redirect') === 'checkout' ||
+    localStorage.getItem('affy_checkout_intent') === 'true';
+
+  const defaultDestination = isFromCheckout ? '/?checkout=true' : '/';
+  const from = (location.state as any)?.from?.pathname || defaultDestination;
 
   // Automatically redirect if already authenticated
   useEffect(() => {
     if (isAuthenticated) {
-      if (user?.role === 'Admin') {
+      if (user?.role === 'Admin' || user?.role === 'FinanceStaff' || user?.role === 'SuperAdmin') {
         navigate('/admin', { replace: true });
+      } else if (localStorage.getItem('affy_checkout_intent') === 'true') {
+        localStorage.removeItem('affy_checkout_intent');
+        navigate('/?checkout=true', { replace: true });
       } else {
-        navigate(from, { replace: true });
+        navigate(from === '/login' ? '/' : from, { replace: true });
       }
     }
   }, [isAuthenticated, user, navigate, from]);
 
-  // Modes: 'PASSWORD' (default) or 'OTP'
-  const [authMethod, setAuthMethod] = useState<'PASSWORD' | 'OTP'>('PASSWORD');
+  // Mode: 'LOGIN' or 'FORGOT_PASSWORD'
+  const [viewMode, setViewMode] = useState<'LOGIN' | 'FORGOT_PASSWORD'>('LOGIN');
 
-  // OTP flow state
-  const [step, setStep] = useState<'EMAIL' | 'OTP'>('EMAIL');
+  // Password Login state
   const [email, setEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [verificationTicket, setVerificationTicket] = useState<string | undefined>(undefined);
-
-  // Password flow state
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  // Forgot password state
+  const [resetStep, setResetStep] = useState<'REQUEST' | 'VERIFY'>('REQUEST');
+  const [resetEmail, setResetEmail] = useState('');
+  const [resetOtp, setResetOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [resendCountdown, setResendCountdown] = useState(0);
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
-  const [resendCountdown, setResendCountdown] = useState(0);
 
   useEffect(() => {
     let timer: NodeJS.Timeout;
@@ -46,75 +61,7 @@ export const LoginPage: React.FC = () => {
     return () => clearTimeout(timer);
   }, [resendCountdown]);
 
-  // Send Login OTP via Resend directly
-  const handleSendOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setSuccessMsg(null);
-    setLoading(true);
-
-    try {
-      const res = await sendLoginOtp(email);
-      setVerificationTicket(res.verificationTicket);
-      setStep('OTP');
-      setResendCountdown(60);
-      setSuccessMsg(res.message || `A 6-digit code has been sent to ${email}.`);
-    } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        'Failed to send verification code. Please try again.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Verify Login OTP
-  const handleVerifyOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-
-    try {
-      const user = await verifyLoginOtp(email, otp.trim(), verificationTicket);
-      const role = typeof user.role === 'string' ? user.role : (user.role as any)?.name;
-      if (role === 'Admin' || role === 'FinanceStaff') {
-        navigate('/admin', { replace: true });
-      } else {
-        navigate(from === '/' ? '/wallet' : from, { replace: true });
-      }
-    } catch (err: any) {
-      const msg =
-        err.response?.data?.message ||
-        err.response?.data?.error ||
-        err.message ||
-        'Invalid or expired verification code. Please check your inbox and try again.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Resend OTP
-  const handleResendOtp = async () => {
-    if (resendCountdown > 0 || loading) return;
-    setError(null);
-    setLoading(true);
-    try {
-      const res = await sendLoginOtp(email);
-      setVerificationTicket(res.verificationTicket);
-      setResendCountdown(60);
-      setSuccessMsg(res.message || 'A new verification code has been sent to your inbox.');
-    } catch (err: any) {
-      setError(err.message || 'Failed to resend verification code. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Direct Password Login
+  // Handle standard password login
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -123,18 +70,28 @@ export const LoginPage: React.FC = () => {
 
     try {
       await login(email.trim(), password);
+
+      const hasCheckoutIntent = localStorage.getItem('affy_checkout_intent') === 'true';
+      if (hasCheckoutIntent) {
+        localStorage.removeItem('affy_checkout_intent');
+        navigate('/?checkout=true', { replace: true });
+        return;
+      }
+
       const storedUser = localStorage.getItem('affy_user');
       if (storedUser) {
         try {
           const parsed = JSON.parse(storedUser);
           const role = parsed.role?.name || parsed.role;
-          if (role === 'Admin' || role === 'FinanceStaff') {
+          if (role === 'Admin' || role === 'FinanceStaff' || role === 'SuperAdmin') {
             navigate('/admin', { replace: true });
             return;
           }
-        } catch { /* ignore parse errors */ }
+        } catch {
+          // ignore parse errors
+        }
       }
-      navigate(from === '/' ? '/wallet' : from, { replace: true });
+      navigate(from === '/login' ? '/wallet' : from, { replace: true });
     } catch (err: any) {
       const serverMsg =
         err.response?.data?.message ||
@@ -142,6 +99,74 @@ export const LoginPage: React.FC = () => {
         err.message ||
         'Invalid email or password. Please check your credentials and try again.';
       setError(serverMsg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Forgot Password Request (send OTP)
+  const handleRequestReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+    setLoading(true);
+
+    try {
+      const targetEmail = resetEmail.trim().toLowerCase();
+      const res = await authApi.requestPasswordReset(targetEmail);
+      setSuccessMsg(res.message || `A 6-digit verification code was sent to ${targetEmail}.`);
+      setResetStep('VERIFY');
+      setResendCountdown(60);
+    } catch (err: any) {
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Failed to send password reset code. Please try again.';
+      setError(msg);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Handle Verify OTP & Set New Password
+  const handleResetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError(null);
+    setSuccessMsg(null);
+
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match. Please re-enter.');
+      return;
+    }
+    if (newPassword.length < 8) {
+      setError('New password must be at least 8 characters long.');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const res = await authApi.resetPassword({
+        email: resetEmail.trim().toLowerCase(),
+        otp: resetOtp.trim(),
+        newPassword,
+      });
+
+      setSuccessMsg(res.message || 'Password reset successfully! Please sign in with your new password.');
+      setViewMode('LOGIN');
+      setEmail(resetEmail.trim().toLowerCase());
+      setPassword('');
+      setResetOtp('');
+      setNewPassword('');
+      setConfirmPassword('');
+      setResetStep('REQUEST');
+    } catch (err: any) {
+      const msg =
+        err.response?.data?.message ||
+        err.response?.data?.error ||
+        err.message ||
+        'Invalid or expired verification code. Please check your inbox and try again.';
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -157,58 +182,35 @@ export const LoginPage: React.FC = () => {
             <AffyLogo variant="light" size="lg" className="mx-auto" />
           </Link>
           <h2 className="text-2xl font-extrabold text-slate-900">
-            {authMethod === 'OTP' && step === 'OTP' ? 'Check Your Email' : 'Welcome Back'}
+            {viewMode === 'LOGIN'
+              ? 'Welcome Back'
+              : resetStep === 'REQUEST'
+              ? 'Reset Password'
+              : 'Enter 6-Digit Code'}
           </h2>
           <p className="text-xs text-slate-500">
-            {authMethod === 'OTP'
-              ? step === 'OTP'
-                ? `We sent a 6-digit verification code to ${email}. Enter it below to sign in.`
-                : 'Enter your email address to receive a secure sign-in code.'
-              : 'Sign in with your email address and password.'}
+            {viewMode === 'LOGIN'
+              ? isFromCheckout
+                ? 'Sign in to confirm your delivery details and proceed to checkout.'
+                : 'Sign in to access your wallet, track orders, and manage savings.'
+              : resetStep === 'REQUEST'
+              ? 'Enter your registered email address to receive a secure password reset code.'
+              : `Enter the 6-digit code sent to ${resetEmail} and your new password.`}
           </p>
         </div>
 
-        {/* Auth Method Selector (Tabs) */}
-        <div className="flex bg-slate-100 p-1 rounded-xl">
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMethod('PASSWORD');
-              setError(null);
-              setSuccessMsg(null);
-            }}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              authMethod === 'PASSWORD'
-                ? 'bg-white text-brand-700 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Password
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setAuthMethod('OTP');
-              setError(null);
-              setSuccessMsg(null);
-              setStep('EMAIL');
-              setOtp('');
-              setResendCountdown(0);
-            }}
-            className={`flex-1 py-2 text-xs font-semibold rounded-lg transition-all ${
-              authMethod === 'OTP'
-                ? 'bg-white text-brand-700 shadow-sm'
-                : 'text-slate-600 hover:text-slate-900'
-            }`}
-          >
-            Email Code (OTP)
-          </button>
-        </div>
+        {/* Notice for guest redirected from checkout */}
+        {isFromCheckout && viewMode === 'LOGIN' && (
+          <div className="p-3 bg-brand-50 border border-brand-200 rounded-xl text-xs text-brand-900 font-medium flex items-center space-x-2">
+            <span>🛒</span>
+            <span>Your basket items are saved. Sign in to complete your order.</span>
+          </div>
+        )}
 
         {/* Success banner */}
-        {successMsg && authMethod === 'OTP' && step === 'OTP' && (
+        {successMsg && (
           <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium flex items-center space-x-2">
-            <span>📩</span>
+            <span>✓</span>
             <span>{successMsg}</span>
           </div>
         )}
@@ -223,8 +225,8 @@ export const LoginPage: React.FC = () => {
           </div>
         )}
 
-        {/* ─── OPTION 1: EMAIL + PASSWORD (DEFAULT) ───────────────────────── */}
-        {authMethod === 'PASSWORD' && (
+        {/* ─── VIEW 1: PASSWORD LOGIN (ONLY METHOD) ───────────────────────── */}
+        {viewMode === 'LOGIN' && (
           <form onSubmit={handlePasswordLogin} className="space-y-4">
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -247,6 +249,19 @@ export const LoginPage: React.FC = () => {
                 <label className="block text-xs font-semibold text-slate-700">
                   Password
                 </label>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setViewMode('FORGOT_PASSWORD');
+                    setResetStep('REQUEST');
+                    setResetEmail(email);
+                    setError(null);
+                    setSuccessMsg(null);
+                  }}
+                  className="text-xs text-brand-600 hover:text-brand-800 font-semibold"
+                >
+                  Forgot Password?
+                </button>
               </div>
               <div className="relative">
                 <input
@@ -283,7 +298,7 @@ export const LoginPage: React.FC = () => {
               id="btn-login-password-submit"
               type="submit"
               disabled={loading || !email.includes('@') || !password}
-              className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl shadow-md hover:shadow transition-all flex items-center justify-center space-x-2"
+              className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl shadow-md hover:shadow transition-all flex items-center justify-center space-x-2 touch-manipulation"
             >
               {loading ? (
                 <>
@@ -300,33 +315,30 @@ export const LoginPage: React.FC = () => {
           </form>
         )}
 
-        {/* ─── OPTION 2: EMAIL OTP (DISPATCHED VIA RESEND) ─────────────────── */}
-        {authMethod === 'OTP' && (
-          <>
-            {/* STEP 1: EMAIL */}
-            {step === 'EMAIL' && (
-              <form onSubmit={handleSendOtp} className="space-y-4">
+        {/* ─── VIEW 2: FORGOT PASSWORD (OTP BASED RESET) ──────────────────── */}
+        {viewMode === 'FORGOT_PASSWORD' && (
+          <div className="space-y-4">
+            {resetStep === 'REQUEST' ? (
+              <form onSubmit={handleRequestReset} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Email Address
+                    Your Registered Email
                   </label>
                   <input
-                    id="login-email"
+                    id="reset-email-input"
                     type="email"
                     required
-                    autoComplete="email"
                     autoFocus
                     placeholder="you@gmail.com"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    value={resetEmail}
+                    onChange={(e) => setResetEmail(e.target.value)}
                     className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 </div>
 
                 <button
-                  id="btn-send-login-otp"
                   type="submit"
-                  disabled={loading || !email.includes('@')}
+                  disabled={loading || !resetEmail.includes('@')}
                   className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-brand-300 text-white font-bold text-sm rounded-xl shadow-md hover:shadow transition-all flex items-center justify-center space-x-2"
                 >
                   {loading ? (
@@ -335,58 +347,102 @@ export const LoginPage: React.FC = () => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      <span>Sending 6-digit code…</span>
+                      <span>Sending reset code…</span>
                     </>
                   ) : (
-                    <>
-                      <span>Send 6-Digit Code</span>
-                      <span>📧</span>
-                    </>
+                    <span>Send Reset Code (OTP)</span>
                   )}
                 </button>
 
-                <p className="text-center text-[11px] text-slate-400 leading-relaxed">
-                  We'll email a 6-digit one-time numeric code to your email inbox via Resend.
-                </p>
+                <div className="text-center">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setViewMode('LOGIN');
+                      setError(null);
+                      setSuccessMsg(null);
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-medium"
+                  >
+                    ← Back to Sign In
+                  </button>
+                </div>
               </form>
-            )}
-
-            {/* STEP 2: OTP ENTRY */}
-            {step === 'OTP' && (
-              <form onSubmit={handleVerifyOtp} className="space-y-4">
+            ) : (
+              <form onSubmit={handleResetPassword} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1 text-center">
-                    Enter 6-Digit Verification Code
+                    Enter 6-Digit Code
                   </label>
                   <input
-                    id="login-otp"
+                    id="reset-otp-input"
                     type="text"
                     inputMode="numeric"
                     required
                     maxLength={6}
                     autoFocus
                     placeholder="000000"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ''))}
+                    value={resetOtp}
+                    onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, ''))}
                     className="w-full text-center text-2xl tracking-[0.4em] font-mono font-bold py-3 px-4 border-2 border-brand-500 rounded-xl focus:outline-none focus:ring-4 focus:ring-brand-100"
                   />
-
-                  {/* Delivery notice */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 text-[11px] text-slate-600 space-y-1.5 mt-2 text-left">
-                    <div className="font-semibold text-slate-800 flex items-center space-x-1.5">
-                      <span>📬</span>
-                      <span>Check your inbox for the 6 numbers</span>
-                    </div>
-                    <p className="text-slate-500 leading-relaxed">
-                      Subject is <strong>Affy FoodBank Verification Code</strong> sent via Resend. Codes expire after 5 minutes. Check your <strong>Spam / Junk</strong> folder if not seen.
-                    </p>
+                  <div className="flex items-center justify-between text-xs mt-1.5 px-1">
+                    <span className="text-slate-500">{resetEmail}</span>
+                    <button
+                      type="button"
+                      onClick={handleRequestReset}
+                      disabled={resendCountdown > 0 || loading}
+                      className="text-brand-600 hover:text-brand-800 font-bold disabled:text-slate-400"
+                    >
+                      {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend Code'}
+                    </button>
                   </div>
                 </div>
 
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    New Password (min 8 chars)
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="reset-new-password"
+                      type={showNewPassword ? 'text' : 'password'}
+                      required
+                      minLength={8}
+                      placeholder="••••••••"
+                      value={newPassword}
+                      onChange={(e) => setNewPassword(e.target.value)}
+                      className="w-full px-4 py-3 pr-11 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPassword(!showNewPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-1"
+                    >
+                      {showNewPassword ? '👁️' : '👁️‍🗨️'}
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Confirm New Password
+                  </label>
+                  <input
+                    id="reset-confirm-password"
+                    type={showNewPassword ? 'text' : 'password'}
+                    required
+                    minLength={8}
+                    placeholder="••••••••"
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                  />
+                </div>
+
                 <button
-                  id="btn-verify-login-otp"
                   type="submit"
-                  disabled={loading || otp.length < 6}
+                  disabled={loading || resetOtp.length < 6 || !newPassword || newPassword !== confirmPassword}
                   className="w-full py-3.5 px-4 bg-brand-600 hover:bg-brand-700 disabled:bg-slate-300 text-white font-bold text-sm rounded-xl shadow-md transition-all flex items-center justify-center space-x-2"
                 >
                   {loading ? (
@@ -395,40 +451,34 @@ export const LoginPage: React.FC = () => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
-                      <span>Verifying…</span>
+                      <span>Resetting password…</span>
                     </>
                   ) : (
-                    <span>Verify &amp; Sign In</span>
+                    <span>Set New Password &amp; Sign In</span>
                   )}
                 </button>
 
-                <div className="flex items-center justify-between text-xs pt-1">
+                <div className="text-center">
                   <button
                     type="button"
-                    onClick={() => { setStep('EMAIL'); setError(null); setOtp(''); }}
-                    className="text-slate-500 hover:text-slate-700 font-medium"
+                    onClick={() => {
+                      setResetStep('REQUEST');
+                      setError(null);
+                    }}
+                    className="text-xs text-slate-500 hover:text-slate-800 font-medium"
                   >
-                    ← Change Email
-                  </button>
-                  <button
-                    id="btn-resend-login-otp"
-                    type="button"
-                    onClick={handleResendOtp}
-                    disabled={resendCountdown > 0 || loading}
-                    className="text-brand-600 hover:text-brand-700 font-bold disabled:text-slate-400"
-                  >
-                    {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend Code'}
+                    ← Change Email Address
                   </button>
                 </div>
               </form>
             )}
-          </>
+          </div>
         )}
 
         <div className="text-center text-xs text-slate-500 pt-2 border-t border-slate-100">
           Don't have an account yet?{' '}
           <Link to="/register" className="text-brand-600 font-bold hover:underline">
-            Create Account (with Email OTP)
+            Create Account
           </Link>
         </div>
       </div>

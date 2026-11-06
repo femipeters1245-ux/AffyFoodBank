@@ -17,6 +17,8 @@ import { WalletPage } from './pages/WalletPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
+import { MyOrdersPage } from './pages/MyOrdersPage';
+import { OrderTrackingPage } from './pages/OrderTrackingPage';
 
 export const App: React.FC = () => {
   return (
@@ -45,6 +47,15 @@ export const App: React.FC = () => {
                     </ProtectedRoute>
                   }
                 />
+                <Route
+                  path="/orders"
+                  element={
+                    <ProtectedRoute>
+                      <MyOrdersPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route path="/orders/:orderReference" element={<OrderTrackingPage />} />
                 <Route
                   path="/admin"
                   element={

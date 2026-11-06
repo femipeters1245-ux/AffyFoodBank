@@ -412,8 +412,8 @@ export const login = async (req: Request, res: Response, next: NextFunction) => 
 
 export const requestPasswordReset = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await serviceRequestReset(req.body.email);
-    res.json({ message: 'If that email exists, a reset link has been sent' });
+    const result = await serviceRequestReset(req.body.email);
+    res.json(result);
   } catch (err) {
     next(err);
   }
@@ -421,8 +421,8 @@ export const requestPasswordReset = async (req: Request, res: Response, next: Ne
 
 export const resetPassword = async (req: Request, res: Response, next: NextFunction) => {
   try {
-    await serviceResetPassword(req.body.token, req.body.newPassword);
-    res.json({ message: 'Password has been reset' });
+    const result = await serviceResetPassword(req.body);
+    res.json(result);
   } catch (err) {
     next(err);
   }

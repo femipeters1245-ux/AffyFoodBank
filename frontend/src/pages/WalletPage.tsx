@@ -1,5 +1,6 @@
 // frontend/src/pages/WalletPage.tsx
 import React, { useState, useEffect, useCallback } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { WalletTransaction } from '../types';
 import { walletApi, paymentsApi } from '../services/api';
@@ -357,6 +358,28 @@ export const WalletPage: React.FC = () => {
             </div>
           </div>
         </div>
+      </div>
+
+      {/* ─── Quick Access: Orders & Deliveries Tracking Banner ─── */}
+      <div className="bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-200/80 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-2xs">
+        <div className="flex items-center space-x-3">
+          <div className="w-10 h-10 rounded-xl bg-brand-600 text-white flex items-center justify-center text-lg shadow-sm">
+            📦
+          </div>
+          <div>
+            <h3 className="text-xs sm:text-sm font-black text-slate-900">Foodstuff Orders &amp; Doorstep Tracking</h3>
+            <p className="text-[11px] sm:text-xs text-slate-500">
+              Track live packing and rider dispatch status for your foodstuff orders.
+            </p>
+          </div>
+        </div>
+
+        <Link
+          to="/orders"
+          className="w-full sm:w-auto text-center px-4 py-2.5 bg-brand-600 hover:bg-brand-700 active:bg-brand-800 text-white text-xs font-bold rounded-xl shadow-xs transition-all active:scale-95 touch-manipulation"
+        >
+          View My Orders &amp; Track ➔
+        </Link>
       </div>
 
       {/* ─── Transactions Ledger (Mobile-Native Cards + Desktop Table) ─── */}

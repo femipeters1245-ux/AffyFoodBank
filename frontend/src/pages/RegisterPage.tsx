@@ -120,6 +120,13 @@ export const RegisterPage: React.FC = () => {
         }
       );
 
+      const hasCheckoutIntent = localStorage.getItem('affy_checkout_intent') === 'true';
+      if (hasCheckoutIntent) {
+        localStorage.removeItem('affy_checkout_intent');
+        navigate('/?checkout=true', { replace: true });
+        return;
+      }
+
       navigate(from, { replace: true });
     } catch (err: any) {
       const msg =

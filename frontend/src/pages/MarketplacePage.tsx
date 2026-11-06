@@ -200,25 +200,25 @@ export const MarketplacePage: React.FC = () => {
         <div className="absolute bottom-0 left-1/3 -mb-20 w-52 sm:w-72 h-52 sm:h-72 bg-accent-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="relative z-10 flex flex-col lg:flex-row items-center justify-between gap-4 sm:gap-8">
-          <div className="space-y-3 sm:space-y-4 max-w-2xl text-left">
-            {/* Live Badge */}
-            <div className="inline-flex items-center space-x-2 bg-white/10 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-semibold text-brand-200 border border-white/10">
+          <div className="space-y-3 sm:space-y-4 max-w-2xl text-left w-full">
+            {/* Live Badge (Desktop only) */}
+            <div className="hidden sm:inline-flex items-center space-x-2 bg-white/10 backdrop-blur-md px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-semibold text-brand-200 border border-white/10">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse flex-shrink-0" />
               <span className="truncate">Fresh Raw Foodstuff at Market Price • Doorstep Delivery</span>
             </div>
 
-            {/* Headline */}
+            {/* Headline - Exact required headline */}
             <h1 className="text-xl sm:text-3xl lg:text-5xl font-black tracking-tight leading-snug sm:leading-tight">
               Fresh Raw Foodstuff at Market Price, Delivered to Your Doorstep.
             </h1>
 
-            {/* Description */}
-            <p className="text-xs sm:text-sm lg:text-base text-brand-100/90 leading-relaxed font-normal">
+            {/* Description (Desktop only) */}
+            <p className="hidden sm:block text-xs sm:text-sm lg:text-base text-brand-100/90 leading-relaxed font-normal">
               Direct farm-gate staple foodstuff at wholesale rates. No middleman markup, no market stress, just unadulterated food delivered to your door.
             </p>
 
-            {/* Value Indicators (Mobile 3-column chip row) */}
-            <div className="grid grid-cols-3 gap-2 sm:gap-4 pt-2.5 sm:pt-3 border-t border-white/10">
+            {/* Value Indicators (Desktop only) */}
+            <div className="hidden sm:grid grid-cols-3 gap-2 sm:gap-4 pt-2.5 sm:pt-3 border-t border-white/10">
               <div className="bg-white/5 rounded-xl p-2 sm:p-0 sm:bg-transparent">
                 <div className="text-xs sm:text-xl lg:text-2xl font-bold text-white">Market Price</div>
                 <div className="text-[10px] sm:text-xs text-brand-200/80">Farm-Gate Rates</div>
@@ -233,18 +233,18 @@ export const MarketplacePage: React.FC = () => {
               </div>
             </div>
 
-            {/* Quick Actions */}
-            <div className="pt-1 flex flex-wrap gap-2 sm:gap-3">
+            {/* Hero CTA Buttons - Visible on both, neatly spaced under headline on mobile */}
+            <div className="pt-2 sm:pt-1 flex flex-wrap gap-2.5 sm:gap-3">
               <Link
                 to="/packages"
-                className="inline-flex items-center space-x-1.5 bg-accent-500 hover:bg-accent-600 text-brand-950 font-black text-xs sm:text-sm px-4 py-2 sm:py-2.5 rounded-xl shadow-md transition-all active:scale-95"
+                className="inline-flex items-center justify-center space-x-1.5 bg-accent-500 hover:bg-accent-600 active:bg-accent-700 text-brand-950 font-black text-xs sm:text-sm px-4 py-2.5 sm:py-2.5 rounded-xl shadow-md transition-all active:scale-95 touch-manipulation"
               >
                 <span>Curated Bundles</span>
                 <span className="text-xs">➔</span>
               </Link>
               <Link
                 to="/savings"
-                className="inline-flex items-center space-x-1.5 bg-white/10 hover:bg-white/20 text-white border border-white/20 font-bold text-xs sm:text-sm px-4 py-2 sm:py-2.5 rounded-xl transition-all"
+                className="inline-flex items-center justify-center space-x-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white border border-white/20 font-bold text-xs sm:text-sm px-4 py-2.5 sm:py-2.5 rounded-xl transition-all active:scale-95 touch-manipulation"
               >
                 <span>Save Towards Food</span>
               </Link>

@@ -17,6 +17,7 @@ import savingsRouter from './routes/savings';
 import paymentRouter from './routes/payments';
 import adminRouter from './routes/admin';
 import emailRouter from './routes/email';
+import ordersRouter from './routes/orders';
 
 // Middleware
 import errorHandler from './middleware/errorHandler';
@@ -75,6 +76,8 @@ app.use(`${API}/wallet`, walletRouter);
 app.use(`${API}/packages`, packageRouter);
 app.use(`${API}/savings`, savingsRouter);
 app.use(`${API}/payments`, paymentRouter);
+app.use(`${API}/orders`, ordersRouter);
+app.use(`${API}/me/orders`, ordersRouter);
 app.use(`${API}/admin`, adminRouter);
 app.use(`${API}/email`, emailRouter);
 

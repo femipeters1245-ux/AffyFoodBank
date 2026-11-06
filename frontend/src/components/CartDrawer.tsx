@@ -1,6 +1,8 @@
 // frontend/src/components/CartDrawer.tsx
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useCart } from '../context/CartContext';
+import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
 import { CheckoutModal } from './CheckoutModal';
 
@@ -15,18 +17,37 @@ export const CartDrawer: React.FC = () => {
     isCartOpen,
     setIsCartOpen,
   } = useCart();
+  const { isAuthenticated } = useAuth();
+  const navigate = useNavigate();
+  const location = useLocation();
 
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
 
-  if (!isCartOpen) return null;
+  // Resume checkout if user returned from auth with ?checkout=true or checkout intent
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('checkout') === 'true' && isAuthenticated && items.length > 0) {
+      setIsCheckoutOpen(true);
+    }
+  }, [location.search, isAuthenticated, items.length]);
 
   const handleProceedToCheckout = () => {
+    if (!isAuthenticated) {
+      // Save intent to resume checkout and preserve basket throughout login
+      localStorage.setItem('affy_checkout_intent', 'true');
+      setIsCartOpen(false);
+      navigate('/login?redirect=checkout', { state: { from: { pathname: '/?checkout=true' } } });
+      return;
+    }
     setIsCartOpen(false);
     setIsCheckoutOpen(true);
   };
 
+  if (!isCartOpen && !isCheckoutOpen) return null;
+
   return (
     <>
+      {isCartOpen && (
       <div className="fixed inset-0 z-50 overflow-hidden animate-fadeIn">
         {/* Backdrop */}
         <div
@@ -208,6 +229,7 @@ export const CartDrawer: React.FC = () => {
           </div>
         </div>
       </div>
+      )}
 
       {/* Checkout Modal */}
       <CheckoutModal isOpen={isCheckoutOpen} onClose={() => setIsCheckoutOpen(false)} />
