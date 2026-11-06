@@ -214,10 +214,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
-        <div className="relative w-full max-w-2xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[92vh]">
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-2.5 sm:p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
+        <div className="relative w-full max-w-2xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-slate-100 overflow-hidden flex flex-col max-h-[94vh]">
           {/* Header */}
-          <div className="p-6 pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
+          <div className="p-4 sm:p-6 pb-3 sm:pb-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
             <div>
               <h3 className="text-xl font-extrabold text-slate-900">
                 {completedOrder ? 'Order Confirmed! 🎉' : 'Checkout & Delivery'}
@@ -317,7 +317,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
             </div>
           ) : (
             /* CHECKOUT FORM VIEW */
-            <form onSubmit={handleStartPayment} className="p-6 overflow-y-auto space-y-6 flex-1">
+            <form onSubmit={handleStartPayment} className="p-4 sm:p-6 overflow-y-auto space-y-4 sm:space-y-6 flex-1">
               {/* Items summary ribbon */}
               <div className="bg-brand-50/80 border border-brand-200 rounded-2xl p-4 flex items-center justify-between text-xs">
                 <div>

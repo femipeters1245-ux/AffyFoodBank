@@ -6,6 +6,8 @@ import { CartProvider } from './context/CartContext';
 import { Navbar } from './components/Navbar';
 import { Footer } from './components/Footer';
 import { CartDrawer } from './components/CartDrawer';
+import { MobileBottomNav } from './components/MobileBottomNav';
+import { PersistentBasketBar } from './components/PersistentBasketBar';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 import { MarketplacePage } from './pages/MarketplacePage';
@@ -21,9 +23,9 @@ export const App: React.FC = () => {
     <BrowserRouter>
       <AuthProvider>
         <CartProvider>
-          <div className="min-h-screen flex flex-col bg-slate-50 selection:bg-brand-500 selection:text-white">
+          <div className="min-h-screen flex flex-col bg-slate-50 selection:bg-brand-500 selection:text-white relative">
             <Navbar />
-            <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-8 pb-16">
+            <main className="flex-1 max-w-7xl w-full mx-auto px-3 sm:px-6 lg:px-8 pt-4 sm:pt-8 pb-28 sm:pb-32 md:pb-16">
               <Routes>
                 <Route path="/" element={<MarketplacePage />} />
                 <Route path="/packages" element={<PackagesPage />} />
@@ -58,6 +60,8 @@ export const App: React.FC = () => {
             </main>
             <Footer />
             <CartDrawer />
+            <PersistentBasketBar />
+            <MobileBottomNav />
           </div>
         </CartProvider>
       </AuthProvider>

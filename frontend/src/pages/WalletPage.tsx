@@ -115,10 +115,10 @@ export const WalletPage: React.FC = () => {
           reference: res.reference,
           amountNaira: amountNum,
         });
-        showToast('✅ Dedicated TransactPay Virtual Account generated!', 'success');
+        showToast('Dedicated TransactPay Virtual Account generated!', 'success');
       }
     } catch (err: any) {
-      showToast(err.response?.data?.error || 'Unable to generate virtual account at this time. Please try card deposit.', 'error');
+      showToast(err.response?.data?.error || 'Unable to generate virtual account. Please try card deposit.', 'error');
     } finally {
       setGeneratingVA(false);
     }
@@ -128,7 +128,7 @@ export const WalletPage: React.FC = () => {
   const handleCopyAccount = (text: string) => {
     navigator.clipboard.writeText(text);
     setCopiedAccount(true);
-    showToast('Account number copied to clipboard! Paste into your banking app.', 'info');
+    showToast('Account number copied to clipboard!', 'info');
     setTimeout(() => setCopiedAccount(false), 3000);
   };
 
@@ -150,7 +150,7 @@ export const WalletPage: React.FC = () => {
 
       setIsDepositOpen(false);
       setVirtualAccount(null);
-      showToast(`🎉 Transfer confirmed! ${formatNaira(amountCents)} added to your wallet.`, 'success');
+      showToast(`Transfer confirmed! ${formatNaira(amountCents)} added to your wallet.`, 'success');
     } catch (err: any) {
       showToast(err.response?.data?.error ?? 'Payment confirmation pending. Please allow 1-2 minutes for bank clearing.', 'info');
     } finally {
@@ -169,7 +169,6 @@ export const WalletPage: React.FC = () => {
     try {
       const paymentRef = `TP_WLT_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-      // Call live TransactPay Order API
       const res = await paymentsApi.createTransactPayOrder({
         amountNaira: amountNum,
         email: user?.email || 'customer@affyfoodbank.ng',
@@ -190,7 +189,7 @@ export const WalletPage: React.FC = () => {
       await fetchTransactions();
 
       setIsDepositOpen(false);
-      showToast(`✅ Successfully deposited ${formatNaira(amountCents)} via TransactPay!`, 'success');
+      showToast(`Successfully deposited ${formatNaira(amountCents)} via TransactPay!`, 'success');
     } catch (err: any) {
       showToast(err.response?.data?.error ?? 'Deposit failed. Please try again.', 'error');
     } finally {
@@ -217,7 +216,7 @@ export const WalletPage: React.FC = () => {
       return;
     }
     if (!accountName || accountName.trim().length < 3) {
-      showToast('Please enter the recipient account name as registered with the bank', 'error');
+      showToast('Please enter recipient account name as registered with bank', 'error');
       return;
     }
 
@@ -228,7 +227,6 @@ export const WalletPage: React.FC = () => {
     };
 
     try {
-      // Call automated Payout API
       const payoutRes = await paymentsApi.initiatePayout({
         amountNaira: amountNum,
         accountNumber: accountNumber.trim(),
@@ -245,24 +243,24 @@ export const WalletPage: React.FC = () => {
       setWithdrawAmount('');
       setAccountNumber('');
       showToast(
-        `🚀 Withdrawal of ${formatNaira(amountCents)} dispatched via TransactPay! Arrival reference: ${
+        `Withdrawal of ${formatNaira(amountCents)} dispatched via TransactPay! Reference: ${
           payoutRes.reference || 'PGW-PAYOUT'
         }`,
         'success'
       );
     } catch (err: any) {
-      showToast(err.response?.data?.error || err.message || 'Withdrawal processing failed. Please check details.', 'error');
+      showToast(err.response?.data?.error || 'Withdrawal processing failed. Please check bank details.', 'error');
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="space-y-10 pb-16">
+    <div className="space-y-6 sm:space-y-10 pb-8 sm:pb-16">
       {/* Toast Notification */}
       {toast && (
         <div
-          className={`fixed bottom-6 right-6 z-50 px-5 py-3 rounded-2xl shadow-2xl flex items-center space-x-3 border transition-all animate-bounce ${
+          className={`fixed top-16 sm:top-20 right-3 sm:right-4 z-50 px-4 py-3 rounded-2xl shadow-2xl flex items-center space-x-2.5 border text-xs font-semibold animate-slideDown max-w-[90vw] ${
             toast.type === 'error'
               ? 'bg-rose-950 text-rose-200 border-rose-800'
               : toast.type === 'info'
@@ -270,210 +268,271 @@ export const WalletPage: React.FC = () => {
               : 'bg-emerald-950 text-emerald-200 border-emerald-800'
           }`}
         >
-          <span className="font-bold text-base">
+          <span className="font-bold">
             {toast.type === 'error' ? '⚠️' : toast.type === 'info' ? 'ℹ️' : '✓'}
           </span>
-          <span className="text-xs font-semibold">{toast.msg}</span>
+          <span className="truncate">{toast.msg}</span>
         </div>
       )}
 
       {/* Header */}
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-4 px-1">
         <div>
           <div className="flex items-center space-x-2">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-brand-700 bg-brand-50 px-3 py-1 rounded-full border border-brand-200">
+            <span className="text-[10px] sm:text-[11px] font-extrabold uppercase tracking-wider text-brand-700 bg-brand-50 px-2.5 py-0.5 rounded-full border border-brand-200">
               ⚡ TransactPay Automated Wallet
             </span>
-            <span className="text-[11px] text-emerald-700 bg-emerald-50 px-2.5 py-0.5 rounded-full border border-emerald-200 font-bold">
+            <span className="text-[10px] sm:text-[11px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold">
               ● Active PSSP
             </span>
           </div>
-          <h1 className="text-3xl font-black text-slate-900 mt-2">Affy Food Wallet</h1>
+          <h1 className="text-2xl sm:text-3xl font-black text-slate-900 mt-1 sm:mt-2">Affy Food Wallet</h1>
           <p className="text-xs text-slate-500">
-            Account: <strong>{user?.email || 'Active Member'}</strong> • Automated Deposits & Payouts
+            Account: <strong>{user?.email || 'Active Member'}</strong> • Automated Deposits &amp; Payouts
           </p>
         </div>
 
-        <div className="flex items-center space-x-3">
+        {/* Action Buttons: 2-column grid on mobile, flex on desktop */}
+        <div className="grid grid-cols-2 gap-2 w-full sm:w-auto sm:flex sm:items-center sm:space-x-3 pt-1">
           <button
             onClick={() => {
               setIsDepositOpen(true);
               setVirtualAccount(null);
             }}
-            className="px-5 py-3 bg-brand-600 hover:bg-brand-700 text-white text-xs font-bold rounded-2xl shadow-sm hover:shadow transition-all flex items-center space-x-2"
+            className="py-2.5 px-4 bg-brand-600 hover:bg-brand-700 text-white text-xs font-black rounded-xl sm:rounded-2xl shadow-xs transition-all flex items-center justify-center space-x-1.5 active:scale-95"
           >
             <span className="text-sm">📥</span>
-            <span>Automated Deposit</span>
+            <span>Deposit</span>
           </button>
           <button
             onClick={() => setIsWithdrawOpen(true)}
-            className="px-4 py-3 bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-bold rounded-2xl shadow-2xs transition-all flex items-center space-x-2"
+            className="py-2.5 px-4 bg-white hover:bg-slate-50 border border-slate-200 text-slate-800 text-xs font-black rounded-xl sm:rounded-2xl shadow-2xs transition-all flex items-center justify-center space-x-1.5 active:scale-95"
           >
             <span className="text-sm">📤</span>
-            <span>Automated Payout</span>
+            <span>Withdraw</span>
           </button>
         </div>
       </div>
 
       {/* 3 Metric Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">
         {/* Total Balance Card */}
-        <div className="bg-gradient-to-br from-slate-900 via-brand-950 to-purple-950 text-white p-6 sm:p-7 rounded-3xl shadow-lg border border-purple-900/40 space-y-4">
+        <div className="bg-gradient-to-br from-slate-900 via-brand-950 to-purple-950 text-white p-4 sm:p-6 lg:p-7 rounded-2xl sm:rounded-3xl shadow-lg border border-purple-900/40 space-y-3">
           <div className="flex justify-between items-center text-xs text-brand-200/90 font-semibold">
             <span>Total Ledger Balance</span>
-            <span className="text-xl">💳</span>
+            <span className="text-lg">💳</span>
           </div>
           <div>
-            <div className="text-3xl font-black">{formatNaira(totalBal)}</div>
-            <div className="text-[11px] text-brand-300/80 mt-1">
-              Combined available & locked savings
+            <div className="text-2xl sm:text-3xl font-black">{formatNaira(totalBal)}</div>
+            <div className="text-[10px] sm:text-[11px] text-brand-300/80 mt-1">
+              Combined available &amp; locked savings
             </div>
           </div>
         </div>
 
         {/* Available to Spend Card */}
-        <div className="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+        <div className="bg-white p-4 sm:p-6 lg:p-7 rounded-2xl sm:rounded-3xl shadow-2xs border border-slate-200/90 space-y-3">
           <div className="flex justify-between items-center text-xs text-slate-500 font-semibold">
             <span>Available to Spend / Withdraw</span>
-            <span className="text-emerald-600 font-bold text-lg">₦</span>
+            <span className="text-emerald-600 font-bold text-base">₦</span>
           </div>
           <div>
-            <div className="text-3xl font-black text-slate-900">{formatNaira(availableBal)}</div>
-            <div className="text-[11px] text-emerald-700 font-semibold mt-1">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{formatNaira(availableBal)}</div>
+            <div className="text-[10px] sm:text-[11px] text-emerald-700 font-semibold mt-1">
               Eligible for instant automated bank payout
             </div>
           </div>
         </div>
 
         {/* Locked in Food Savings Card */}
-        <div className="bg-white p-6 sm:p-7 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+        <div className="bg-white p-4 sm:p-6 lg:p-7 rounded-2xl sm:rounded-3xl shadow-2xs border border-slate-200/90 space-y-3">
           <div className="flex justify-between items-center text-xs text-slate-500 font-semibold">
             <span>Locked in Food Savings</span>
-            <span className="text-accent-500 text-lg">🌾</span>
+            <span className="text-accent-500 text-base">🌾</span>
           </div>
           <div>
-            <div className="text-3xl font-black text-slate-900">{formatNaira(allocatedBal)}</div>
-            <div className="text-[11px] text-accent-700 font-semibold mt-1">
+            <div className="text-2xl sm:text-3xl font-black text-slate-900">{formatNaira(allocatedBal)}</div>
+            <div className="text-[10px] sm:text-[11px] text-accent-700 font-semibold mt-1">
               Guaranteed food price inflation protection
             </div>
           </div>
         </div>
       </div>
 
-      {/* Transactions Ledger Table */}
-      <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden space-y-4">
-        <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+      {/* ─── Transactions Ledger (Mobile-Native Cards + Desktop Table) ─── */}
+      <div className="bg-white rounded-2xl sm:rounded-3xl border border-slate-200/90 shadow-2xs overflow-hidden space-y-2 sm:space-y-4">
+        <div className="p-4 sm:p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
           <div>
-            <h2 className="text-base font-extrabold text-slate-900">TransactPay Ledger History</h2>
-            <p className="text-xs text-slate-500">
-              Audit log of automated virtual account deposits, payouts, and marketplace checkouts
+            <h2 className="text-sm sm:text-base font-black text-slate-900">TransactPay Ledger History</h2>
+            <p className="text-[11px] sm:text-xs text-slate-500">
+              Audit log of automated deposits, payouts, and grocery checkouts
             </p>
           </div>
-          <span className="text-xs bg-slate-100 border border-slate-200 text-slate-700 px-3 py-1 rounded-full font-bold">
-            {transactions.length} Transactions Recorded
+          <span className="text-[10px] sm:text-xs bg-slate-100 border border-slate-200 text-slate-700 px-2.5 py-0.5 rounded-full font-bold">
+            {transactions.length} Transactions
           </span>
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-100">
-              <tr>
-                <th className="px-6 py-3.5">Reference & Date</th>
-                <th className="px-6 py-3.5">Type</th>
-                <th className="px-6 py-3.5">Gateway Description</th>
-                <th className="px-6 py-3.5">Status</th>
-                <th className="px-6 py-3.5 text-right">Amount</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
+        {txLoading ? (
+          <div className="p-8 text-center text-slate-400 text-xs">
+            Loading transaction history...
+          </div>
+        ) : transactions.length === 0 ? (
+          <div className="p-8 text-center text-slate-400 text-xs">
+            No transactions found on your food wallet ledger yet.
+          </div>
+        ) : (
+          <>
+            {/* 1. Mobile Cards View (Screen < 768px) */}
+            <div className="md:hidden divide-y divide-slate-100 px-3">
               {transactions.map((tx) => {
                 const isIncoming = tx.direction === 'IN';
                 return (
-                  <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="font-mono text-xs font-bold text-slate-900">{tx.reference}</div>
-                      <div className="text-[11px] text-slate-400">{formatDate(tx.createdAt)}</div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <span
-                        className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black ${
-                          tx.type === 'DEPOSIT'
-                            ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
-                            : tx.type === 'WITHDRAWAL'
-                            ? 'bg-amber-50 text-amber-700 border border-amber-200'
-                            : tx.type === 'SAVINGS_ALLOCATION'
-                            ? 'bg-blue-50 text-blue-700 border border-blue-200'
-                            : 'bg-purple-50 text-purple-700 border border-purple-200'
+                  <div key={tx.id} className="py-3 flex items-center justify-between gap-2.5">
+                    <div className="flex items-center space-x-2.5 min-w-0">
+                      <div
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center text-xs font-black flex-shrink-0 ${
+                          isIncoming
+                            ? 'bg-emerald-50 text-emerald-700'
+                            : 'bg-slate-100 text-slate-700'
                         }`}
                       >
-                        {tx.type}
+                        {tx.type === 'DEPOSIT'
+                          ? '📥'
+                          : tx.type === 'WITHDRAWAL'
+                          ? '📤'
+                          : tx.type === 'SAVINGS_ALLOCATION'
+                          ? '🌾'
+                          : '🛒'}
+                      </div>
+                      <div className="min-w-0 truncate">
+                        <div className="text-xs font-bold text-slate-900 truncate">
+                          {tx.description || tx.type}
+                        </div>
+                        <div className="text-[10px] text-slate-400 mt-0.5">
+                          {formatDate(tx.createdAt)} • <span className="font-mono">{tx.reference.slice(-8)}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="text-right flex-shrink-0">
+                      <div
+                        className={`text-xs font-black ${
+                          isIncoming ? 'text-emerald-700' : 'text-slate-900'
+                        }`}
+                      >
+                        {isIncoming ? '+' : '-'} {formatNaira(tx.amountCents)}
+                      </div>
+                      <span className="inline-block text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-full border border-emerald-200 mt-0.5">
+                        {tx.status}
                       </span>
-                    </td>
-                    <td className="px-6 py-4 text-slate-700 font-medium max-w-xs truncate">
-                      {tx.description ?? '—'}
-                    </td>
-                    <td className="px-6 py-4">
-                      <span className="inline-flex items-center space-x-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[10px] font-black">
-                        <span>●</span>
-                        <span>{tx.status}</span>
-                      </span>
-                    </td>
-                    <td
-                      className={`px-6 py-4 text-right font-black text-sm ${
-                        isIncoming ? 'text-emerald-700' : 'text-slate-900'
-                      }`}
-                    >
-                      {isIncoming ? '+' : '-'} {formatNaira(tx.amountCents)}
-                    </td>
-                  </tr>
+                    </div>
+                  </div>
                 );
               })}
-            </tbody>
-          </table>
-        </div>
+            </div>
+
+            {/* 2. Desktop Table View (Screen >= 768px) */}
+            <div className="hidden md:block overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase font-bold text-[10px] tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-3.5">Reference &amp; Date</th>
+                    <th className="px-6 py-3.5">Type</th>
+                    <th className="px-6 py-3.5">Gateway Description</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5 text-right">Amount</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {transactions.map((tx) => {
+                    const isIncoming = tx.direction === 'IN';
+                    return (
+                      <tr key={tx.id} className="hover:bg-slate-50/70 transition-colors">
+                        <td className="px-6 py-4">
+                          <div className="font-mono text-xs font-bold text-slate-900">{tx.reference}</div>
+                          <div className="text-[11px] text-slate-400">{formatDate(tx.createdAt)}</div>
+                        </td>
+                        <td className="px-6 py-4">
+                          <span
+                            className={`inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                              tx.type === 'DEPOSIT'
+                                ? 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+                                : tx.type === 'WITHDRAWAL'
+                                ? 'bg-amber-50 text-amber-700 border border-amber-200'
+                                : tx.type === 'SAVINGS_ALLOCATION'
+                                ? 'bg-blue-50 text-blue-700 border border-blue-200'
+                                : 'bg-purple-50 text-purple-700 border border-purple-200'
+                            }`}
+                          >
+                            {tx.type}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-slate-700 font-medium max-w-xs truncate">
+                          {tx.description ?? '—'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="inline-flex items-center space-x-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[10px] font-black">
+                            <span>●</span>
+                            <span>{tx.status}</span>
+                          </span>
+                        </td>
+                        <td
+                          className={`px-6 py-4 text-right font-black text-sm ${
+                            isIncoming ? 'text-emerald-700' : 'text-slate-900'
+                          }`}
+                        >
+                          {isIncoming ? '+' : '-'} {formatNaira(tx.amountCents)}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* =========================================================================
-          MODAL 1: AUTOMATED DEPOSIT VIA TRANSACTPAY (Virtual Account & Card)
-      ========================================================================= */}
+      {/* ─── MODAL 1: AUTOMATED DEPOSIT VIA TRANSACTPAY (Virtual Account & Card) ─── */}
       {isDepositOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-7 space-y-4 shadow-2xl border border-slate-100 my-auto">
+            <div className="flex justify-between items-center pb-2.5 border-b border-slate-100">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Automated Wallet Top-Up</h3>
-                <p className="text-xs text-slate-500">Powered by TransactPay PSSP Gateway</p>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">Automated Wallet Top-Up</h3>
+                <p className="text-[11px] text-slate-500">Powered by TransactPay PSSP Gateway</p>
               </div>
               <button
                 onClick={() => {
                   setIsDepositOpen(false);
                   setVirtualAccount(null);
                 }}
-                className="text-slate-400 hover:text-slate-700 text-xl font-bold p-1"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold"
               >
                 ✕
               </button>
             </div>
 
             {/* Deposit Method Tabs */}
-            <div className="flex rounded-2xl bg-slate-100 p-1 text-xs font-bold">
+            <div className="flex rounded-xl bg-slate-100 p-1 text-xs font-bold">
               <button
                 type="button"
                 onClick={() => setDepositTab('virtual_account')}
-                className={`flex-1 py-2 rounded-xl transition-all ${
+                className={`flex-1 py-2 rounded-lg transition-all truncate px-1 ${
                   depositTab === 'virtual_account'
-                    ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                    ? 'bg-white text-slate-900 shadow-2xs font-black'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
-                🏦 Bank Transfer (Virtual Account)
+                🏦 Bank Transfer
               </button>
               <button
                 type="button"
                 onClick={() => setDepositTab('card')}
-                className={`flex-1 py-2 rounded-xl transition-all ${
+                className={`flex-1 py-2 rounded-lg transition-all truncate px-1 ${
                   depositTab === 'card'
-                    ? 'bg-white text-slate-900 shadow-2xs font-extrabold'
+                    ? 'bg-white text-slate-900 shadow-2xs font-black'
                     : 'text-slate-500 hover:text-slate-800'
                 }`}
               >
@@ -483,7 +542,7 @@ export const WalletPage: React.FC = () => {
 
             {/* TAB 1: AUTOMATED VIRTUAL ACCOUNT TRANSFER */}
             {depositTab === 'virtual_account' && (
-              <div className="space-y-4">
+              <div className="space-y-3.5">
                 {!virtualAccount ? (
                   <>
                     <div>
@@ -498,18 +557,18 @@ export const WalletPage: React.FC = () => {
                         placeholder="25000"
                         value={depositAmount}
                         onChange={(e) => setDepositAmount(e.target.value)}
-                        className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-base font-black focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-base font-black focus:outline-none focus:ring-2 focus:ring-brand-500"
                       />
                     </div>
 
                     {/* Quick Picks */}
-                    <div className="grid grid-cols-4 gap-2">
+                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
                       {[5000, 10000, 25000, 50000].map((val) => (
                         <button
                           key={val}
                           type="button"
                           onClick={() => setDepositAmount(val.toString())}
-                          className={`py-2 rounded-xl text-xs font-bold border transition-all ${
+                          className={`py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold border transition-all ${
                             depositAmount === val.toString()
                               ? 'bg-brand-50 border-brand-500 text-brand-700'
                               : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
@@ -520,21 +579,21 @@ export const WalletPage: React.FC = () => {
                       ))}
                     </div>
 
-                    <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-200 text-xs text-emerald-800 space-y-1">
+                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 space-y-1">
                       <div className="font-extrabold flex items-center space-x-1.5">
                         <span>⚡ Instant Automated Reconciliation</span>
                       </div>
-                      <div className="text-[11px] text-emerald-700">
-                        TransactPay will generate a dedicated bank account number for this deposit. When you transfer from any Nigerian bank app or USSD, your wallet is credited automatically.
+                      <div className="text-[11px] text-emerald-700 leading-relaxed">
+                        TransactPay will generate a dedicated bank account number for this deposit. When you transfer from your Nigerian banking app, your food wallet credits automatically.
                       </div>
                     </div>
 
-                    <div className="pt-2">
+                    <div className="pt-1">
                       <button
                         type="button"
                         disabled={generatingVA}
                         onClick={handleGenerateVirtualAccount}
-                        className="w-full py-3.5 text-xs font-extrabold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-2xl shadow-md transition-all flex items-center justify-center space-x-2"
+                        className="w-full py-3 text-xs font-black text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-xl shadow-xs transition-all flex items-center justify-center space-x-2 active:scale-95"
                       >
                         {generatingVA ? (
                           <>
@@ -542,73 +601,71 @@ export const WalletPage: React.FC = () => {
                             <span>Generating Dedicated Account...</span>
                           </>
                         ) : (
-                          <>
-                            <span>Generate Dedicated Account Details →</span>
-                          </>
+                          <span>Generate Dedicated Account Details →</span>
                         )}
                       </button>
                     </div>
                   </>
                 ) : (
                   /* Display Virtual Account Details */
-                  <div className="space-y-4 animate-fadeIn">
-                    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-brand-950 text-white p-5 rounded-2xl border border-slate-700 space-y-3">
-                      <div className="flex justify-between items-center text-[11px] text-slate-300 font-bold">
+                  <div className="space-y-3 animate-fadeIn">
+                    <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-brand-950 text-white p-4 sm:p-5 rounded-2xl border border-slate-700 space-y-2.5">
+                      <div className="flex justify-between items-center text-[10px] text-slate-300 font-bold">
                         <span>TRANSACTPAY RESERVED ACCOUNT</span>
                         <span className="text-emerald-400 font-mono">LIVE CLEARING</span>
                       </div>
 
-                      <div className="bg-white/10 p-4 rounded-xl border border-white/10 space-y-2">
-                        <div className="text-[11px] text-slate-400 font-semibold">Bank Name:</div>
-                        <div className="text-sm font-extrabold text-white">{virtualAccount.bankName}</div>
+                      <div className="bg-white/10 p-3.5 rounded-xl border border-white/10 space-y-1.5">
+                        <div className="text-[10px] text-slate-400 font-semibold">Bank Name:</div>
+                        <div className="text-xs sm:text-sm font-extrabold text-white">{virtualAccount.bankName}</div>
 
-                        <div className="text-[11px] text-slate-400 font-semibold pt-1">Account Number:</div>
+                        <div className="text-[10px] text-slate-400 font-semibold pt-1">Account Number:</div>
                         <div className="flex items-center justify-between">
-                          <span className="text-2xl font-mono font-black tracking-wider text-emerald-400">
+                          <span className="text-xl sm:text-2xl font-mono font-black tracking-wider text-emerald-400">
                             {virtualAccount.accountNumber}
                           </span>
                           <button
                             type="button"
                             onClick={() => handleCopyAccount(virtualAccount.accountNumber)}
-                            className="px-3 py-1.5 bg-white text-slate-900 rounded-lg text-xs font-black hover:bg-slate-100 transition-colors"
+                            className="px-3 py-1 bg-white text-slate-900 rounded-lg text-xs font-black hover:bg-slate-100 transition-colors"
                           >
                             {copiedAccount ? 'Copied! ✓' : 'Copy'}
                           </button>
                         </div>
 
-                        <div className="text-[11px] text-slate-400 font-semibold pt-1">Beneficiary Account Name:</div>
-                        <div className="text-xs font-bold text-slate-200">{virtualAccount.accountName}</div>
+                        <div className="text-[10px] text-slate-400 font-semibold pt-1">Beneficiary Account Name:</div>
+                        <div className="text-xs font-bold text-slate-200 truncate">{virtualAccount.accountName}</div>
 
-                        <div className="text-[11px] text-slate-400 font-semibold pt-1">Exact Amount to Transfer:</div>
-                        <div className="text-base font-black text-amber-300">
+                        <div className="text-[10px] text-slate-400 font-semibold pt-1">Exact Amount to Transfer:</div>
+                        <div className="text-sm sm:text-base font-black text-amber-300">
                           {formatNaira((virtualAccount.amountNaira || 25000) * 100)}
                         </div>
                       </div>
 
-                      <div className="text-[10px] text-slate-400">
+                      <div className="text-[10px] text-slate-400 truncate">
                         Reference: <span className="font-mono text-slate-300">{virtualAccount.reference}</span>
                       </div>
                     </div>
 
-                    <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800">
-                      💡 Open your bank app (GTBank, Access, Zenith, OPay, Palmpay, Kuda, etc.) and transfer the exact amount above to <strong>{virtualAccount.bankName}</strong>.
+                    <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800">
+                      💡 Open your bank app (GTB, Access, Zenith, OPay, PalmPay, Kuda, etc.) and transfer the exact amount above.
                     </div>
 
-                    <div className="flex space-x-2 pt-2">
+                    <div className="flex space-x-2 pt-1">
                       <button
                         type="button"
                         onClick={() => setVirtualAccount(null)}
-                        className="flex-1 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
+                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
                       >
-                        ← Back / Change Amount
+                        ← Back
                       </button>
                       <button
                         type="button"
                         disabled={loading}
                         onClick={handleConfirmTransfer}
-                        className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-extrabold rounded-xl text-xs transition-colors shadow-sm"
+                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-xl text-xs transition-colors shadow-2xs active:scale-95"
                       >
-                        {loading ? 'Checking Gateway...' : 'I Have Sent The Money ✓'}
+                        {loading ? 'Checking...' : 'I Have Sent Money ✓'}
                       </button>
                     </div>
                   </div>
@@ -618,7 +675,7 @@ export const WalletPage: React.FC = () => {
 
             {/* TAB 2: INSTANT DEBIT CARD / GATEWAY CHECKOUT */}
             {depositTab === 'card' && (
-              <form onSubmit={handleCardDeposit} className="space-y-4">
+              <form onSubmit={handleCardDeposit} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">
                     Amount in Naira (₦) *
@@ -631,31 +688,31 @@ export const WalletPage: React.FC = () => {
                     placeholder="25000"
                     value={depositAmount}
                     onChange={(e) => setDepositAmount(e.target.value)}
-                    className="w-full px-4 py-3 border border-slate-200 rounded-2xl text-base font-black focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-base font-black focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
                 </div>
 
-                <div className="p-4 bg-purple-50 rounded-2xl border border-purple-200 text-xs text-purple-900 space-y-1">
-                  <div className="font-bold">Card, USSD & QR Payment</div>
+                <div className="p-3 bg-purple-50 rounded-xl border border-purple-200 text-xs text-purple-900 space-y-1">
+                  <div className="font-bold">Card, USSD &amp; QR Payment</div>
                   <div className="text-[11px] text-purple-700">
-                    Pay securely using Mastercard, Visa, or Verve cards through TransactPay's PCI-DSS compliant checkout.
+                    Pay securely using Mastercard, Visa, or Verve cards through TransactPay&apos;s PCI-DSS compliant checkout.
                   </div>
                 </div>
 
-                <div className="flex justify-end space-x-3 pt-3">
+                <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setIsDepositOpen(false)}
-                    className="px-4 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-100 rounded-xl"
+                    className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
                   >
                     Cancel
                   </button>
                   <button
                     type="submit"
                     disabled={loading}
-                    className="px-6 py-2.5 text-xs font-extrabold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-xl shadow-sm transition-all"
+                    className="px-5 py-2.5 text-xs font-black text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-xl shadow-xs transition-all active:scale-95"
                   >
-                    {loading ? 'Redirecting to Gateway...' : 'Pay with Card / TransactPay →'}
+                    {loading ? 'Connecting...' : 'Pay with TransactPay →'}
                   </button>
                 </div>
               </form>
@@ -664,33 +721,30 @@ export const WalletPage: React.FC = () => {
         </div>
       )}
 
-      {/* =========================================================================
-          MODAL 2: AUTOMATED WITHDRAWAL / PAYOUT TO NIGERIAN BANK
-      ========================================================================= */}
+      {/* ─── MODAL 2: AUTOMATED WITHDRAWAL / PAYOUT ─── */}
       {isWithdrawOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 space-y-6 shadow-2xl border border-slate-100 max-h-[90vh] overflow-y-auto">
-            <div className="flex justify-between items-center pb-3 border-b border-slate-100">
+        <div className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white rounded-2xl sm:rounded-3xl max-w-lg w-full p-4 sm:p-7 space-y-4 shadow-2xl border border-slate-100 my-auto">
+            <div className="flex justify-between items-center pb-2.5 border-b border-slate-100">
               <div>
-                <h3 className="text-lg font-black text-slate-900">Automated Bank Withdrawal</h3>
-                <p className="text-xs text-slate-500">TransactPay Direct Payout API</p>
+                <h3 className="text-base sm:text-lg font-black text-slate-900">Automated Bank Withdrawal</h3>
+                <p className="text-[11px] text-slate-500">TransactPay Direct Payout API</p>
               </div>
               <button
                 onClick={() => setIsWithdrawOpen(false)}
-                className="text-slate-400 hover:text-slate-700 text-xl font-bold p-1"
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleWithdrawalSubmit} className="space-y-4 text-xs">
-              {/* Destination Bank Selector */}
+            <form onSubmit={handleWithdrawalSubmit} className="space-y-3.5 text-xs">
               <div>
                 <label className="block font-bold text-slate-700 mb-1">Select Nigerian Bank *</label>
                 <select
                   value={selectedBankCode}
                   onChange={(e) => setSelectedBankCode(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold text-sm bg-white"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-semibold text-xs sm:text-sm bg-white"
                 >
                   {loadingBanks ? (
                     <option value="">Loading banks...</option>
@@ -704,7 +758,6 @@ export const WalletPage: React.FC = () => {
                 </select>
               </div>
 
-              {/* Account Number */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
                   10-Digit NUBAN Account Number *
@@ -716,11 +769,10 @@ export const WalletPage: React.FC = () => {
                   placeholder="e.g. 0123456789"
                   value={accountNumber}
                   onChange={(e) => setAccountNumber(e.target.value.replace(/\D/g, ''))}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-mono font-bold text-sm"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-mono font-bold text-xs sm:text-sm"
                 />
               </div>
 
-              {/* Account Name */}
               <div>
                 <label className="block font-bold text-slate-700 mb-1">
                   Account Name (as registered with bank) *
@@ -731,11 +783,10 @@ export const WalletPage: React.FC = () => {
                   placeholder="e.g. Adebayo Ogunlesi"
                   value={accountName}
                   onChange={(e) => setAccountName(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-semibold text-sm"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-semibold text-xs sm:text-sm"
                 />
               </div>
 
-              {/* Withdrawal Amount */}
               <div>
                 <div className="flex justify-between items-center mb-1">
                   <label className="font-bold text-slate-700">Withdrawal Amount (₦) *</label>
@@ -750,51 +801,29 @@ export const WalletPage: React.FC = () => {
                 <input
                   type="number"
                   min="500"
+                  step="500"
                   required
-                  placeholder="e.g. 10000"
+                  placeholder="50000"
                   value={withdrawAmount}
                   onChange={(e) => setWithdrawAmount(e.target.value)}
-                  className="w-full px-3.5 py-2.5 border border-slate-300 rounded-xl font-black text-sm"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-xl font-mono font-bold text-sm"
                 />
               </div>
 
-              {/* Fee & Balance Summary */}
-              <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-1.5 text-[11px]">
-                <div className="flex justify-between text-slate-600">
-                  <span>Available Balance:</span>
-                  <span className="font-extrabold text-slate-900">{formatNaira(availableBal)}</span>
-                </div>
-                <div className="flex justify-between text-slate-600">
-                  <span>Payout Transfer Fee:</span>
-                  <span className="font-extrabold text-emerald-700">₦0.00 (Zero Fee)</span>
-                </div>
-                <div className="flex justify-between text-slate-900 font-black border-t border-slate-200 pt-1 text-xs">
-                  <span>Total Deducted:</span>
-                  <span>{formatNaira((parseFloat(withdrawAmount) || 0) * 100)}</span>
-                </div>
-              </div>
-
-              <div className="flex justify-end space-x-3 pt-3 border-t border-slate-100">
+              <div className="flex justify-end space-x-2 pt-2 border-t border-slate-100">
                 <button
                   type="button"
                   onClick={() => setIsWithdrawOpen(false)}
-                  className="px-4 py-2.5 font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-100 rounded-xl"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="px-6 py-2.5 font-extrabold text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-xl shadow-md transition-all flex items-center space-x-1.5"
+                  className="px-5 py-2.5 text-xs font-black text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-xl shadow-xs transition-all active:scale-95"
                 >
-                  {loading ? (
-                    <>
-                      <span className="animate-spin">⚡</span>
-                      <span>Processing Payout...</span>
-                    </>
-                  ) : (
-                    <span>Disburse Funds via TransactPay →</span>
-                  )}
+                  {loading ? 'Dispatched...' : 'Confirm Withdrawal →'}
                 </button>
               </div>
             </form>

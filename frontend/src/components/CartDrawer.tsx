@@ -31,15 +31,15 @@ export const CartDrawer: React.FC = () => {
         {/* Backdrop */}
         <div
           onClick={() => setIsCartOpen(false)}
-          className="absolute inset-0 bg-slate-900/50 backdrop-blur-sm transition-opacity"
+          className="absolute inset-0 bg-slate-950/60 backdrop-blur-xs transition-opacity"
         />
 
-        <div className="fixed inset-y-0 right-0 max-w-full flex pl-10">
-          <div className="w-screen max-w-md bg-white shadow-2xl flex flex-col justify-between animate-slideLeft">
+        <div className="fixed inset-y-0 right-0 max-w-full flex pl-0 sm:pl-10 w-full sm:max-w-md">
+          <div className="w-full bg-white shadow-2xl flex flex-col justify-between animate-slideLeft">
             {/* Header */}
-            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50/80">
+            <div className="p-4 sm:p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center space-x-2.5">
-                <div className="w-8 h-8 rounded-full bg-brand-100 text-brand-700 flex items-center justify-center">
+                <div className="w-8 h-8 rounded-xl bg-brand-100 text-brand-700 flex items-center justify-center font-bold">
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path
                       strokeLinecap="round"
@@ -50,8 +50,8 @@ export const CartDrawer: React.FC = () => {
                   </svg>
                 </div>
                 <div>
-                  <h2 className="text-base font-extrabold text-slate-900">Your Food Basket</h2>
-                  <p className="text-xs text-slate-500">
+                  <h2 className="text-sm sm:text-base font-black text-slate-900">Your Food Basket</h2>
+                  <p className="text-[11px] sm:text-xs text-slate-500">
                     {totalItems} item{totalItems === 1 ? '' : 's'} selected
                   </p>
                 </div>
@@ -59,17 +59,16 @@ export const CartDrawer: React.FC = () => {
 
               <button
                 onClick={() => setIsCartOpen(false)}
-                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-200/50 transition-colors"
+                className="w-8 h-8 rounded-full bg-slate-200/60 hover:bg-slate-200 text-slate-500 flex items-center justify-center text-sm font-bold transition-colors"
                 title="Close Basket"
+                aria-label="Close basket"
               >
-                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
+                ✕
               </button>
             </div>
 
             {/* Cart Items List */}
-            <div className="p-6 overflow-y-auto flex-1 space-y-4">
+            <div className="p-3.5 sm:p-6 overflow-y-auto flex-1 space-y-3">
               {items.length === 0 ? (
                 <div className="text-center py-16 space-y-3">
                   <div className="text-4xl text-slate-300">🛒</div>
@@ -89,22 +88,21 @@ export const CartDrawer: React.FC = () => {
                 items.map(({ product, quantity }) => (
                   <div
                     key={product.id}
-                    className="p-3.5 bg-slate-50/70 border border-slate-200/80 rounded-2xl flex items-center space-x-3.5 hover:border-brand-200 transition-all"
+                    className="p-3 bg-slate-50/70 border border-slate-200/80 rounded-2xl flex items-center space-x-3 hover:border-brand-200 transition-all"
                   >
                     {/* Food Thumbnail */}
-                    <div className="w-16 h-16 rounded-xl bg-slate-200 overflow-hidden flex-shrink-0 border border-slate-200">
+                    <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl bg-slate-200 overflow-hidden flex-shrink-0 border border-slate-200/80">
                       {product.imageUrl ? (
                         <img
                           src={product.imageUrl}
                           alt={product.name}
                           className="w-full h-full object-cover"
                           onError={(e) => {
-                            // fallback on image broken
                             (e.target as HTMLElement).style.display = 'none';
                           }}
                         />
                       ) : (
-                        <div className="w-full h-full flex items-center justify-center text-xs font-bold text-slate-400 uppercase">
+                        <div className="w-full h-full flex items-center justify-center text-[10px] font-bold text-slate-400 uppercase">
                           Food
                         </div>
                       )}
@@ -113,25 +111,27 @@ export const CartDrawer: React.FC = () => {
                     {/* Details & Controls */}
                     <div className="flex-1 min-w-0">
                       <h4 className="text-xs font-bold text-slate-900 truncate">{product.name}</h4>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
+                      <p className="text-[10px] sm:text-[11px] text-slate-500 mt-0.5">
                         {formatNaira(product.priceCents)} / {product.unit?.name ?? 'unit'}
                       </p>
 
-                      <div className="flex items-center justify-between mt-2.5">
+                      <div className="flex items-center justify-between mt-2">
                         {/* Stepper */}
                         <div className="flex items-center space-x-1.5 bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
                           <button
                             onClick={() => updateQuantity(product.id, quantity - 1)}
                             className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:bg-slate-100 text-xs font-bold"
+                            aria-label="Decrease quantity"
                           >
                             -
                           </button>
-                          <span className="text-xs font-bold text-slate-900 px-2 min-w-[20px] text-center">
+                          <span className="text-xs font-black text-slate-900 px-1.5 min-w-[18px] text-center">
                             {quantity}
                           </span>
                           <button
                             onClick={() => updateQuantity(product.id, quantity + 1)}
                             className="w-6 h-6 rounded flex items-center justify-center text-slate-600 hover:bg-slate-100 text-xs font-bold"
+                            aria-label="Increase quantity"
                           >
                             +
                           </button>
@@ -139,13 +139,14 @@ export const CartDrawer: React.FC = () => {
 
                         {/* Item Subtotal & Trash */}
                         <div className="flex items-center space-x-2">
-                          <span className="text-xs font-extrabold text-slate-900">
+                          <span className="text-xs font-black text-slate-900">
                             {formatNaira(product.priceCents * quantity)}
                           </span>
                           <button
                             onClick={() => removeFromCart(product.id)}
-                            className="text-slate-400 hover:text-rose-600 p-1"
+                            className="text-slate-400 hover:text-rose-600 p-1 transition-colors"
                             title="Remove item"
+                            aria-label="Remove item"
                           >
                             <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path
@@ -166,21 +167,21 @@ export const CartDrawer: React.FC = () => {
 
             {/* Footer Summary & Checkout Button */}
             {items.length > 0 && (
-              <div className="p-6 bg-slate-50 border-t border-slate-200 space-y-4">
+              <div className="p-4 sm:p-6 bg-slate-50 border-t border-slate-200 space-y-3.5 pb-[max(1rem,env(safe-area-inset-bottom))]">
                 <div className="space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-500">
-                    <span>Subtotal:</span>
-                    <span className="font-semibold text-slate-800">
+                    <span>Basket Subtotal:</span>
+                    <span className="font-bold text-slate-800">
                       {formatNaira(totalAmountCents)}
                     </span>
                   </div>
                   <div className="flex justify-between text-slate-500">
                     <span>TransactPay Handling:</span>
-                    <span className="font-semibold text-emerald-600">Free Processing</span>
+                    <span className="font-bold text-emerald-600">Free Processing</span>
                   </div>
-                  <div className="flex justify-between text-sm font-black text-slate-900 pt-2 border-t border-slate-200/80">
-                    <span>Estimated Total:</span>
-                    <span className="text-brand-800 text-base">
+                  <div className="flex justify-between text-xs sm:text-sm font-black text-slate-900 pt-2 border-t border-slate-200/80">
+                    <span>Estimated Payable:</span>
+                    <span className="text-brand-900 text-sm sm:text-base font-black">
                       {formatNaira(totalAmountCents)}
                     </span>
                   </div>
@@ -189,7 +190,7 @@ export const CartDrawer: React.FC = () => {
                 <div className="space-y-2">
                   <button
                     onClick={handleProceedToCheckout}
-                    className="w-full py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-2xl font-black text-sm shadow-md hover:shadow-lg transition-all flex items-center justify-center space-x-2"
+                    className="w-full py-3 sm:py-3.5 bg-brand-600 hover:bg-brand-700 text-white rounded-xl sm:rounded-2xl font-black text-xs sm:text-sm shadow-md transition-all flex items-center justify-center space-x-2 active:scale-95"
                   >
                     <span>Proceed to Checkout</span>
                     <span className="text-xs">➔</span>
@@ -199,7 +200,7 @@ export const CartDrawer: React.FC = () => {
                     onClick={clearCart}
                     className="w-full text-center text-[11px] font-semibold text-slate-400 hover:text-rose-600 transition-colors py-1"
                   >
-                    Clear Basket
+                    Clear Food Basket
                   </button>
                 </div>
               </div>

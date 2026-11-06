@@ -1,8 +1,8 @@
+// frontend/src/pages/PackagesPage.tsx
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { formatNaira } from '../utils/format';
-import { packagesApi } from '../services/api';
-import { supabasePackages, SupabasePackage } from '../lib/supabase';
+import { supabasePackages } from '../lib/supabase';
 import { useCart } from '../context/CartContext';
 
 export interface DisplayBundleItem {
@@ -38,7 +38,15 @@ export interface DisplayPackage {
     message: string;
   }>;
   bestFor: string;
+  imageUrl?: string;
 }
+
+const BUNDLE_IMAGES: Record<string, string> = {
+  'Affy Student Essentials': 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
+  'Affy Solo Living Package': 'https://images.unsplash.com/photo-1578916171728-46686eac8d58?auto=format&fit=crop&w=800&q=80',
+  'Affy Family & Kids Package': 'https://images.unsplash.com/photo-1607349913338-fca6f7429606?auto=format&fit=crop&w=800&q=80',
+  'Affy Party Cooking Starter': 'https://images.unsplash.com/photo-1555244162-803834f70033?auto=format&fit=crop&w=800&q=80',
+};
 
 export const FEATURED_PACKAGES: DisplayPackage[] = [
   {
@@ -50,6 +58,7 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
     originalPriceCents: 1350000, // ₦13,500.00
     savingsPercentage: 15,
     status: 'ACTIVE',
+    imageUrl: BUNDLE_IMAGES['Affy Student Essentials'],
     items: [
       { name: 'Rice', quantity: 1, amountNaira: 2000, unitName: 'Derica' },
       { name: 'Garri', quantity: 2, amountNaira: 800, unitName: 'Derica' },
@@ -68,10 +77,11 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
     name: 'Affy Solo Living Package',
     badge: 'Solo Living',
     description: 'For bachelors and spinsters who want variety for everyday cooking.',
-    priceCents: 1807000, // ₦18,070 (Sardines removed)
+    priceCents: 1807000, // ₦18,070
     originalPriceCents: 2350000, // ₦23,500
     savingsPercentage: 15,
     status: 'ACTIVE',
+    imageUrl: BUNDLE_IMAGES['Affy Solo Living Package'],
     items: [
       { name: 'Rice', quantity: 2, amountNaira: 4000, unitName: 'Derica' },
       { name: 'Garri', quantity: 2, amountNaira: 800, unitName: 'Derica' },
@@ -93,10 +103,11 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
     name: 'Affy Family & Kids Package',
     badge: 'Family & Breakfast',
     description: 'Household staples with breakfast options for the children.',
-    priceCents: 4480000, // ₦44,800 (Golden Morn, Dano Milk removed; Milo at live price ₦180×10=₦1,800)
+    priceCents: 4480000, // ₦44,800
     originalPriceCents: 5800000, // ₦58,000
     savingsPercentage: 13,
     status: 'ACTIVE',
+    imageUrl: BUNDLE_IMAGES['Affy Family & Kids Package'],
     items: [
       { name: 'Rice', quantity: 5, amountNaira: 10000, unitName: 'Derica' },
       { name: 'Garri', quantity: 3, amountNaira: 1200, unitName: 'Derica' },
@@ -124,6 +135,7 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
     originalPriceCents: 3600000, // ₦36,000.00
     savingsPercentage: 13,
     status: 'ACTIVE',
+    imageUrl: BUNDLE_IMAGES['Affy Party Cooking Starter'],
     items: [
       { name: 'Rice', quantity: 10, amountNaira: 20000, unitName: 'Derica' },
       { name: 'Spaghetti', quantity: 5, amountNaira: 4750, unitName: 'Pack' },
@@ -140,7 +152,12 @@ export const FEATURED_PACKAGES: DisplayPackage[] = [
 export const PackagesPage: React.FC = () => {
   const [packagesList, setPackagesList] = useState<DisplayPackage[]>(FEATURED_PACKAGES);
   const [orderedPkg, setOrderedPkg] = useState<string | null>(null);
+  const [expandedItems, setExpandedItems] = useState<Record<string, boolean>>({});
   const { addToCart, setIsCartOpen } = useCart();
+
+  const toggleExpand = (id: string) => {
+    setExpandedItems((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   const loadPackages = useCallback(async () => {
     try {
@@ -155,6 +172,7 @@ export const PackagesPage: React.FC = () => {
           originalPriceCents: Number(pkg.originalPriceCents || Math.round(Number(pkg.priceCents || 2500000) * 1.15)),
           savingsPercentage: Number(pkg.savingsPercentage || 14),
           status: pkg.status || 'ACTIVE',
+          imageUrl: pkg.imageUrl || BUNDLE_IMAGES[pkg.name] || 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80',
           items: (pkg.items || []).map((it: any) => ({
             name: it.product?.name || it.name || 'Food item',
             displayName: it.displayName || it.product?.name || it.name,
@@ -193,7 +211,7 @@ export const PackagesPage: React.FC = () => {
     };
   }, [loadPackages]);
 
-  const handleOrder = (pkg: DisplayPackage) => {
+  const handleAddToCart = (pkg: DisplayPackage, openDrawer = false) => {
     addToCart(
       {
         id: pkg.id,
@@ -202,135 +220,174 @@ export const PackagesPage: React.FC = () => {
         currency: 'NGN',
         isActive: true,
         sku: `BUNDLE-${pkg.id}`,
+        imageUrl: pkg.imageUrl,
       },
       1
     );
     setOrderedPkg(pkg.name);
-    setTimeout(() => setOrderedPkg(null), 3500);
-    setIsCartOpen(true);
+    setTimeout(() => setOrderedPkg(null), 3000);
+    if (openDrawer) {
+      setIsCartOpen(true);
+    }
   };
 
   return (
-    <div className="space-y-10 pb-16">
+    <div className="space-y-6 sm:space-y-10 pb-8 sm:pb-16">
       {/* Toast */}
       {orderedPkg && (
-        <div className="fixed bottom-6 right-6 z-50 bg-slate-900 text-white px-5 py-3 rounded-xl shadow-xl flex items-center space-x-3 border border-slate-700 animate-bounce">
-          <span className="text-emerald-400 font-bold">✓</span>
-          <span className="text-sm font-medium">Added "{orderedPkg}" to basket!</span>
+        <div className="fixed top-16 sm:top-20 right-3 sm:right-4 z-50 bg-slate-950/90 backdrop-blur-md text-white text-xs font-semibold px-4 py-3 rounded-2xl shadow-2xl flex items-center space-x-2.5 border border-brand-500/30 animate-slideDown max-w-[90vw]">
+          <span className="w-5 h-5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-xs flex-shrink-0">
+            ✓
+          </span>
+          <span className="truncate">Added &quot;{orderedPkg}&quot; to basket!</span>
+          <button
+            onClick={() => setIsCartOpen(true)}
+            className="text-accent-400 hover:text-white underline font-bold ml-2 text-[11px] whitespace-nowrap flex-shrink-0"
+          >
+            View
+          </button>
         </div>
       )}
 
       {/* Header */}
-      <div className="text-center max-w-3xl mx-auto space-y-3">
-        <span className="text-xs uppercase tracking-wider font-extrabold text-brand-700 bg-brand-50 px-3.5 py-1.5 rounded-full border border-brand-200 shadow-2xs">
+      <div className="text-center max-w-3xl mx-auto space-y-2 sm:space-y-3 px-1">
+        <span className="text-[10px] sm:text-xs uppercase tracking-wider font-extrabold text-brand-700 bg-brand-50 px-3 py-1 rounded-full border border-brand-200 shadow-2xs">
           Verified Farm Curated Bundles
         </span>
-        <h1 className="text-3xl sm:text-4xl font-black text-slate-900 tracking-tight">
-          Curated Foodstuff Packs & Family Rations
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-black text-slate-900 tracking-tight">
+          Curated Foodstuff Packs &amp; Family Rations
         </h1>
-        <p className="text-sm text-slate-600 leading-relaxed">
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed max-w-2xl mx-auto">
           Save significantly by purchasing pre-curated food bundles structured around genuine Nigerian kitchen meal plans.
-          Synchronized directly with our farm inventory and verified scale measures.
+          Synchronized directly with verified scale weights and farm inventory.
         </p>
       </div>
 
-      {/* Packages Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+      {/* Packages Grid (Single Column on Mobile, 2-Col on md+) */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 lg:gap-8">
         {packagesList.map((pkg) => {
           const isDraft = pkg.status === 'DRAFT';
+          const isUnavailable = !!(pkg.unavailableItems && pkg.unavailableItems.length > 0);
+          const isExpanded = expandedItems[pkg.id] ?? false;
+
           return (
             <div
               key={pkg.id}
-              className={`bg-white rounded-3xl border shadow-sm hover:shadow-lg transition-all duration-200 flex flex-col justify-between overflow-hidden relative ${
-                isDraft ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200'
+              className={`bg-white rounded-2xl sm:rounded-3xl border shadow-2xs hover:shadow-lg transition-all duration-200 flex flex-col justify-between overflow-hidden relative ${
+                isDraft ? 'border-amber-200 bg-amber-50/15' : 'border-slate-200/90'
               }`}
             >
-              <div className="p-6 sm:p-8 space-y-5">
-                {/* Top row */}
-                <div className="flex flex-wrap justify-between items-start gap-2">
-                  <div className="flex items-center space-x-2">
-                    <span className="text-xs font-bold text-accent-700 bg-accent-50 border border-accent-200 px-3 py-1 rounded-full">
+              {/* Optional Bundle Header Image */}
+              {pkg.imageUrl && (
+                <div className="relative aspect-[16/9] sm:aspect-[21/9] w-full overflow-hidden bg-slate-100">
+                  <img
+                    src={pkg.imageUrl}
+                    alt={pkg.name}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-black/20" />
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">
+                    <span className="text-xs font-black bg-brand-600/90 backdrop-blur-xs px-2.5 py-1 rounded-lg">
                       {pkg.badge}
                     </span>
-                    {isDraft ? (
-                      <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
-                        <span>⏳</span>
-                        <span>Pending Validation (Draft)</span>
-                      </span>
-                    ) : (
-                      <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
-                        <span>✓</span>
-                        <span>Verified & Published</span>
-                      </span>
-                    )}
+                    <span className="text-xs font-black bg-emerald-600/90 backdrop-blur-xs px-2.5 py-1 rounded-lg">
+                      Save {pkg.savingsPercentage}%
+                    </span>
                   </div>
-                  <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
-                    Save {pkg.savingsPercentage}% vs retail
-                  </span>
                 </div>
+              )}
+
+              <div className="p-4 sm:p-6 lg:p-7 space-y-4">
+                {/* Top badges if image wasn't present */}
+                {!pkg.imageUrl && (
+                  <div className="flex flex-wrap justify-between items-start gap-2">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-xs font-bold text-accent-700 bg-accent-50 border border-accent-200 px-3 py-1 rounded-full">
+                        {pkg.badge}
+                      </span>
+                      {isDraft ? (
+                        <span className="text-[11px] font-bold text-amber-800 bg-amber-100 border border-amber-300 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
+                          <span>⏳</span>
+                          <span>Draft</span>
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-bold text-emerald-800 bg-emerald-100 border border-emerald-300 px-2.5 py-0.5 rounded-full flex items-center space-x-1">
+                          <span>✓</span>
+                          <span>Verified</span>
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-1 rounded-full">
+                      Save {pkg.savingsPercentage}%
+                    </span>
+                  </div>
+                )}
 
                 <div>
-                  <h3 className="text-2xl font-bold text-slate-900">{pkg.name}</h3>
-                  <p className="text-xs text-slate-600 mt-2 leading-relaxed">{pkg.description}</p>
+                  <h3 className="text-lg sm:text-2xl font-black text-slate-900 leading-snug">
+                    {pkg.name}
+                  </h3>
+                  <p className="text-xs text-slate-600 mt-1 sm:mt-1.5 leading-relaxed">
+                    {pkg.description}
+                  </p>
                 </div>
 
-                {/* Validation Warnings (Part 3) */}
-                {(isDraft || (pkg.unavailableItems && pkg.unavailableItems.length > 0)) && (
-                  <div className="p-3 bg-amber-50 rounded-2xl border border-amber-200 text-xs text-amber-900 space-y-1">
+                {/* Validation Warnings */}
+                {(isDraft || isUnavailable) && (
+                  <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-xs text-amber-900 space-y-1">
                     <div className="font-bold flex items-center space-x-1">
                       <span>⚠️ Validation Notice:</span>
                     </div>
                     {pkg.missingItems && pkg.missingItems.length > 0 && (
                       <p className="text-[11px] text-amber-800">
-                        • Items pending inventory stock: <strong>{pkg.missingItems.join(', ')}</strong> (bundle amounts preserved).
+                        • Items pending inventory stock: <strong>{pkg.missingItems.join(', ')}</strong>.
                       </p>
                     )}
                     {pkg.unavailableItems && pkg.unavailableItems.length > 0 && (
                       <p className="text-[11px] text-orange-800">
-                        • Items currently unavailable (out of stock): <strong>{pkg.unavailableItems.join(', ')}</strong>. This bundle cannot be ordered until restocked.
+                        • Items currently unavailable: <strong>{pkg.unavailableItems.join(', ')}</strong>.
                       </p>
-                    )}
-                    {pkg.priceDiscrepancies && pkg.priceDiscrepancies.length > 0 && (
-                      <div className="text-[11px] text-amber-800">
-                        {pkg.priceDiscrepancies.map((d, i) => (
-                          <p key={i}>• {d.message}</p>
-                        ))}
-                      </div>
                     )}
                   </div>
                 )}
 
-                {/* Items Breakdown Table */}
-                <div className="space-y-2 pt-2">
+                {/* Items Breakdown with Mobile Toggle */}
+                <div className="space-y-2 pt-1">
                   <div className="flex justify-between items-center">
-                    <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                      What's Inside this Pack:
+                    <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500">
+                      What&apos;s Inside:
                     </span>
-                    <span className="text-[11px] text-slate-400 font-semibold">
-                      {pkg.items.length} items included
-                    </span>
+                    <button
+                      onClick={() => toggleExpand(pkg.id)}
+                      className="text-xs font-bold text-brand-700 hover:text-brand-800 flex items-center space-x-1 py-0.5 px-2 rounded-lg bg-brand-50"
+                    >
+                      <span>{pkg.items.length} items</span>
+                      <span>{isExpanded ? '▲ hide' : '▼ show all'}</span>
+                    </button>
                   </div>
 
-                  <div className="divide-y divide-slate-100 border border-slate-200 rounded-2xl overflow-hidden bg-slate-50/50">
-                    {pkg.items.map((item, idx) => {
-                      const isMissing = item.missingFromInventory;
-                      const hasDiscrepancy = item.priceDiscrepancy;
+                  {/* Summary preview list when collapsed */}
+                  {!isExpanded && (
+                    <div className="p-2.5 bg-slate-50 rounded-xl border border-slate-200/80 text-xs text-slate-600">
+                      <span className="font-medium">Includes: </span>
+                      <span className="font-semibold text-slate-800">
+                        {pkg.items.slice(0, 5).map((it) => it.displayName || it.name).join(', ')}
+                        {pkg.items.length > 5 ? `, and ${pkg.items.length - 5} more items` : ''}
+                      </span>
+                    </div>
+                  )}
 
-                      return (
+                  {/* Full detailed list when expanded */}
+                  {isExpanded && (
+                    <div className="divide-y divide-slate-100 border border-slate-200 rounded-xl overflow-hidden bg-slate-50/50 max-h-60 overflow-y-auto">
+                      {pkg.items.map((item, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between px-3.5 py-2.5 text-xs hover:bg-white transition-colors"
+                          className="flex items-center justify-between px-3 py-2 text-xs hover:bg-white transition-colors"
                         >
-                          <div className="flex items-center space-x-2.5 min-w-0">
-                            {isMissing ? (
-                              <span className="text-amber-500 font-bold" title="Pending inventory linkage">⚠️</span>
-                            ) : item.unavailableFromInventory ? (
-                              <span className="text-orange-500 font-bold" title="Out of stock — unavailable">🚫</span>
-                            ) : hasDiscrepancy ? (
-                              <span className="text-amber-500 font-bold" title="Price discrepancy pending confirmation">ℹ️</span>
-                            ) : (
-                              <span className="text-emerald-600 font-bold">✓</span>
-                            )}
+                          <div className="flex items-center space-x-2 min-w-0">
+                            <span className="text-emerald-600 font-bold text-xs">✓</span>
                             <div className="truncate">
                               <span className="font-semibold text-slate-800">
                                 {item.displayName || item.name}
@@ -338,25 +395,9 @@ export const PackagesPage: React.FC = () => {
                               <span className="text-slate-500 text-[11px] ml-1.5 font-medium">
                                 ({item.quantity} {item.unitName || 'x'})
                               </span>
-                              {isMissing && (
-                                <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold">
-                                  Pending Stock
-                                </span>
-                              )}
-                              {item.unavailableFromInventory && (
-                                <span className="ml-1.5 text-[10px] text-orange-700 bg-orange-100 px-1.5 py-0.2 rounded font-semibold">
-                                  Out of Stock
-                                </span>
-                              )}
-                              {hasDiscrepancy && (
-                                <span className="ml-1.5 text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.2 rounded font-semibold">
-                                  ₦{item.allocatedPriceNaira}/unit
-                                </span>
-                              )}
                             </div>
                           </div>
-
-                          <div className="text-right flex-shrink-0 font-bold text-slate-900">
+                          <div className="text-right flex-shrink-0 font-bold text-slate-900 text-xs">
                             {item.amountNaira !== undefined
                               ? formatNaira(item.amountNaira * 100)
                               : item.amountCents
@@ -364,57 +405,67 @@ export const PackagesPage: React.FC = () => {
                               : ''}
                           </div>
                         </div>
-                      );
-                    })}
-
-                    {/* Total Row */}
-                    <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-100 font-black text-xs text-slate-900">
-                      <span>Total Bundle Item Value:</span>
-                      <span className="text-brand-700 text-sm">{formatNaira(pkg.priceCents)}</span>
+                      ))}
                     </div>
-                  </div>
+                  )}
                 </div>
 
-                <div className="p-3 bg-brand-50/50 rounded-xl border border-brand-100 text-xs text-brand-800 flex items-center space-x-2">
+                <div className="p-2.5 bg-brand-50/60 rounded-xl border border-brand-100 text-xs text-brand-900 flex items-center space-x-2">
                   <span>💡</span>
-                  <span>Best for: <strong>{pkg.bestFor}</strong></span>
+                  <span className="truncate">Best for: <strong>{pkg.bestFor}</strong></span>
                 </div>
               </div>
 
-              {/* Bottom Price & Action */}
-              <div className="p-6 sm:p-8 bg-slate-50/90 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between gap-4">
-                <div>
-                  <div className="flex items-baseline space-x-2">
-                    <span className="text-2xl font-black text-slate-900">
-                      {formatNaira(pkg.priceCents)}
-                    </span>
-                    <span className="text-xs text-slate-400 line-through">
-                      {formatNaira(pkg.originalPriceCents)}
+              {/* Bottom Price & Actions */}
+              <div className="p-4 sm:p-6 bg-slate-50/90 border-t border-slate-200 space-y-3">
+                <div className="flex items-baseline justify-between">
+                  <div>
+                    <div className="flex items-baseline space-x-2">
+                      <span className="text-xl sm:text-2xl font-black text-slate-900">
+                        {formatNaira(pkg.priceCents)}
+                      </span>
+                      <span className="text-xs text-slate-400 line-through">
+                        {formatNaira(pkg.originalPriceCents)}
+                      </span>
+                    </div>
+                    <span className="text-[10px] sm:text-[11px] text-emerald-600 font-semibold">
+                      Verified Direct Farm Supply
                     </span>
                   </div>
-                  <span className="text-[11px] text-emerald-600 font-medium">Free door-step delivery in Ilesa</span>
                 </div>
 
-                <div className="flex items-center space-x-2 w-full sm:w-auto">
+                {/* Responsive 3-Button Action Row */}
+                <div className="grid grid-cols-3 gap-2">
                   <Link
                     to="/savings"
-                    className="w-1/2 sm:w-auto text-center px-4 py-3 rounded-xl border border-brand-300 bg-white hover:bg-brand-50 text-brand-700 font-semibold text-xs transition-colors"
+                    className="text-center py-2.5 px-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors flex items-center justify-center truncate"
                   >
                     Save in Plan
                   </Link>
+
                   <button
-                    onClick={() => handleOrder(pkg)}
-                    disabled={!!(pkg.unavailableItems && pkg.unavailableItems.length > 0)}
-                    title={pkg.unavailableItems && pkg.unavailableItems.length > 0 ? `Cannot order: ${pkg.unavailableItems.join(', ')} out of stock` : undefined}
-                    className={`w-1/2 sm:w-auto px-5 py-3 rounded-xl font-bold text-xs shadow-sm hover:shadow transition-all flex items-center justify-center space-x-1.5 ${
-                      pkg.unavailableItems && pkg.unavailableItems.length > 0
-                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
-                        : isDraft
-                        ? 'bg-amber-600 hover:bg-amber-700 text-white'
-                        : 'bg-brand-600 hover:bg-brand-700 text-white'
+                    onClick={() => handleAddToCart(pkg, false)}
+                    disabled={isUnavailable}
+                    className={`py-2.5 px-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-1 truncate ${
+                      isUnavailable
+                        ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                        : 'bg-white border border-brand-300 text-brand-800 hover:bg-brand-50 active:scale-95 shadow-2xs'
                     }`}
                   >
-                    <span>{pkg.unavailableItems && pkg.unavailableItems.length > 0 ? '🚫 Unavailable' : isDraft ? 'Order Bundle (Draft)' : 'Order Bundle'}</span>
+                    <span>+ Basket</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleAddToCart(pkg, true)}
+                    disabled={isUnavailable}
+                    className={`py-2.5 px-2 rounded-xl font-black text-xs text-white shadow-xs transition-all flex items-center justify-center space-x-1 truncate active:scale-95 ${
+                      isUnavailable
+                        ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                        : 'bg-brand-600 hover:bg-brand-700'
+                    }`}
+                  >
+                    <span>Buy Now</span>
+                    <span className="text-[10px]">➔</span>
                   </button>
                 </div>
               </div>

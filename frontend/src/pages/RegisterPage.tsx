@@ -162,8 +162,8 @@ export const RegisterPage: React.FC = () => {
   const doPasswordsMatch = password && confirmPassword && password === confirmPassword;
 
   return (
-    <div className="min-h-[80vh] flex items-center justify-center py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full bg-white rounded-3xl border border-slate-200 p-8 sm:p-10 shadow-xl space-y-6">
+    <div className="min-h-[80vh] flex items-center justify-center py-6 sm:py-12 px-3 sm:px-6 lg:px-8">
+      <div className="max-w-md w-full bg-white rounded-2xl sm:rounded-3xl border border-slate-200 p-5 sm:p-10 shadow-xl space-y-6">
 
         {/* Header */}
         <div className="text-center space-y-3">

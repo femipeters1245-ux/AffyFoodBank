@@ -53,7 +53,7 @@ async function verifyAll() {
   console.log('\n2. Checking Inventory stock quantities (must be 0/unset, not invented):');
   const { data: inventories, error: iErr } = await supabase.from('Inventory').select('productId, quantity');
   if (iErr) throw iErr;
-  
+
   let stockValid = true;
   for (const exp of expectedItems) {
     const p = products.find(prod => prod.name.trim().toLowerCase() === exp.name.trim().toLowerCase());
