@@ -3,7 +3,7 @@ import { Resend } from 'resend';
 
 // Initialize Resend client lazily or when key is present
 const getResendClient = () => {
-  const apiKey = process.env.RESEND_API_KEY;
+  const apiKey = process.env.RESEND_API_KEY || process.env.RESEND_KEY;
   if (!apiKey || apiKey.startsWith('re_your_')) {
     return null;
   }

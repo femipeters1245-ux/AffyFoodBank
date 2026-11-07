@@ -10,7 +10,10 @@ import {
   generateAuthResponseForUser,
   requestPasswordReset as serviceRequestReset,
   resetPassword as serviceResetPassword,
+  findUserRecord,
+  ensureUserProfileAndWallet,
 } from '../services/auth.service';
+import { supabaseAdmin, isSupabaseAdminConfigured } from '../services/supabase-admin.service';
 import { otpService } from '../services/otp.service';
 import { sendWelcomeEmail } from '../services/email.service';
 import { extractTokenFromRequest, JwtPayload } from '../middleware/authenticate';
@@ -79,15 +82,8 @@ export const sendOtp = async (req: Request, res: Response, next: NextFunction) =
 
     const normalizedEmail = email.trim().toLowerCase();
 
-    // Check if user already exists safely
-    let existingUser: any = null;
-    try {
-      existingUser = await safeDbQuery(() =>
-        prisma.user.findUnique({ where: { email: normalizedEmail } })
-      );
-    } catch (dbErr: any) {
-      console.warn('[sendOtp] User check note:', dbErr?.message);
-    }
+    // Check if user already exists safely across Prisma and Supabase
+    let existingUser = await findUserRecord(normalizedEmail);
 
     // Determine target purpose: explicitly provided or auto-detected
     const targetPurpose: 'SIGNUP' | 'LOGIN' =
@@ -148,39 +144,44 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
     const userLastName = lastName?.trim() || metadata?.lastName;
 
     // 2. Locate or auto-create user in database
-    let user: any = null;
-    try {
-      user = await safeDbQuery(() =>
-        prisma.user.findUnique({
-          where: { email: normalizedEmail },
-          include: { profile: true, role: true },
-        })
-      );
+    let user = await findUserRecord(normalizedEmail);
 
-      // Update password if a new password was provided
-      if (user && userPassword) {
+    // Update password if a new password was provided
+    if (user && userPassword) {
+      try {
+        const { hashPassword } = await import('../utils/password');
+        const passwordHash = await hashPassword(userPassword);
         try {
-          const { hashPassword } = await import('../utils/password');
-          const passwordHash = await hashPassword(userPassword);
           await prisma.user.update({
             where: { id: user.id },
             data: { passwordHash },
           });
-        } catch (pwdErr: any) {
-          console.warn('[verifyOtp] Password update note:', pwdErr?.message);
+        } catch {}
+        if (isSupabaseAdminConfigured && supabaseAdmin) {
+          try {
+            await supabaseAdmin.from('User').update({ passwordHash }).eq('id', user.id);
+          } catch {}
         }
+      } catch (pwdErr: any) {
+        console.warn('[verifyOtp] Password update note:', pwdErr?.message);
       }
+    }
 
-      // Auto-register user + customer profile + wallet if user does not exist yet
-      if (!user) {
-        const isAdmin = normalizedEmail === 'affybrand@gmail.com' || normalizedEmail === 'admin@affyfoodbank.ng';
+    // Auto-register user + customer profile + wallet if user does not exist yet
+    if (!user) {
+      const isAdmin = normalizedEmail === 'affybrand@gmail.com' || normalizedEmail === 'admin@affyfoodbank.ng';
+      const defaultPwd = userPassword || `Affy-${uuidv4().slice(0, 8)}-${Date.now()}`;
+      const { hashPassword } = await import('../utils/password');
+      const passwordHash = await hashPassword(defaultPwd);
+      const newUserId = uuidv4();
+      const profileId = uuidv4();
+      const walletId = uuidv4();
+      const nowIso = new Date().toISOString();
+
+      try {
         const role = await prisma.role.findFirst({
           where: { name: isAdmin ? 'Admin' : 'Customer' },
         });
-
-        const { hashPassword } = await import('../utils/password');
-        const defaultPwd = userPassword || `Affy-${uuidv4().slice(0, 8)}-${Date.now()}`;
-        const passwordHash = await hashPassword(defaultPwd);
 
         user = await prisma.$transaction(async (tx) => {
           const existing = await tx.user.findUnique({
@@ -191,7 +192,7 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
 
           const newUser = await tx.user.create({
             data: {
-              id: uuidv4(),
+              id: newUserId,
               email: normalizedEmail,
               passwordHash,
               firstName: userFirstName || normalizedEmail.split('@')[0],
@@ -202,14 +203,14 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
 
           const profile = await tx.customerProfile.create({
             data: {
-              id: uuidv4(),
+              id: profileId,
               userId: newUser.id,
             },
           });
 
           await tx.wallet.create({
             data: {
-              id: uuidv4(),
+              id: walletId,
               customerProfileId: profile.id,
               totalBalanceCents: 0,
               allocatedToSavingsCents: 0,
@@ -223,17 +224,76 @@ export const verifyOtp = async (req: Request, res: Response, next: NextFunction)
             include: { profile: true, role: true },
           });
         });
-
-        // Dispatch welcome email asynchronously
-        sendWelcomeEmail({
-          to: normalizedEmail,
-          firstName: userFirstName || undefined,
-        }).catch((e) => console.warn('[Email] Welcome email note:', e?.message));
-
-        console.log(`[verifyOtp] New user account and wallet registered: ${normalizedEmail}`);
+      } catch (dbErr: any) {
+        console.warn('[verifyOtp] Prisma create note:', dbErr?.message);
       }
-    } catch (dbErr: any) {
-      console.warn('[verifyOtp] Database access error, using resilient session fallback:', dbErr?.message);
+
+      // Supabase fallback for new user creation
+      if (!user && isSupabaseAdminConfigured && supabaseAdmin) {
+        try {
+          const { data: role } = await supabaseAdmin
+            .from('Role')
+            .select('*')
+            .eq('name', isAdmin ? 'Admin' : 'Customer')
+            .maybeSingle();
+
+          const { data: createdUser, error: supaCreateErr } = await supabaseAdmin
+            .from('User')
+            .insert({
+              id: newUserId,
+              email: normalizedEmail,
+              passwordHash,
+              firstName: userFirstName || normalizedEmail.split('@')[0],
+              lastName: userLastName || '',
+              roleId: role?.id ?? null,
+              isActive: true,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+            })
+            .select()
+            .single();
+
+          if (createdUser && !supaCreateErr) {
+            await supabaseAdmin.from('CustomerProfile').insert({
+              id: profileId,
+              userId: createdUser.id,
+              createdAt: nowIso,
+              updatedAt: nowIso,
+            });
+
+            await supabaseAdmin.from('Wallet').insert({
+              id: walletId,
+              customerProfileId: profileId,
+              totalBalanceCents: 0,
+              allocatedToSavingsCents: 0,
+              currency: 'NGN',
+              status: 'ACTIVE',
+              createdAt: nowIso,
+              updatedAt: nowIso,
+            });
+
+            user = {
+              ...createdUser,
+              profile: { id: profileId },
+              role: role || { name: isAdmin ? 'Admin' : 'Customer' },
+            };
+          }
+        } catch (supaErr: any) {
+          console.warn('[verifyOtp] Supabase user registration note:', supaErr?.message);
+        }
+      }
+
+      // Dispatch welcome email asynchronously
+      sendWelcomeEmail({
+        to: normalizedEmail,
+        firstName: userFirstName || undefined,
+      }).catch((e) => console.warn('[Email] Welcome email note:', e?.message));
+
+      console.log(`[verifyOtp] New user account and wallet registered: ${normalizedEmail}`);
+    }
+
+    if (user) {
+      user = await ensureUserProfileAndWallet(user);
     }
 
     // Resilient fallback for dev or offline DB
@@ -299,18 +359,8 @@ export const getSession = async (req: Request, res: Response, next: NextFunction
       return res.json({ authenticated: false, user: null, session: null });
     }
 
-    // Try to get fresh user profile from DB
-    let user: any = null;
-    try {
-      user = await safeDbQuery(() =>
-        prisma.user.findUnique({
-          where: { id: payload.sub },
-          include: { profile: true, role: true },
-        })
-      );
-    } catch {
-      // Ignore DB errors
-    }
+    // Try to get fresh user profile from Prisma or Supabase
+    let user = await findUserRecord(payload.email);
 
     const userData = user
       ? {

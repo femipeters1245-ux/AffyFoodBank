@@ -2,6 +2,28 @@
 import prisma from '../prisma/client';
 import { BadRequestError, ConflictError, NotFoundError } from '../utils/errors';
 import { v4 as uuidv4 } from 'uuid';
+import { supabaseAdmin, isSupabaseAdminConfigured } from './supabase-admin.service';
+
+let lastPrismaErrorTime = 0;
+async function safePrismaQuery<T>(fn: () => Promise<T>, timeoutMs = 1500): Promise<T | null> {
+  if (Date.now() - lastPrismaErrorTime < 30000) return null;
+  let timer: NodeJS.Timeout;
+  const timeoutPromise = new Promise<null>((resolve) => {
+    timer = setTimeout(() => {
+      lastPrismaErrorTime = Date.now();
+      resolve(null);
+    }, timeoutMs);
+  });
+  try {
+    const res = await Promise.race([fn(), timeoutPromise]);
+    return res as T;
+  } catch {
+    lastPrismaErrorTime = Date.now();
+    return null;
+  } finally {
+    clearTimeout(timer!);
+  }
+}
 
 /**
  * Wallet service – atomic operations on a customer's wallet and its transaction ledger.
@@ -10,22 +32,82 @@ import { v4 as uuidv4 } from 'uuid';
 export const walletService = {
   /** Retrieve the wallet for a given customer profile ID. */
   async getWallet(customerProfileId: string) {
-    const wallet = await prisma.wallet.findUnique({
-      where: { customerProfileId },
-    });
-    if (!wallet) throw new NotFoundError('Wallet not found');
-    return wallet;
+    const wallet = await safePrismaQuery(() =>
+      prisma.wallet.findUnique({
+        where: { customerProfileId },
+      })
+    );
+    if (wallet) return wallet;
+
+    // Fallback: Query Supabase directly
+    if (isSupabaseAdminConfigured && supabaseAdmin) {
+      try {
+        const { data: wallet, error } = await supabaseAdmin
+          .from('Wallet')
+          .select('*')
+          .eq('customerProfileId', customerProfileId)
+          .maybeSingle();
+
+        if (wallet && !error) {
+          return {
+            id: wallet.id,
+            customerProfileId: wallet.customerProfileId,
+            totalBalanceCents: Number(wallet.totalBalanceCents || 0),
+            allocatedToSavingsCents: Number(wallet.allocatedToSavingsCents || 0),
+            currency: wallet.currency || 'NGN',
+            status: wallet.status || 'ACTIVE',
+            createdAt: wallet.createdAt ? new Date(wallet.createdAt) : new Date(),
+            updatedAt: wallet.updatedAt ? new Date(wallet.updatedAt) : new Date(),
+          };
+        }
+      } catch (supaErr: any) {
+        console.warn('[walletService.getWallet] Supabase query note:', supaErr?.message);
+      }
+    }
+
+    throw new NotFoundError('Wallet not found');
   },
 
   /** List recent wallet transactions (newest first, limit 50). */
   async listTransactions(customerProfileId: string) {
-    const wallet = await prisma.wallet.findUnique({ where: { customerProfileId } });
-    if (!wallet) throw new NotFoundError('Wallet not found');
-    return prisma.walletTransaction.findMany({
-      where: { walletId: wallet.id },
-      orderBy: { createdAt: 'desc' },
-      take: 50,
-    });
+    const wallet = await safePrismaQuery(() =>
+      prisma.wallet.findUnique({ where: { customerProfileId } })
+    );
+    if (wallet) {
+      try {
+        return await prisma.walletTransaction.findMany({
+          where: { walletId: wallet.id },
+          orderBy: { createdAt: 'desc' },
+          take: 50,
+        });
+      } catch {}
+    }
+
+    // Fallback: Query Supabase
+    if (isSupabaseAdminConfigured && supabaseAdmin) {
+      try {
+        const { data: wallet } = await supabaseAdmin
+          .from('Wallet')
+          .select('id')
+          .eq('customerProfileId', customerProfileId)
+          .maybeSingle();
+
+        if (wallet) {
+          const { data: txs, error } = await supabaseAdmin
+            .from('WalletTransaction')
+            .select('*')
+            .eq('walletId', wallet.id)
+            .order('createdAt', { ascending: false })
+            .limit(50);
+
+          if (txs && !error) return txs;
+        }
+      } catch (supaErr: any) {
+        console.warn('[walletService.listTransactions] Supabase note:', supaErr?.message);
+      }
+    }
+
+    return [];
   },
 
   /** Deposit money into the wallet – idempotent via unique paymentReference. */

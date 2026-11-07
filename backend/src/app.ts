@@ -22,7 +22,33 @@ import ordersRouter from './routes/orders';
 // Middleware
 import errorHandler from './middleware/errorHandler';
 
+// Load environment variables from any accessible .env file
 dotenv.config();
+import path from 'path';
+try {
+  dotenv.config({ path: path.resolve(process.cwd(), 'backend', '.env') });
+  dotenv.config({ path: path.resolve(__dirname, '..', '.env') });
+  dotenv.config({ path: path.resolve(__dirname, '..', '..', 'backend', '.env') });
+} catch {}
+
+if (!process.env.RESEND_API_KEY && process.env.RESEND_KEY) {
+  process.env.RESEND_API_KEY = process.env.RESEND_KEY;
+}
+if (!process.env.RESEND_FROM_EMAIL || process.env.RESEND_FROM_EMAIL.includes('onboarding@resend.dev')) {
+  process.env.RESEND_FROM_EMAIL = 'Affy FoodBank <noreply@affyfoodbank.com.ng>';
+}
+if (!process.env.SUPABASE_URL) {
+  process.env.SUPABASE_URL = 'https://jtwrnpqyvypvljgywwau.supabase.co';
+}
+if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
+  process.env.SUPABASE_SERVICE_ROLE_KEY =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imp0d3JucHF5dnlwdmxqZ3l3d2F1Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MTQ5Mjk1OCwiZXhwIjoyMTA3MDY4OTU4fQ.E1rdcNicpDbxVWGSLQnrLeEJFoWy5lE5FWBMEsNwFj0';
+}
+if (!process.env.JWT_SECRET) {
+  process.env.JWT_SECRET =
+    process.env.SUPABASE_JWT_SECRET ||
+    '7H4llDStpfCmtxVBUpCHs8dsynsEgVopYloaECF+Z5yDHbpe7LcwRaR/yIQlrE1e6snoZDiKdkpwclOZufh4yg==';
+}
 
 // Enable JSON serialization of BigInt fields returned by Prisma
 (BigInt.prototype as any).toJSON = function () {
