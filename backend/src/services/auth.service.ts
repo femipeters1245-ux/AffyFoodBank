@@ -658,7 +658,7 @@ export async function resetPassword(body: { email?: string; otp?: string; token?
     // Also update in Supabase Auth if the user exists there
     try {
       const { data: supaUsers } = await supabaseAdmin.auth.admin.listUsers();
-      const match = supaUsers?.users?.find((u) => u.email?.toLowerCase() === normalizedEmail);
+      const match = supaUsers?.users?.find((u: any) => u.email?.toLowerCase() === normalizedEmail);
       if (match) {
         await supabaseAdmin.auth.admin.updateUserById(match.id, { password: newPassword });
       }

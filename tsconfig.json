@@ -13,5 +13,5 @@
     "sourceMap": true
   },
   "include": ["api/**/*.ts", "backend/src/**/*.ts"],
-  "exclude": ["node_modules", "frontend", "dist"]
+  "exclude": ["node_modules", "frontend", "dist", "backend/src/__tests__", "**/*.test.ts"]
 }
