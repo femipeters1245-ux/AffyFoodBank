@@ -12,8 +12,26 @@ console.log('[build] Starting build process...');
 console.log('[build] Current working directory:', process.cwd());
 console.log('[build] Script directory:', __dirname);
 
+// Locate the true repository root (where backend/ and frontend/ coexist)
+function findRepoRoot() {
+  const candidates = [
+    process.cwd(),
+    path.resolve(process.cwd(), '..'),
+    path.resolve(__dirname, '..'),
+    path.resolve(__dirname, '../..'),
+  ];
+  for (const c of candidates) {
+    if (fs.existsSync(path.join(c, 'backend')) && fs.existsSync(path.join(c, 'frontend'))) {
+      return c;
+    }
+  }
+  return path.resolve(__dirname, '..');
+}
+
+const repoRoot = findRepoRoot();
+console.log('[build] Resolved repository root:', repoRoot);
+
 // ── 1. Prisma generate (needed by the api/ serverless function) ────────────────
-const repoRoot = path.resolve(__dirname, '..');
 const schemaCandidates = [
   path.resolve(repoRoot, 'prisma/schema.prisma'),
   path.resolve(repoRoot, 'backend/prisma/schema.prisma'),
@@ -87,7 +105,7 @@ if (process.env.RUN_DB_PUSH === 'true' && dbUrl && schemaPath) {
 }
 
 // ── 3. Build frontend ─────────────────────────────────────────────────────────
-const frontendDir = path.resolve(__dirname, '../frontend');
+const frontendDir = path.resolve(repoRoot, 'frontend');
 if (!fs.existsSync(frontendDir)) {
   console.error('[build] Fatal: frontend directory not found at', frontendDir);
   process.exit(1);
