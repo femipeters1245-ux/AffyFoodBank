@@ -9,12 +9,14 @@ const npmCmd = isWindows ? 'npm.cmd' : 'npm';
 const npxCmd = isWindows ? 'npx.cmd' : 'npx';
 
 console.log('[build] Starting build process...');
+console.log('[build] Current working directory:', process.cwd());
+console.log('[build] Script directory:', __dirname);
 
 // ── 1. Prisma generate (needed by the api/ serverless function) ────────────────
-// Resolve schema path: prefer root prisma/, fall back to backend/prisma/
+const repoRoot = path.resolve(__dirname, '..');
 const schemaCandidates = [
-  path.resolve(__dirname, '../prisma/schema.prisma'),
-  path.resolve(__dirname, '../backend/prisma/schema.prisma'),
+  path.resolve(repoRoot, 'prisma/schema.prisma'),
+  path.resolve(repoRoot, 'backend/prisma/schema.prisma'),
   path.resolve(process.cwd(), 'prisma/schema.prisma'),
 ];
 const schemaPath = schemaCandidates.find(fs.existsSync);
@@ -24,13 +26,24 @@ if (schemaPath) {
   try {
     execSync(`${npxCmd} prisma generate --schema="${schemaPath}"`, {
       stdio: 'inherit',
+      cwd: repoRoot,
       env: process.env,
     });
     console.log('[build] Root Prisma client generated.');
 
-    // Also generate into backend/node_modules if backend exists
-    const backendDir = path.resolve(__dirname, '../backend');
+    // Also ensure backend has dependencies and generated client
+    const backendDir = path.resolve(repoRoot, 'backend');
     if (fs.existsSync(backendDir)) {
+      const backendModules = path.join(backendDir, 'node_modules');
+      if (!fs.existsSync(backendModules)) {
+        console.log('[build] Backend node_modules not found. Installing backend dependencies...');
+        execSync(`${npmCmd} install`, {
+          stdio: 'inherit',
+          cwd: backendDir,
+          env: process.env,
+        });
+        console.log('[build] Backend dependencies installed.');
+      }
       try {
         execSync(`${npxCmd} prisma generate --schema="${schemaPath}"`, {
           stdio: 'inherit',

@@ -5,7 +5,7 @@
   "scripts": {
     "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "build": "npm run build:backend && npm run build:frontend",
-    "build:backend": "cd backend && npm install && prisma generate --schema=prisma/schema.prisma && npx tsc",
+    "build:backend": "npm --prefix backend install && npm --prefix backend run build",
     "build:frontend": "cd frontend && npm install && npm run build",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev"
