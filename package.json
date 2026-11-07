@@ -3,9 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "postinstall": "npx prisma generate",
+    "postinstall": "prisma generate --schema=prisma/schema.prisma",
     "build": "npm run build:backend && npm run build:frontend",
-    "build:backend": "cd backend && npm install && npx prisma generate && npx tsc",
+    "build:backend": "cd backend && npm install && prisma generate --schema=prisma/schema.prisma && npx tsc",
     "build:frontend": "cd frontend && npm install && npm run build",
     "dev:backend": "cd backend && npm run dev",
     "dev:frontend": "cd frontend && npm run dev"
@@ -24,6 +24,7 @@
     "jsonwebtoken": "^9.0.2",
     "morgan": "^1.10.0",
     "pg": "^8.11.5",
+    "prisma": "^5.22.0",
     "resend": "^6.32.1",
     "uuid": "^11.0.0",
     "winston": "^3.13.0",
@@ -37,7 +38,6 @@
     "@types/morgan": "^1.9.9",
     "@types/node": "^20.14.2",
     "@types/uuid": "^10.0.0",
-    "prisma": "^5.22.0",
     "typescript": "^5.4.5"
   },
   "allowScripts": {
