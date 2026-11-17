@@ -285,6 +285,9 @@ export const PackagesPage: React.FC = () => {
                     alt={pkg.name}
                     className="w-full h-full object-cover"
                     loading="lazy"
+                    onError={(e) => {
+                      (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1542838132-92c53300491e?auto=format&fit=crop&w=800&q=80';
+                    }}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-slate-950/70 via-transparent to-black/20" />
                   <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between text-white">

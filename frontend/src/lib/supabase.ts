@@ -645,7 +645,7 @@ export const supabaseProducts = {
       const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
-        const normalized = sortProductsCanonical(
+        const normalized: SupabaseProduct[] = sortProductsCanonical<SupabaseProduct>(
           items.map(normalizeProductFromDb).filter((p: SupabaseProduct) => p.is_active)
         );
         // Replace (not merge) the localStorage cache with the fresh server data
@@ -657,7 +657,7 @@ export const supabaseProducts = {
       console.warn('[System Inventory Engine] Products query fallback:', err.message);
     }
 
-    return sortProductsCanonical(getLocalFallbackProducts().filter((p) => p.is_active));
+    return sortProductsCanonical<SupabaseProduct>(getLocalFallbackProducts().filter((p) => p.is_active));
   },
 
   /** Get all products (including inactive) for admin inventory control — always fetches fresh */
@@ -666,7 +666,7 @@ export const supabaseProducts = {
       const res = await apiClient.get<any>('/admin/products');
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
-        const normalized = sortProductsCanonical(items.map(normalizeProductFromDb));
+        const normalized: SupabaseProduct[] = sortProductsCanonical<SupabaseProduct>(items.map(normalizeProductFromDb));
         // Replace (not merge) the localStorage cache with fresh data from Supabase
         try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
@@ -678,7 +678,7 @@ export const supabaseProducts = {
       const res = await apiClient.get<any>('/products', { params: { limit: 100 } });
       const items = Array.isArray(res.data) ? res.data : (res.data?.items || []);
       if (items.length > 0) {
-        const normalized = sortProductsCanonical(items.map(normalizeProductFromDb));
+        const normalized: SupabaseProduct[] = sortProductsCanonical<SupabaseProduct>(items.map(normalizeProductFromDb));
         try { localStorage.removeItem('affy_fallback_products'); } catch {}
         saveLocalFallbackProducts(normalized);
         return normalized;
@@ -687,7 +687,7 @@ export const supabaseProducts = {
       console.warn('[System Inventory Engine] Admin products query warning:', err.message);
     }
 
-    return sortProductsCanonical(getLocalFallbackProducts());
+    return sortProductsCanonical<SupabaseProduct>(getLocalFallbackProducts());
   },
 
   /** Get a single product */

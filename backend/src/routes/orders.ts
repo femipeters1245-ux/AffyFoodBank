@@ -5,6 +5,7 @@ import prisma from '../prisma/client';
 import { authenticate } from '../middleware/authenticate';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { sendOrderReceiptEmail, sendAdminOrderAlert } from '../services/email.service';
+import { systemProductStore } from '../services/system-product.store';
 
 const router = Router();
 
@@ -364,7 +365,38 @@ router.post('/wallet-checkout', authenticate, async (req: Request, res: Response
         },
       });
 
-      // 3. Create Order
+      // 3. Resolve default unit and product references
+      let defaultUnit = await tx.unit.findFirst();
+      if (!defaultUnit) {
+        defaultUnit = await tx.unit.create({
+          data: { id: uuidv4(), name: 'Unit', symbol: 'unit' },
+        });
+      }
+
+      const resolvedItems: Array<{
+        id: string;
+        productId: string;
+        quantity: number;
+        unitId: string;
+        priceAtPurchaseCents: bigint;
+      }> = [];
+      for (const it of (items || [])) {
+        let validProduct = it.productId ? await tx.product.findUnique({ where: { id: it.productId } }) : null;
+        if (!validProduct) {
+          validProduct = await tx.product.findFirst({ where: { isActive: true } });
+        }
+        if (validProduct) {
+          resolvedItems.push({
+            id: uuidv4(),
+            productId: validProduct.id,
+            quantity: it.quantity || 1,
+            unitId: validProduct.unitId || defaultUnit.id,
+            priceAtPurchaseCents: BigInt(it.priceCents || 0),
+          });
+        }
+      }
+
+      // 4. Create Order
       const newOrder = await tx.order.create({
         data: {
           id: uuidv4(),
@@ -374,13 +406,7 @@ router.post('/wallet-checkout', authenticate, async (req: Request, res: Response
           currency: 'NGN',
           status: 'PROCESSING',
           items: {
-            create: (items || []).map((it: any) => ({
-              id: uuidv4(),
-              productId: it.productId || uuidv4(),
-              quantity: it.quantity || 1,
-              unitId: uuidv4(),
-              priceAtPurchaseCents: BigInt(it.priceCents || 0),
-            })),
+            create: resolvedItems,
           },
           delivery: {
             create: {
@@ -394,6 +420,13 @@ router.post('/wallet-checkout', authenticate, async (req: Request, res: Response
 
       return newOrder;
     });
+
+    // Deduct stock for each purchased item
+    for (const it of (items || [])) {
+      if (it.productId) {
+        systemProductStore.deductStock(it.productId, Number(it.quantity || 1)).catch(() => {});
+      }
+    }
 
     // Send confirmation receipt email via Resend
     if (customerProfile.user.email) {

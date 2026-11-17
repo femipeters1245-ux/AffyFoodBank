@@ -98,10 +98,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     }
 
     if (paymentMethod === 'wallet') {
-      const balance = wallet?.totalBalanceCents ?? 0;
-      if (balance < grandTotalCents) {
+      const availableBalance = Math.max(0, (wallet?.totalBalanceCents ?? 0) - (wallet?.allocatedToSavingsCents ?? 0));
+      if (availableBalance < grandTotalCents) {
         alert(
-          `Insufficient wallet balance. You have ${formatNaira(balance)} but order total is ${formatNaira(grandTotalCents)}. Please use TransactPay or top up your wallet.`,
+          `Insufficient available wallet balance. You have ${formatNaira(availableBalance)} available (excluding locked food savings) but order total is ${formatNaira(grandTotalCents)}. Please use Direct Online Payment or top up your wallet.`,
         );
         return;
       }
@@ -518,7 +518,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                     <p className="text-[11px] text-slate-500">
                       Available Balance:{' '}
                       <span className="font-bold text-slate-800">
-                        {wallet ? formatNaira(wallet.totalBalanceCents) : '₦0.00'}
+                        {wallet ? formatNaira(Math.max(0, (wallet.totalBalanceCents || 0) - (wallet.allocatedToSavingsCents || 0))) : '₦0.00'}
                       </span>
                     </p>
                   </div>

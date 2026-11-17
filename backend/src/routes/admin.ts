@@ -13,6 +13,29 @@ import { supabaseAdmin } from '../services/supabase-admin.service';
 
 const router = Router();
 
+// Middleware: restrict all admin endpoints to Admin or Operations Staff
+const requireAdminOrStaff = (req: Request, _res: Response, next: NextFunction) => {
+  if (!req.user) {
+    return next(new ForbiddenError('Authentication required'));
+  }
+  const role = req.user.role;
+  const permissions = req.user.permissions ?? [];
+  const isPrivileged =
+    role === 'Admin' ||
+    role === 'SuperAdmin' ||
+    role === 'FinanceStaff' ||
+    role === 'LogisticsStaff' ||
+    permissions.includes('*:*') ||
+    permissions.includes('product:update');
+
+  if (!isPrivileged) {
+    return next(new ForbiddenError('Access restricted to Admin and Operations Staff'));
+  }
+  next();
+};
+
+router.use(authenticate, requireAdminOrStaff);
+
 // ─── Food Bundles Management (Supabase-backed package store) ───────────────────
 router.get('/packages', async (_req: Request, res: Response) => {
   const pkgs = await packageService.list({ includeDrafts: true });
@@ -198,29 +221,6 @@ router.patch('/products/sort-order', (req: Request, res: Response) => {
   saveSortOrder(map);
   res.json({ success: true, order: map });
 });
-
-// Middleware: restrict other admin endpoints to Admin or Operations Staff
-const requireAdminOrStaff = (req: Request, _res: Response, next: NextFunction) => {
-  if (!req.user) {
-    return next(new ForbiddenError('Authentication required'));
-  }
-  const role = req.user.role;
-  const permissions = req.user.permissions ?? [];
-  const isPrivileged =
-    role === 'Admin' ||
-    role === 'SuperAdmin' ||
-    role === 'FinanceStaff' ||
-    role === 'LogisticsStaff' ||
-    permissions.includes('*:*') ||
-    permissions.includes('product:update');
-
-  if (!isPrivileged) {
-    return next(new ForbiddenError('Access restricted to Admin and Operations Staff'));
-  }
-  next();
-};
-
-router.use(authenticate, requireAdminOrStaff);
 
 /**
  * GET /api/v1/admin/stats

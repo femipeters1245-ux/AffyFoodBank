@@ -374,6 +374,16 @@ const INITIAL_TRANSACTIONS: TransactionRecord[] = [
 
 export const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
+
+  const roleLower = (user?.role || '').toLowerCase();
+  const isAdminOrStaff =
+    roleLower === 'admin' ||
+    roleLower === 'superadmin' ||
+    roleLower === 'financestaff' ||
+    roleLower === 'logisticsstaff' ||
+    user?.email?.toLowerCase() === 'affybrand@gmail.com' ||
+    user?.email?.toLowerCase() === 'admin@affyfoodbank.ng';
+
   const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>('inventory');
 
   // ─── Products state — sourced exclusively from Supabase ──────────────────────
@@ -850,6 +860,22 @@ export const AdminDashboardPage: React.FC = () => {
     { label: 'Smoked Catfish & Crayfish', url: 'https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?auto=format&fit=crop&w=800&q=80' },
     { label: 'Scotch Bonnet Pepper', url: 'https://images.unsplash.com/photo-1592924357228-91a4daadcfea?auto=format&fit=crop&w=800&q=80' },
   ];
+
+  if (!isAdminOrStaff) {
+    return (
+      <div className="min-h-[70vh] flex items-center justify-center px-4">
+        <div className="max-w-md w-full text-center space-y-4 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+          <div className="w-16 h-16 bg-rose-50 text-rose-600 rounded-2xl flex items-center justify-center text-3xl mx-auto border border-rose-100 shadow-inner">
+            🛡️
+          </div>
+          <h1 className="text-xl font-black text-slate-900">Access Restricted</h1>
+          <p className="text-sm text-slate-500">
+            This dashboard is only available to authenticated staff and administrators.
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-16">

@@ -81,3 +81,4 @@ if (schemaPath) {
 }
 
 console.log('[install] ✅ Installation completed successfully.');
+

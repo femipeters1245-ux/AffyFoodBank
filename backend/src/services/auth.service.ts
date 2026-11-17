@@ -30,7 +30,7 @@ export const loginSchema = z.object({
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 let lastPrismaErrorTime = 0;
-async function safePrismaQuery<T>(fn: () => Promise<T>, timeoutMs = 1500): Promise<T | null> {
+export async function safePrismaQuery<T>(fn: () => Promise<T>, timeoutMs = 1500): Promise<T | null> {
   // Circuit breaker: If Prisma failed within 30s, fail fast and allow Supabase fallback immediately
   if (Date.now() - lastPrismaErrorTime < 30000) return null;
   let timer: NodeJS.Timeout;

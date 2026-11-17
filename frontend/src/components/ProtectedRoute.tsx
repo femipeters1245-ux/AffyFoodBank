@@ -5,6 +5,7 @@ import { useAuth } from '../context/AuthContext';
 
 interface ProtectedRouteProps {
   children: React.ReactElement;
+  requireAdmin?: boolean;
 }
 
 const AUTH_GATE_META: Record<string, { icon: string; title: string; subtitle: string; cta: string }> = {
@@ -31,8 +32,8 @@ const DEFAULT_GATE = {
   cta: 'Sign In',
 };
 
-export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth();
+export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requireAdmin }) => {
+  const { user, isAuthenticated, isLoading } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -96,6 +97,43 @@ export const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children }) => {
         </div>
       </div>
     );
+  }
+
+  if (requireAdmin) {
+    const roleLower = (user?.role || '').toLowerCase();
+    const isAdminOrStaff =
+      roleLower === 'admin' ||
+      roleLower === 'superadmin' ||
+      roleLower === 'financestaff' ||
+      roleLower === 'logisticsstaff' ||
+      user?.email?.toLowerCase() === 'affybrand@gmail.com' ||
+      user?.email?.toLowerCase() === 'admin@affyfoodbank.ng';
+
+    if (!isAdminOrStaff) {
+      return (
+        <div className="min-h-[70vh] flex items-center justify-center px-4">
+          <div className="max-w-md w-full text-center space-y-6 bg-white p-8 rounded-3xl border border-slate-200 shadow-sm">
+            <div className="w-20 h-20 bg-rose-50 text-rose-600 rounded-3xl flex items-center justify-center text-4xl mx-auto border border-rose-100 shadow-inner">
+              🛡️
+            </div>
+            <div className="space-y-2">
+              <h1 className="text-2xl font-black text-slate-900">Access Restricted</h1>
+              <p className="text-sm text-slate-500 leading-relaxed">
+                This administrative console is restricted to authorized Affy FoodBank staff and administrators.
+              </p>
+            </div>
+            <div className="pt-2">
+              <Link
+                to="/"
+                className="inline-flex items-center justify-center px-6 py-3 bg-brand-600 hover:bg-brand-700 text-white font-bold text-sm rounded-xl shadow-md transition-all hover:-translate-y-0.5"
+              >
+                Back to Food Marketplace
+              </Link>
+            </div>
+          </div>
+        </div>
+      );
+    }
   }
 
   return children;

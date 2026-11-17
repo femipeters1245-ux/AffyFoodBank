@@ -3,7 +3,9 @@ import { Router, Request, Response, NextFunction } from 'express';
 import crypto from 'crypto';
 import { v4 as uuidv4 } from 'uuid';
 import prisma from '../prisma/client';
-import { BadRequestError } from '../utils/errors';
+import { BadRequestError, UnauthorizedError } from '../utils/errors';
+import { authenticate } from '../middleware/authenticate';
+import { systemProductStore } from '../services/system-product.store';
 import {
   sendOrderReceiptEmail,
   sendAdminOrderAlert,
@@ -72,14 +74,87 @@ async function recordOrderInDatabase(params: {
       include: { user: true, wallet: true },
     });
 
-    // If no customer profile found, try finding any customer profile or create a delivery address if possible
+    // If no customer profile found, create a designated user and customerProfile for this customer email
     if (!customerProfile) {
-      customerProfile = await prisma.customerProfile.findFirst({
-        include: { user: true, wallet: true },
-      });
+      try {
+        let user = await prisma.user.findUnique({
+          where: { email },
+          include: { profile: { include: { wallet: true } } },
+        });
+
+        if (!user) {
+          const { hashPassword } = await import('../utils/password');
+          const defaultHash = await hashPassword(uuidv4());
+          const customerRole = await prisma.role.findFirst({ where: { name: 'Customer' } });
+          const newUserId = uuidv4();
+          const newProfId = uuidv4();
+          const newWltId = uuidv4();
+
+          user = await prisma.user.create({
+            data: {
+              id: newUserId,
+              email,
+              passwordHash: defaultHash,
+              firstName: name ? name.split(' ')[0] : email.split('@')[0],
+              lastName: name ? name.split(' ').slice(1).join(' ') : '',
+              roleId: customerRole?.id ?? null,
+              profile: {
+                create: {
+                  id: newProfId,
+                  wallet: {
+                    create: {
+                      id: newWltId,
+                      totalBalanceCents: 0,
+                      allocatedToSavingsCents: 0,
+                      currency: 'NGN',
+                      status: 'ACTIVE',
+                    },
+                  },
+                },
+              },
+            },
+            include: { profile: { include: { wallet: true } } },
+          });
+        }
+        customerProfile = (user?.profile as any) ?? null;
+      } catch (profErr: any) {
+        console.warn('[Payments DB] Profile creation note:', profErr.message);
+      }
     }
 
     if (customerProfile) {
+      // Resolve valid default unit to avoid foreign key violations
+      let defaultUnit = await prisma.unit.findFirst();
+      if (!defaultUnit) {
+        defaultUnit = await prisma.unit.create({
+          data: { id: uuidv4(), name: 'Unit', symbol: 'unit' },
+        });
+      }
+
+      // Map items with valid product and unit references
+      const resolvedItems: Array<{
+        id: string;
+        productId: string;
+        quantity: number;
+        unitId: string;
+        priceAtPurchaseCents: bigint;
+      }> = [];
+      for (const it of (items || [])) {
+        let validProduct = it.productId ? await prisma.product.findUnique({ where: { id: it.productId } }) : null;
+        if (!validProduct) {
+          validProduct = await prisma.product.findFirst({ where: { isActive: true } });
+        }
+        if (validProduct) {
+          resolvedItems.push({
+            id: uuidv4(),
+            productId: validProduct.id,
+            quantity: it.quantity || 1,
+            unitId: validProduct.unitId || defaultUnit.id,
+            priceAtPurchaseCents: BigInt(it.priceCents || 0),
+          });
+        }
+      }
+
       // Create Order
       const newOrder = await prisma.order.create({
         data: {
@@ -90,13 +165,7 @@ async function recordOrderInDatabase(params: {
           currency: 'NGN',
           status: status === 'PROCESSING' ? 'PROCESSING' : 'PENDING',
           items: {
-            create: (items || []).map((it) => ({
-              id: uuidv4(),
-              productId: it.productId || uuidv4(),
-              quantity: it.quantity || 1,
-              unitId: uuidv4(),
-              priceAtPurchaseCents: BigInt(it.priceCents || 0),
-            })),
+            create: resolvedItems,
           },
           delivery: {
             create: {
@@ -125,6 +194,15 @@ async function recordOrderInDatabase(params: {
             paymentReference: orderReference,
           },
         });
+      }
+
+      // Decrement inventory stock if order is confirmed/processing
+      if (status === 'PROCESSING') {
+        for (const it of (items || [])) {
+          if (it.productId) {
+            systemProductStore.deductStock(it.productId, Number(it.quantity || 1)).catch(() => {});
+          }
+        }
       }
 
       return newOrder;
@@ -398,23 +476,50 @@ router.post('/transactpay/webhook', async (req: Request, res: Response) => {
       console.log(`[TransactPay Webhook] Transaction succeeded for order: ${orderReference} (${paymentReference})`);
 
       try {
-        // 1. Update database transaction if found
+        // 1. Update database transaction atomically if found
         const tx = await prisma.walletTransaction.findUnique({
           where: { reference: orderReference },
         });
         if (tx) {
-          await prisma.walletTransaction.update({
-            where: { reference: orderReference },
-            data: { status: 'SUCCESSFUL' },
-          });
-
-          // If this was a pending DEPOSIT transaction, ensure wallet balance is incremented
-          if (tx.type === 'DEPOSIT' && tx.status !== 'SUCCESSFUL') {
-            await prisma.wallet.update({
-              where: { id: tx.walletId },
-              data: { totalBalanceCents: { increment: tx.amountCents } },
+          if (tx.type === 'DEPOSIT') {
+            await prisma.$transaction(async (db) => {
+              const res = await db.walletTransaction.updateMany({
+                where: {
+                  reference: orderReference,
+                  status: { not: 'SUCCESSFUL' },
+                },
+                data: { status: 'SUCCESSFUL' },
+              });
+              if (res.count > 0) {
+                await db.wallet.update({
+                  where: { id: tx.walletId },
+                  data: { totalBalanceCents: { increment: tx.amountCents } },
+                });
+                console.log(`[TransactPay Webhook] Auto-credited wallet ${tx.walletId} with ${tx.amountCents} cents`);
+              }
             });
-            console.log(`[TransactPay Webhook] Auto-credited wallet ${tx.walletId} with ${tx.amountCents} cents`);
+          } else {
+            await prisma.walletTransaction.update({
+              where: { reference: orderReference },
+              data: { status: 'SUCCESSFUL' },
+            });
+          }
+        }
+
+        // Update any associated Order to PROCESSING and decrement stock
+        const existingOrder = await prisma.order.findFirst({
+          where: {
+            delivery: { notes: { contains: orderReference } },
+          },
+          include: { items: true },
+        });
+        if (existingOrder && existingOrder.status !== 'PROCESSING') {
+          await prisma.order.update({
+            where: { id: existingOrder.id },
+            data: { status: 'PROCESSING' },
+          });
+          for (const it of existingOrder.items) {
+            systemProductStore.deductStock(it.productId, Number(it.quantity)).catch(() => {});
           }
         } else if (orderReference.startsWith('WLT_') || data?.productName === 'Account Funding') {
           // Automated Virtual Account or Wallet Funding webhook
@@ -612,17 +717,21 @@ router.post('/transactpay/virtual-account', async (req: Request, res: Response, 
 /**
  * POST /api/v1/payments/transactpay/payout
  * Initiates an automated withdrawal from customer wallet directly to a Nigerian bank account via TransactPay Payout API.
+ * Requires user authentication.
  * Specification: https://transactpay.readme.io/reference/payout.md
  */
-router.post('/transactpay/payout', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/transactpay/payout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
+    if (!req.user?.sub) {
+      throw new UnauthorizedError('Authentication session required to initiate withdrawal');
+    }
+
     const {
       amountNaira,
       accountNumber,
       bankCode,
       bankName,
       accountName,
-      customerProfileId,
       description,
     } = req.body;
 
@@ -643,49 +752,53 @@ router.post('/transactpay/payout', async (req: Request, res: Response, next: Nex
     const amountCents = Math.round(amountNum * 100);
     const payoutReference = `WLT_WDR_${Date.now()}_${uuidv4().slice(0, 8)}`;
 
-    // 1. Check and debit wallet balance if customer profile ID is supplied
-    if (customerProfileId) {
-      try {
-        const wallet = await prisma.wallet.findUnique({
-          where: { customerProfileId },
-        });
+    // 1. Resolve customer profile strictly for authenticated user
+    let customerProfile = await prisma.customerProfile.findFirst({
+      where: { userId: req.user.sub },
+      include: { user: true, wallet: true },
+    });
 
-        if (wallet) {
-          const availableCents = Number(wallet.totalBalanceCents) - Number(wallet.allocatedToSavingsCents);
-          if (availableCents < amountCents) {
-            throw new BadRequestError(
-              `Insufficient wallet balance. Available: ₦${(availableCents / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
-            );
-          }
-
-          // Atomically decrement wallet and record withdrawal transaction
-          await prisma.$transaction([
-            prisma.wallet.update({
-              where: { customerProfileId },
-              data: { totalBalanceCents: { decrement: amountCents } },
-            }),
-            prisma.walletTransaction.create({
-              data: {
-                id: uuidv4(),
-                walletId: wallet.id,
-                customerId: customerProfileId,
-                reference: payoutReference,
-                type: 'WITHDRAWAL',
-                amountCents: BigInt(amountCents),
-                currency: 'NGN',
-                direction: 'OUT',
-                status: 'PENDING',
-                description: description || `Withdrawal to ${bankName || 'Bank'} (${accountNumber}) - ${accountName}`,
-                paymentReference: payoutReference,
-              },
-            }),
-          ]);
-        }
-      } catch (dbErr: any) {
-        if (dbErr instanceof BadRequestError) throw dbErr;
-        console.warn('[Payout DB] Balance verification note:', dbErr.message);
-      }
+    if (!customerProfile && req.user.email) {
+      customerProfile = await prisma.customerProfile.findFirst({
+        where: { user: { email: req.user.email } },
+        include: { user: true, wallet: true },
+      });
     }
+
+    if (!customerProfile || !customerProfile.wallet) {
+      throw new BadRequestError('Customer wallet profile not found');
+    }
+
+    const wallet = customerProfile.wallet;
+    const availableCents = Number(wallet.totalBalanceCents) - Number(wallet.allocatedToSavingsCents);
+    if (availableCents < amountCents) {
+      throw new BadRequestError(
+        `Insufficient wallet balance. Available: ₦${(availableCents / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
+      );
+    }
+
+    // Atomically decrement wallet and record withdrawal transaction
+    await prisma.$transaction([
+      prisma.wallet.update({
+        where: { id: wallet.id },
+        data: { totalBalanceCents: { decrement: amountCents } },
+      }),
+      prisma.walletTransaction.create({
+        data: {
+          id: uuidv4(),
+          walletId: wallet.id,
+          customerId: customerProfile.id,
+          reference: payoutReference,
+          type: 'WITHDRAWAL',
+          amountCents: BigInt(amountCents),
+          currency: 'NGN',
+          direction: 'OUT',
+          status: 'PENDING',
+          description: description || `Withdrawal to ${bankName || 'Bank'} (${accountNumber}) - ${accountName}`,
+          paymentReference: payoutReference,
+        },
+      }),
+    ]);
 
     // 2. Dispatch Automated Payout to TransactPay Payout API
     const publicKey = process.env.TRANSACTPAY_PUBLIC_KEY || 'PGW-PUBLICKEY-493151248075433389622408C227C1E2';
@@ -729,6 +842,24 @@ router.post('/transactpay/payout', async (req: Request, res: Response, next: Nex
       console.warn('[TransactPay Payout] Gateway network warning:', tpErr.message);
     }
 
+    // Check for explicit gateway failure (e.g., rejected recipient bank details)
+    if (gatewayResult && gatewayResult.status === 'error') {
+      // Re-credit the wallet balance and mark transaction as FAILED
+      await prisma.$transaction([
+        prisma.wallet.update({
+          where: { id: wallet.id },
+          data: { totalBalanceCents: { increment: amountCents } },
+        }),
+        prisma.walletTransaction.updateMany({
+          where: { reference: payoutReference },
+          data: { status: 'FAILED' },
+        }),
+      ]);
+      throw new BadRequestError(
+        gatewayResult.message || gatewayResult.statusDescription || 'Payout was rejected by bank gateway. Your wallet balance has been refunded.'
+      );
+    }
+
     // 3. Mark transaction as SUCCESSFUL or PENDING in database
     const payoutStatus = gatewayResult?.status === 'success' || gatewayResult?.statusCode === '00' ? 'SUCCESSFUL' : 'PENDING';
     try {
@@ -742,21 +873,9 @@ router.post('/transactpay/payout', async (req: Request, res: Response, next: Nex
 
     // 4. Send withdrawal receipt email via Resend
     try {
-      let recipientEmail = (req as any).user?.email;
-      let recipientName = accountName;
-      let remainingBalanceNaira = 0;
-
-      if (customerProfileId) {
-        const profile = await prisma.customerProfile.findUnique({
-          where: { id: customerProfileId },
-          include: { user: true, wallet: true },
-        });
-        if (profile?.user?.email) recipientEmail = profile.user.email;
-        if (profile?.user?.firstName) {
-          recipientName = [profile.user.firstName, profile.user.lastName].filter(Boolean).join(' ');
-        }
-        if (profile?.wallet) remainingBalanceNaira = Number(profile.wallet.totalBalanceCents) / 100;
-      }
+      const recipientEmail = customerProfile.user.email || req.user.email;
+      const recipientName = [customerProfile.user.firstName, customerProfile.user.lastName].filter(Boolean).join(' ') || accountName;
+      const remainingBalanceNaira = Math.max(0, (availableCents - amountCents) / 100);
 
       if (recipientEmail) {
         sendWalletWithdrawalEmail({

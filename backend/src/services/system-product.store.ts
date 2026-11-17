@@ -844,6 +844,19 @@ class SystemProductStore {
     return this.update(p.id, { stock: newQty });
   }
 
+  /**
+   * Deduct stock on purchase
+   */
+  public async deductStock(id: string, amount: number): Promise<SystemProduct | null> {
+    const p = await this.getById(id);
+    if (!p) return null;
+
+    const current = p.inventory?.[0]?.quantity ?? 0;
+    const newQty = Math.max(0, current - Number(amount || 1));
+
+    return this.update(p.id, { stock: newQty });
+  }
+
   private async persistToPrismaAsync(productId: string, updates: any) {
     if (!isUuidRegex.test(productId)) return;
     try {
