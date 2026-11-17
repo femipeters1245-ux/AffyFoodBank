@@ -6,6 +6,7 @@ import { authenticate } from '../middleware/authenticate';
 import { BadRequestError, NotFoundError } from '../utils/errors';
 import { sendOrderReceiptEmail, sendAdminOrderAlert } from '../services/email.service';
 import { systemProductStore } from '../services/system-product.store';
+import { supabaseAdmin } from '../services/supabase-admin.service';
 
 const router = Router();
 
@@ -117,24 +118,103 @@ router.get(['/', '/me'], authenticate, async (req: Request, res: Response, next:
     const userId = req.user?.sub;
     if (!userId) throw new BadRequestError('User authentication required');
 
-    const customerProfile = await prisma.customerProfile.findUnique({
-      where: { userId },
-    });
+    let customerProfile: any = null;
+    try {
+      customerProfile = await prisma.customerProfile.findUnique({
+        where: { userId },
+      });
+    } catch {}
+
+    if (!customerProfile && supabaseAdmin) {
+      try {
+        const { data: sbProfile } = await supabaseAdmin
+          .from('CustomerProfile')
+          .select('id, userId, phone')
+          .eq('userId', userId)
+          .maybeSingle();
+        if (sbProfile) customerProfile = sbProfile;
+      } catch {}
+    }
 
     if (!customerProfile) {
       return res.json({ orders: [] });
     }
 
-    const orders = await prisma.order.findMany({
-      where: { customerProfileId: customerProfile.id },
-      include: {
-        delivery: true,
-        items: {
-          include: { product: true, unit: true },
+    let orders: any[] = [];
+    try {
+      orders = await prisma.order.findMany({
+        where: { customerProfileId: customerProfile.id },
+        include: {
+          delivery: true,
+          items: {
+            include: { product: true, unit: true },
+          },
         },
-      },
-      orderBy: { createdAt: 'desc' },
-    });
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch {}
+
+    if (orders.length === 0 && supabaseAdmin) {
+      try {
+        const [oRes, dRes, oiRes, pRes] = await Promise.all([
+          supabaseAdmin.from('Order').select('*').eq('customerProfileId', customerProfile.id).order('createdAt', { ascending: false }),
+          supabaseAdmin.from('Delivery').select('*'),
+          supabaseAdmin.from('OrderItem').select('*'),
+          supabaseAdmin.from('Product').select('id, name, imageUrl'),
+        ]);
+
+        const deliveryMap = new Map((dRes.data || []).map((d: any) => [d.orderId, d]));
+        const prodMap = new Map((pRes.data || []).map((p: any) => [p.id, p]));
+        const itemsByOrder = new Map();
+        for (const it of (oiRes.data || [])) {
+          if (!itemsByOrder.has(it.orderId)) itemsByOrder.set(it.orderId, []);
+          itemsByOrder.get(it.orderId).push(it);
+        }
+
+        const sbOrders = (oRes.data || []).map((ord: any) => {
+          const del = deliveryMap.get(ord.id);
+          const rawItems = itemsByOrder.get(ord.id) || [];
+          const notes = del?.notes || '';
+          const refMatch = notes.match(/Order Reference:\s*([^\s.]+)/i);
+          const orderReference = refMatch ? refMatch[1] : `AFB-ORD-${ord.id.slice(0, 8).toUpperCase()}`;
+
+          return {
+            id: ord.id,
+            orderReference,
+            status: ord.status,
+            deliveryStatus: del?.status || 'PENDING',
+            totalAmountCents: Number(ord.totalAmountCents || 0),
+            currency: ord.currency || 'NGN',
+            createdAt: ord.createdAt,
+            updatedAt: ord.updatedAt,
+            customerName: 'Valued Customer',
+            phone: customerProfile.phone || '',
+            address: 'Local Delivery',
+            itemCount: rawItems.reduce((acc: number, item: any) => acc + Number(item.quantity || 1), 0),
+            items: rawItems.map((it: any) => ({
+              id: it.id,
+              name: prodMap.get(it.productId)?.name || 'Raw Foodstuff',
+              quantity: Number(it.quantity || 1),
+              unit: 'unit',
+              priceCents: Number(it.priceAtPurchaseCents || 0),
+              imageUrl: prodMap.get(it.productId)?.imageUrl || null,
+            })),
+            delivery: del
+              ? {
+                  status: del.status,
+                  notes: del.notes,
+                  estimatedDeliveryAt: del.estimatedDeliveryAt,
+                  actualDeliveryAt: del.actualDeliveryAt,
+                }
+              : null,
+          };
+        });
+
+        return res.json({ orders: sbOrders });
+      } catch (err: any) {
+        console.warn('[orders/me] Supabase fallback error:', err.message);
+      }
+    }
 
     const formatted = orders.map((ord) => {
       const { orderReference, customerName, phone, address } = parseOrderDelivery(ord);
@@ -150,8 +230,8 @@ router.get(['/', '/me'], authenticate, async (req: Request, res: Response, next:
         customerName,
         phone,
         address,
-        itemCount: ord.items.reduce((acc, item) => acc + Number(item.quantity), 0),
-        items: ord.items.map((it) => ({
+        itemCount: ord.items.reduce((acc: number, item: any) => acc + Number(item.quantity), 0),
+        items: ord.items.map((it: any) => ({
           id: it.id,
           name: it.product?.name || 'Raw Foodstuff',
           quantity: Number(it.quantity),
@@ -186,48 +266,124 @@ router.get(['/track/:reference', '/:reference'], async (req: Request, res: Respo
     if (!reference) throw new BadRequestError('Order reference is required');
 
     // Look up order by ID or matching delivery notes or wallet transaction
-    let order = await prisma.order.findFirst({
-      where: {
-        OR: [
-          { id: reference },
-          { delivery: { notes: { contains: reference } } },
-        ],
-      },
-      include: {
-        customerProfile: {
-          include: { user: true, addresses: true },
+    let order: any = null;
+    try {
+      order = await prisma.order.findFirst({
+        where: {
+          OR: [
+            { id: reference },
+            { delivery: { notes: { contains: reference } } },
+          ],
         },
-        items: {
-          include: { product: true, unit: true },
-        },
-        delivery: true,
-      },
-    });
-
-    // Also try looking up via wallet transaction reference
-    if (!order) {
-      const tx = await prisma.walletTransaction.findUnique({
-        where: { reference },
         include: {
           customerProfile: {
             include: { user: true, addresses: true },
           },
+          items: {
+            include: { product: true, unit: true },
+          },
+          delivery: true,
         },
       });
-      if (tx) {
-        order = await prisma.order.findFirst({
-          where: { customerProfileId: tx.customerId },
-          orderBy: { createdAt: 'desc' },
+
+      // Also try looking up via wallet transaction reference
+      if (!order) {
+        const tx = await prisma.walletTransaction.findUnique({
+          where: { reference },
           include: {
             customerProfile: {
               include: { user: true, addresses: true },
             },
-            items: {
-              include: { product: true, unit: true },
-            },
-            delivery: true,
           },
         });
+        if (tx) {
+          order = await prisma.order.findFirst({
+            where: { customerProfileId: tx.customerId },
+            orderBy: { createdAt: 'desc' },
+            include: {
+              customerProfile: {
+                include: { user: true, addresses: true },
+              },
+              items: {
+                include: { product: true, unit: true },
+              },
+              delivery: true,
+            },
+          });
+        }
+      }
+    } catch {}
+
+    if (!order && supabaseAdmin) {
+      try {
+        const { data: sbOrders } = await supabaseAdmin
+          .from('Order')
+          .select('*')
+          .eq('id', reference)
+          .limit(1);
+
+        let targetOrder = sbOrders && sbOrders[0] ? sbOrders[0] : null;
+
+        if (!targetOrder) {
+          const { data: deliveries } = await supabaseAdmin
+            .from('Delivery')
+            .select('*')
+            .ilike('notes', `%${reference}%`)
+            .limit(1);
+
+          if (deliveries && deliveries[0]) {
+            const { data: matchedOrder } = await supabaseAdmin
+              .from('Order')
+              .select('*')
+              .eq('id', deliveries[0].orderId)
+              .maybeSingle();
+            if (matchedOrder) targetOrder = matchedOrder;
+          }
+        }
+
+        if (targetOrder) {
+          const [dRes, oiRes, cpRes, pRes] = await Promise.all([
+            supabaseAdmin.from('Delivery').select('*').eq('orderId', targetOrder.id).maybeSingle(),
+            supabaseAdmin.from('OrderItem').select('*').eq('orderId', targetOrder.id),
+            supabaseAdmin.from('CustomerProfile').select('id, userId, phone').eq('id', targetOrder.customerProfileId).maybeSingle(),
+            supabaseAdmin.from('Product').select('id, name, imageUrl'),
+          ]);
+
+          const delivery = dRes.data;
+          const profile = cpRes.data;
+          let user: any = null;
+          if (profile) {
+            const { data: uData } = await supabaseAdmin.from('User').select('id, email, firstName, lastName').eq('id', profile.userId).maybeSingle();
+            user = uData;
+          }
+
+          const prodMap = new Map((pRes.data || []).map((p: any) => [p.id, p]));
+          const rawItems = oiRes.data || [];
+
+          order = {
+            id: targetOrder.id,
+            status: targetOrder.status,
+            currency: targetOrder.currency || 'NGN',
+            totalAmountCents: Number(targetOrder.totalAmountCents || 0),
+            createdAt: targetOrder.createdAt,
+            updatedAt: targetOrder.updatedAt,
+            customerProfile: {
+              phone: profile?.phone || '',
+              user: user ? { firstName: user.firstName, lastName: user.lastName, email: user.email } : null,
+              addresses: [{ line1: 'Local Delivery', state: 'Osun State' }],
+            },
+            items: rawItems.map((it: any) => ({
+              id: it.id,
+              quantity: it.quantity,
+              priceAtPurchaseCents: Number(it.priceAtPurchaseCents || 0),
+              product: prodMap.get(it.productId) || { name: 'Foodstuff' },
+              unit: { name: 'unit' },
+            })),
+            delivery,
+          };
+        }
+      } catch (sbErr: any) {
+        console.warn('[orders/track] Supabase lookup error:', sbErr.message);
       }
     }
 

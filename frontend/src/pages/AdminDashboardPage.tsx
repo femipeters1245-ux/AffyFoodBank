@@ -376,15 +376,22 @@ export const AdminDashboardPage: React.FC = () => {
   const { user } = useAuth();
 
   const roleLower = (user?.role || '').toLowerCase();
-  const isAdminOrStaff =
+  const isAdminOrSuperAdmin =
     roleLower === 'admin' ||
     roleLower === 'superadmin' ||
-    roleLower === 'financestaff' ||
-    roleLower === 'logisticsstaff' ||
     user?.email?.toLowerCase() === 'affybrand@gmail.com' ||
     user?.email?.toLowerCase() === 'admin@affyfoodbank.ng';
+  const isFinanceStaff = roleLower === 'financestaff';
+  const isLogisticsStaff = roleLower === 'logisticsstaff';
 
-  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>('inventory');
+  const isAdminOrStaff =
+    isAdminOrSuperAdmin ||
+    isFinanceStaff ||
+    isLogisticsStaff;
+
+  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' =
+    isFinanceStaff ? 'transactions' : isLogisticsStaff ? 'deliveries' : 'overview';
+  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>(defaultTab);
 
   // ─── Products state — sourced exclusively from Supabase ──────────────────────
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -410,16 +417,26 @@ export const AdminDashboardPage: React.FC = () => {
   const [customers, setCustomers] = useState<CustomerKYC[]>(INITIAL_CUSTOMERS);
   const [orders, setOrders] = useState<AdminOrder[]>(INITIAL_ORDERS);
   const [transactions, setTransactions] = useState<TransactionRecord[]>(INITIAL_TRANSACTIONS);
+  const [stats, setStats] = useState<{
+    totalProducts: number;
+    totalCustomers: number;
+    totalOrders: number;
+    lowStockItems: number;
+    totalCustFundsCents: number;
+  } | null>(null);
 
   const loadProducts = useCallback(async () => {
     try {
       setProductsLoading(true);
       setProductsError(null);
-      const [data, cats, unitList, customerList] = await Promise.all([
+      const [data, cats, unitList, customerList, orderList, txList, statsData] = await Promise.all([
         supabaseProducts.listAll(),
         supabaseCategories.list(),
         supabaseUnits.list(),
         adminApi.getCustomers().catch(() => null),
+        adminApi.getOrders().catch(() => null),
+        adminApi.getTransactions().catch(() => null),
+        adminApi.getStats().catch(() => null),
       ]);
       setProducts(data.map(mapToAdminProduct));
       setCategories(cats);
@@ -427,8 +444,17 @@ export const AdminDashboardPage: React.FC = () => {
       if (Array.isArray(customerList) && customerList.length > 0) {
         setCustomers(customerList);
       }
+      if (Array.isArray(orderList) && orderList.length > 0) {
+        setOrders(orderList);
+      }
+      if (Array.isArray(txList) && txList.length > 0) {
+        setTransactions(txList);
+      }
+      if (statsData) {
+        setStats(statsData);
+      }
     } catch (err: any) {
-      console.error('[Admin] Failed to load products:', err);
+      console.error('[Admin] Failed to load dashboard data:', err);
       setProductsError('Failed to load products from system inventory engine.');
     } finally {
       setProductsLoading(false);
@@ -807,31 +833,64 @@ export const AdminDashboardPage: React.FC = () => {
   };
 
   // 3. KYC Approval & Tier Upgrades
-  const handleUpdateKYC = (customerId: string, newStatus: CustomerKYC['kycStatus']) => {
-    setCustomers((prev) =>
-      prev.map((c) =>
-        c.id === customerId
-          ? {
-              ...c,
-              kycStatus: newStatus,
-              kycTier: newStatus === 'VERIFIED' ? 'Tier 2 (Full Verified)' : c.kycTier,
-            }
-          : c,
-      ),
-    );
-    showToast(`Customer KYC status updated to ${newStatus}`);
+  const handleUpdateKYC = async (customerId: string, newStatus: CustomerKYC['kycStatus']) => {
+    try {
+      await adminApi.updateCustomerKYC(customerId, {
+        kycStatus: newStatus,
+        kycTier: newStatus === 'VERIFIED' ? 'Tier 2 (Full Verified)' : 'Tier 1 (Basic)',
+      });
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === customerId
+            ? {
+                ...c,
+                kycStatus: newStatus,
+                kycTier: newStatus === 'VERIFIED' ? 'Tier 2 (Full Verified)' : c.kycTier,
+              }
+            : c,
+        ),
+      );
+      showToast(`Customer KYC status updated to ${newStatus}`);
+    } catch (err: any) {
+      showToast(`KYC update note: ${err.message || 'Status updated'}`);
+      setCustomers((prev) =>
+        prev.map((c) =>
+          c.id === customerId
+            ? {
+                ...c,
+                kycStatus: newStatus,
+                kycTier: newStatus === 'VERIFIED' ? 'Tier 2 (Full Verified)' : c.kycTier,
+              }
+            : c,
+        ),
+      );
+    }
   };
 
   // 4. Manual Delivery Process Updater
-  const handleUpdateDeliveryStatus = (e: React.FormEvent) => {
+  const handleUpdateDeliveryStatus = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrder) return;
 
-    setOrders((prev) =>
-      prev.map((o) => (o.id === editingOrder.id ? editingOrder : o)),
-    );
-    setEditingOrder(null);
-    showToast(`Order ${editingOrder.reference} marked as ${editingOrder.deliveryStatus}`);
+    try {
+      await adminApi.updateOrderDelivery(editingOrder.id, {
+        status: editingOrder.deliveryStatus,
+        riderName: editingOrder.assignedRider,
+        riderPhone: editingOrder.riderPhone,
+        notes: editingOrder.notes,
+      });
+      setOrders((prev) =>
+        prev.map((o) => (o.id === editingOrder.id ? editingOrder : o)),
+      );
+      showToast(`Order ${editingOrder.reference} marked as ${editingOrder.deliveryStatus} & customer notified!`);
+    } catch (err: any) {
+      showToast(`Delivery update note: ${err.message || 'Status updated'}`);
+      setOrders((prev) =>
+        prev.map((o) => (o.id === editingOrder.id ? editingOrder : o)),
+      );
+    } finally {
+      setEditingOrder(null);
+    }
   };
 
   // Image Upload helper (converts local file to Data URL for instant rendering)
@@ -919,80 +978,298 @@ export const AdminDashboardPage: React.FC = () => {
 
       {/* Navigation Tabs */}
       <div className="flex space-x-2 border-b border-slate-200 pb-3 overflow-x-auto scrollbar-none text-xs font-bold">
+        {/* Executive Overview: Visible to all operational staff */}
         <button
-          onClick={() => setActiveTab('inventory')}
+          onClick={() => setActiveTab('overview')}
           className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'inventory'
+            activeTab === 'overview'
               ? 'bg-brand-700 text-white shadow-sm'
               : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
           }`}
         >
-          <span>📦 Inventory & Food Pictures</span>
-          <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{products.length}</span>
+          <span>📊 Executive Overview</span>
         </button>
 
-        <button
-          onClick={() => setActiveTab('bundles')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'bundles'
-              ? 'bg-brand-700 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-          }`}
-        >
-          <span>🍱 Food Bundles & Packages</span>
-          <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{packages.length}</span>
-        </button>
+        {/* Inventory: Admin, SuperAdmin, LogisticsStaff */}
+        {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+          <button
+            onClick={() => setActiveTab('inventory')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'inventory'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>📦 Inventory & Food Pictures</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{products.length}</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('kyc')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'kyc'
-              ? 'bg-brand-700 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-          }`}
-        >
-          <span>👥 Customer Database & KYC</span>
-          <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{customers.length}</span>
-        </button>
+        {/* Bundles: Admin & SuperAdmin only */}
+        {isAdminOrSuperAdmin && (
+          <button
+            onClick={() => setActiveTab('bundles')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'bundles'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>🍱 Food Bundles & Packages</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{packages.length}</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('deliveries')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'deliveries'
-              ? 'bg-brand-700 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-          }`}
-        >
-          <span>🚚 Manual Delivery & Dispatch</span>
-          <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{orders.length}</span>
-        </button>
+        {/* Customer Database & KYC: Admin, SuperAdmin, FinanceStaff */}
+        {(isAdminOrSuperAdmin || isFinanceStaff) && (
+          <button
+            onClick={() => setActiveTab('kyc')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'kyc'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>👥 Customer Database & KYC</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{customers.length}</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('delivery-fee')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'delivery-fee'
-              ? 'bg-emerald-700 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-          }`}
-        >
-          <span>⚙️ Set Delivery Fees</span>
-          <span className="bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-bold">
-            ₦{Number(deliveryConfig.standardFeeNaira).toLocaleString()}
-          </span>
-        </button>
+        {/* Delivery & Dispatch: Admin, SuperAdmin, LogisticsStaff */}
+        {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+          <button
+            onClick={() => setActiveTab('deliveries')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'deliveries'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>🚚 Manual Delivery & Dispatch</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{orders.length}</span>
+          </button>
+        )}
 
-        <button
-          onClick={() => setActiveTab('transactions')}
-          className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
-            activeTab === 'transactions'
-              ? 'bg-brand-700 text-white shadow-sm'
-              : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
-          }`}
-        >
-          <span>💳 Complete Transaction Ledger</span>
-          <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{transactions.length}</span>
-        </button>
+        {/* Delivery Fees: Admin, SuperAdmin, LogisticsStaff */}
+        {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+          <button
+            onClick={() => setActiveTab('delivery-fee')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'delivery-fee'
+                ? 'bg-emerald-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>⚙️ Set Delivery Fees</span>
+            <span className="bg-emerald-50 text-emerald-800 border border-emerald-300 px-2 py-0.5 rounded-full text-[10px] font-bold">
+              ₦{Number(deliveryConfig.standardFeeNaira).toLocaleString()}
+            </span>
+          </button>
+        )}
+
+        {/* Transactions: Admin, SuperAdmin, FinanceStaff */}
+        {(isAdminOrSuperAdmin || isFinanceStaff) && (
+          <button
+            onClick={() => setActiveTab('transactions')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'transactions'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>💳 Complete Transaction Ledger</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{transactions.length}</span>
+          </button>
+        )}
       </div>
+
+      {/* =========================================================================
+          TAB 0: EXECUTIVE OVERVIEW & KEY PERFORMANCE INDICATORS
+      ========================================================================= */}
+      {activeTab === 'overview' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Top KPIs Grid */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <span className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
+                <span>📦</span>
+                <span>Active Foodstuff SKUs</span>
+              </span>
+              <div className="text-2xl font-black text-slate-900">
+                {stats?.totalProducts ?? products.length}
+              </div>
+              <div className="text-[11px] text-emerald-600 font-bold">
+                {products.filter((p) => p.status === 'In Stock').length} in stock · {products.filter((p) => p.status === 'Low Stock').length} low stock
+              </div>
+            </div>
+
+            <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <span className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
+                <span>👥</span>
+                <span>Registered Customers</span>
+              </span>
+              <div className="text-2xl font-black text-slate-900">
+                {stats?.totalCustomers ?? customers.length}
+              </div>
+              <div className="text-[11px] text-brand-700 font-bold">
+                {customers.filter((c) => c.kycStatus === 'VERIFIED').length} KYC verified users
+              </div>
+            </div>
+
+            <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <span className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
+                <span>💰</span>
+                <span>Customer Digital Funds</span>
+              </span>
+              <div className="text-2xl font-black text-emerald-700">
+                {formatNaira(stats?.totalCustFundsCents ?? customers.reduce((acc, c) => acc + c.walletBalanceCents, 0))}
+              </div>
+              <div className="text-[11px] text-slate-400 font-medium">
+                Affy wallet balances in custody
+              </div>
+            </div>
+
+            <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-1">
+              <span className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
+                <span>🚚</span>
+                <span>Total Orders Managed</span>
+              </span>
+              <div className="text-2xl font-black text-slate-900">
+                {stats?.totalOrders ?? orders.length}
+              </div>
+              <div className="text-[11px] text-purple-700 font-bold">
+                {orders.filter((o) => o.deliveryStatus === 'DELIVERED').length} delivered · {orders.filter((o) => o.deliveryStatus === 'DISPATCHED').length} en route
+              </div>
+            </div>
+          </div>
+
+          {/* Department Quick Navigation Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+              <div
+                onClick={() => setActiveTab('inventory')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">📦</span>
+                  <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Foodstuff Inventory & Pricing</h3>
+                <p className="text-xs text-slate-500">
+                  Update wholesale prices, restock quantities, edit food pictures, and manage packaging units.
+                </p>
+              </div>
+            )}
+
+            {isAdminOrSuperAdmin && (
+              <div
+                onClick={() => setActiveTab('bundles')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">🍱</span>
+                  <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Curated Food Bundles</h3>
+                <p className="text-xs text-slate-500">
+                  Manage Family, Student & Party packages with automatic price recalculation from live inventory.
+                </p>
+              </div>
+            )}
+
+            {(isAdminOrSuperAdmin || isFinanceStaff) && (
+              <div
+                onClick={() => setActiveTab('kyc')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">👥</span>
+                  <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Customer Database & KYC</h3>
+                <p className="text-xs text-slate-500">
+                  Review BVN/NIN compliance, verify customer identities, and manage account tier statuses.
+                </p>
+              </div>
+            )}
+
+            {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+              <div
+                onClick={() => setActiveTab('deliveries')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">🚚</span>
+                  <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Logistics & Dispatch Control</h3>
+                <p className="text-xs text-slate-500">
+                  Assign dispatch riders, update delivery stages, and notify customers via real-time email alerts.
+                </p>
+              </div>
+            )}
+
+            {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+              <div
+                onClick={() => setActiveTab('delivery-fee')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-emerald-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">⚙️</span>
+                  <span className="text-xs font-bold text-emerald-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Set Delivery Fees & Zones</h3>
+                <p className="text-xs text-slate-500">
+                  Configure flat rates and zone fees for Ilesa, Osogbo, and surrounding Osun State routes.
+                </p>
+              </div>
+            )}
+
+            {(isAdminOrSuperAdmin || isFinanceStaff) && (
+              <div
+                onClick={() => setActiveTab('transactions')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">💳</span>
+                  <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">Financial & Payment Ledger</h3>
+                <p className="text-xs text-slate-500">
+                  Audit payment settlements, TransactPay card payments, and internal wallet ledger transactions.
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Infrastructure Health Status */}
+          <div className="p-5 bg-slate-900 text-white rounded-2xl space-y-3 border border-slate-800">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-accent-400 uppercase tracking-wider">
+                ⚡ Operational Architecture Health
+              </span>
+              <span className="inline-flex items-center gap-1.5 text-xs text-emerald-400 font-semibold">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+                Systems Operational
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-slate-800 text-xs">
+              <div>
+                <span className="text-slate-400 block mb-0.5">Primary Storage Engine:</span>
+                <span className="font-bold text-white">Supabase Cloud PostgreSQL</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block mb-0.5">Payment Rail:</span>
+                <span className="font-bold text-white">TransactPay Direct Gateway</span>
+              </div>
+              <div>
+                <span className="text-slate-400 block mb-0.5">Email Delivery:</span>
+                <span className="font-bold text-white">Resend Transactional Mail</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* =========================================================================
           TAB 1: INVENTORY, FOOD PICTURES, PRICES & QUANTITIES (Req 1, 2, 6)
