@@ -128,7 +128,7 @@ app.get(['/units', '/api/units', `${API}/units`], async (_req: Request, res: Res
 // Public delivery fee endpoint for customer checkout
 app.get(['/delivery-fee', '/api/delivery-fee', `${API}/delivery-fee`], async (_req: Request, res: Response) => {
   const { getDeliveryFeeConfig } = await import('./services/deliveryFee.service');
-  res.json(getDeliveryFeeConfig());
+  res.json(await getDeliveryFeeConfig());
 });
 
 // ─── Health Check ──────────────────────────────────────────────────────────────

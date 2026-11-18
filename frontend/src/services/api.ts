@@ -269,6 +269,8 @@ export const paymentsApi = {
     name?: string;
     phone?: string;
     address?: string;
+    location?: string;
+    isExpress?: boolean;
     items?: any[];
   }) => {
     const res = await apiClient.post('/payments/transactpay/create-order', data);
@@ -409,6 +411,8 @@ export const ordersApi = {
     name?: string;
     phone?: string;
     address?: string;
+    location?: string;
+    isExpress?: boolean;
     items?: Array<{ productId?: string; name: string; quantity: number; priceCents: number }>;
   }) => {
     const res = await apiClient.post('/orders/wallet-checkout', payload);

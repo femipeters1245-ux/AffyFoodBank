@@ -469,9 +469,38 @@ router.get(['/track/:reference', '/:reference'], async (req: Request, res: Respo
 router.post('/wallet-checkout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.sub;
-    const { totalAmountCents, name, phone, address, items } = req.body;
+    const { totalAmountCents, name, phone, address, location, isExpress, items } = req.body;
 
-    if (!totalAmountCents || Number(totalAmountCents) <= 0) {
+    // 1. Calculate items subtotal
+    const resolvedItemsList = items || [];
+    const itemsSubtotalCents = resolvedItemsList.reduce(
+      (sum: number, it: any) => sum + (Number(it.quantity || 1) * Number(it.priceCents || 0)),
+      0
+    );
+
+    // 2. Authoritative server-side delivery fee calculation from Supabase
+    const { calculateAuthoritativeDeliveryFee } = await import('../services/deliveryFee.service');
+    const selectedLocation = (location || (address ? address.split(',').pop() : '') || '').trim();
+    const authoritativeDelivery = await calculateAuthoritativeDeliveryFee(
+      itemsSubtotalCents,
+      selectedLocation,
+      Boolean(isExpress)
+    );
+
+    const serverCalculatedTotalCents = itemsSubtotalCents > 0
+      ? itemsSubtotalCents + authoritativeDelivery.deliveryFeeCents
+      : Number(totalAmountCents) || 0;
+
+    // Reject or override requests where client-side fee or total was tampered
+    if (totalAmountCents && Number(totalAmountCents) < serverCalculatedTotalCents) {
+      throw new BadRequestError(
+        `Order amount mismatch: Expected ₦${(serverCalculatedTotalCents / 100).toLocaleString()} (Items: ₦${(itemsSubtotalCents / 100).toLocaleString()}, Delivery: ₦${(authoritativeDelivery.deliveryFeeCents / 100).toLocaleString()}) but received ₦${(Number(totalAmountCents) / 100).toLocaleString()}.`
+      );
+    }
+
+    const chargedCents = serverCalculatedTotalCents > 0 ? serverCalculatedTotalCents : Number(totalAmountCents);
+
+    if (!chargedCents || chargedCents <= 0) {
       throw new BadRequestError('Valid order amount is required');
     }
 
@@ -486,7 +515,6 @@ router.post('/wallet-checkout', authenticate, async (req: Request, res: Response
 
     const wallet = customerProfile.wallet;
     const availableCents = Number(wallet.totalBalanceCents) - Number(wallet.allocatedToSavingsCents);
-    const chargedCents = Number(totalAmountCents);
 
     if (availableCents < chargedCents) {
       throw new BadRequestError(

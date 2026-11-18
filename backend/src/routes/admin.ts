@@ -852,24 +852,37 @@ router.get('/transactions', async (_req: Request, res: Response, _next: NextFunc
  * GET /api/v1/admin/delivery-fee
  * Fetch active delivery fee settings
  */
-router.get('/delivery-fee', async (_req: Request, res: Response) => {
-  const { getDeliveryFeeConfig } = await import('../services/deliveryFee.service');
-  res.json(getDeliveryFeeConfig());
+router.get('/delivery-fee', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { getDeliveryFeeConfig } = await import('../services/deliveryFee.service');
+    const config = await getDeliveryFeeConfig();
+    res.json(config);
+  } catch (err) {
+    next(err);
+  }
 });
 
 /**
  * POST /api/v1/admin/delivery-fee
  * Update delivery fee settings (standard fee, free delivery threshold, express fee, state fees)
  */
-router.post('/delivery-fee', async (req: Request, res: Response) => {
-  const { updateDeliveryFeeConfig } = await import('../services/deliveryFee.service');
-  const userIdentifier = req.user?.email || req.user?.sub || 'Admin/Staff';
-  const updated = updateDeliveryFeeConfig(req.body, userIdentifier);
-  res.json({
-    status: 'success',
-    message: 'Delivery fee settings updated successfully',
-    config: updated,
-  });
+router.post('/delivery-fee', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user?.role;
+    if (role === 'FinanceStaff') {
+      throw new ForbiddenError('Only Logistics Staff or Administrators can modify delivery fees');
+    }
+    const { updateDeliveryFeeConfig } = await import('../services/deliveryFee.service');
+    const userIdentifier = req.user?.email || req.user?.sub || 'Admin/Staff';
+    const updated = await updateDeliveryFeeConfig(req.body, userIdentifier);
+    res.json({
+      status: 'success',
+      message: 'Delivery fee settings updated successfully',
+      config: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
 });
 
 export default router;

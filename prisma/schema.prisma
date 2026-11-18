@@ -437,3 +437,19 @@ model OtpVerification {
 
   @@index([email])
 }
+
+// =====================
+// Delivery Fee Configuration
+// =====================
+model DeliveryFeeConfig {
+  id                         String   @id @default(uuid()) @db.Uuid
+  standardFeeCents           BigInt   @default(150000)
+  freeDeliveryThresholdCents BigInt   @default(5000000)
+  expressFeeCents            BigInt   @default(250000)
+  stateFees                  Json
+  isActive                   Boolean  @default(true)
+  updatedBy                  String?
+  createdAt                  DateTime @default(now())
+  updatedAt                  DateTime @updatedAt
+}
+

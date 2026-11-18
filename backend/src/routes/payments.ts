@@ -220,13 +220,42 @@ async function recordOrderInDatabase(params: {
  */
 router.post('/transactpay/create-order', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { amountNaira, email, name, phone, address, items, redirectUrl } = req.body;
+    const { amountNaira, email, name, phone, address, location, isExpress, items, redirectUrl } = req.body;
 
-    if (!amountNaira || Number(amountNaira) <= 0) {
-      throw new BadRequestError('Valid amount in Naira is required');
-    }
     if (!email) {
       throw new BadRequestError('Customer email is required');
+    }
+
+    // 1. Authoritative delivery fee calculation
+    const resolvedItems = items || [];
+    const itemsSubtotalCents = resolvedItems.reduce(
+      (s: number, it: any) => s + (Number(it.quantity || 1) * Number(it.priceCents || 0)),
+      0
+    );
+
+    let finalAmountNaira = Number(amountNaira);
+
+    if (itemsSubtotalCents > 0) {
+      const { calculateAuthoritativeDeliveryFee } = await import('../services/deliveryFee.service');
+      const selectedLocation = (location || (address ? address.split(',').pop() : '') || '').trim();
+      const authoritativeDelivery = await calculateAuthoritativeDeliveryFee(
+        itemsSubtotalCents,
+        selectedLocation,
+        Boolean(isExpress)
+      );
+      const serverExpectedTotalNaira = (itemsSubtotalCents + authoritativeDelivery.deliveryFeeCents) / 100;
+
+      // Reject tampered underpayment requests
+      if (amountNaira && Number(amountNaira) < serverExpectedTotalNaira) {
+        throw new BadRequestError(
+          `Payment amount mismatch: Expected ₦${serverExpectedTotalNaira.toLocaleString()} (Items: ₦${(itemsSubtotalCents / 100).toLocaleString()}, Delivery: ₦${(authoritativeDelivery.deliveryFeeCents / 100).toLocaleString()}), but received ₦${Number(amountNaira).toLocaleString()}`
+        );
+      }
+      finalAmountNaira = serverExpectedTotalNaira;
+    }
+
+    if (!finalAmountNaira || finalAmountNaira <= 0) {
+      throw new BadRequestError('Valid amount in Naira is required');
     }
 
     const orderReference = `TP_ORD_${Date.now()}_${uuidv4().replace(/-/g, '').slice(0, 8)}`;
@@ -247,7 +276,7 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
         email,
       },
       order: {
-        amount: Number(amountNaira),
+        amount: Number(finalAmountNaira),
         reference: orderReference,
         description: 'Affy FoodBank Raw Foodstuff Order',
         currency: 'NGN',

@@ -544,18 +544,17 @@ export const AdminDashboardPage: React.FC = () => {
     adminApi.getDeliveryFee()
       .then((res: any) => {
         if (res && typeof res.standardFeeCents === 'number') {
+          const loadedStateFees: Record<string, number> = {};
+          if (res.stateFees && typeof res.stateFees === 'object') {
+            for (const [k, v] of Object.entries(res.stateFees)) {
+              loadedStateFees[k] = Number(v) / 100;
+            }
+          }
           const loaded: DeliveryFeeSettings = {
             standardFeeNaira: res.standardFeeCents / 100,
-            freeDeliveryThresholdNaira: (res.freeDeliveryThresholdCents ?? 10000000) / 100,
-            expressFeeNaira: (res.expressFeeCents ?? 500000) / 100,
-            stateFeesNaira: {
-              Lagos: (res.stateFees?.Lagos ?? 250000) / 100,
-              Ogun: (res.stateFees?.Ogun ?? 350000) / 100,
-              Abuja: (res.stateFees?.Abuja ?? 450000) / 100,
-              Rivers: (res.stateFees?.Rivers ?? 500000) / 100,
-              Oyo: (res.stateFees?.Oyo ?? 350000) / 100,
-              Default: (res.stateFees?.Default ?? 250000) / 100,
-            },
+            freeDeliveryThresholdNaira: (res.freeDeliveryThresholdCents ?? 5000000) / 100,
+            expressFeeNaira: (res.expressFeeCents ?? 250000) / 100,
+            stateFeesNaira: Object.keys(loadedStateFees).length > 0 ? loadedStateFees : deliveryConfig.stateFeesNaira,
             updatedAt: res.updatedAt,
             updatedBy: res.updatedBy,
           };
@@ -570,30 +569,63 @@ export const AdminDashboardPage: React.FC = () => {
           }));
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        console.warn('Error fetching live delivery fees:', err);
+      });
   }, []);
 
   const handleSaveDeliveryConfig = async (e: React.FormEvent) => {
     e.preventDefault();
+    const standard = Number(deliveryConfig.standardFeeNaira);
+    const threshold = Number(deliveryConfig.freeDeliveryThresholdNaira);
+    const express = Number(deliveryConfig.expressFeeNaira);
+
+    if (isNaN(standard) || standard < 0 || standard > 500000) {
+      showToast('⚠️ Standard fee must be a non-negative number up to ₦500,000');
+      return;
+    }
+    if (isNaN(threshold) || threshold < 0 || threshold > 5000000) {
+      showToast('⚠️ Free delivery threshold must be a non-negative number up to ₦5,000,000');
+      return;
+    }
+    if (isNaN(express) || express < 0 || express > 500000) {
+      showToast('⚠️ Express fee must be a non-negative number up to ₦500,000');
+      return;
+    }
+
     setSavingDeliveryFee(true);
     const payload = {
-      standardFeeCents: Math.round(Number(deliveryConfig.standardFeeNaira) * 100),
-      freeDeliveryThresholdCents: Math.round(Number(deliveryConfig.freeDeliveryThresholdNaira) * 100),
-      expressFeeCents: Math.round(Number(deliveryConfig.expressFeeNaira) * 100),
+      standardFeeCents: Math.round(standard * 100),
+      freeDeliveryThresholdCents: Math.round(threshold * 100),
+      expressFeeCents: Math.round(express * 100),
       stateFees: Object.entries(deliveryConfig.stateFeesNaira).reduce((acc, [k, v]) => {
-        acc[k] = Math.round(Number(v) * 100);
+        const val = Number(v);
+        acc[k] = Math.round((isNaN(val) || val < 0 ? 0 : val) * 100);
         return acc;
       }, {} as Record<string, number>),
     };
 
     try {
-      localStorage.setItem('affy_delivery_fee_config', JSON.stringify(payload));
+      const res = await adminApi.updateDeliveryFee(payload);
+      const confirmedConfig = res?.config || payload;
+
+      // Update local storage and dispatch update event only after DB write succeeds
+      localStorage.setItem('affy_delivery_fee_config', JSON.stringify(confirmedConfig));
       window.dispatchEvent(new Event('affy_delivery_fee_updated'));
-      await adminApi.updateDeliveryFee(payload);
-      showToast('✅ Delivery rates updated! Customer cart & checkout synchronized.');
+
+      if (res?.config?.updatedAt) {
+        setDeliveryConfig(prev => ({
+          ...prev,
+          updatedAt: res.config.updatedAt,
+          updatedBy: res.config.updatedBy || prev.updatedBy,
+        }));
+      }
+
+      showToast('✅ Delivery rates saved to Supabase and deployed to customer checkout!');
     } catch (err: any) {
-      console.warn('Backend delivery fee update warning:', err);
-      showToast('✅ Delivery rates saved locally & applied to customer checkout!');
+      console.error('Failed to save delivery fees to database:', err);
+      const errMsg = err?.response?.data?.message || err?.message || 'Failed to save delivery fees';
+      showToast(`❌ Error saving fees: ${errMsg}`);
     } finally {
       setSavingDeliveryFee(false);
     }
@@ -2148,9 +2180,9 @@ export const AdminDashboardPage: React.FC = () => {
                 </div>
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2 border-t border-white/10 text-xs">
                   <div>
-                    <div className="text-slate-400">Sample Order Under Threshold (₦45,000 in Lagos):</div>
+                    <div className="text-slate-400">Sample Order Under Threshold (₦45,000 in Ilesa Central):</div>
                     <div className="text-sm font-bold text-white mt-1">
-                      Delivery: <span className="text-emerald-400 font-black">₦{Number(deliveryConfig.stateFeesNaira.Lagos ?? deliveryConfig.standardFeeNaira).toLocaleString()}</span>
+                      Delivery: <span className="text-emerald-400 font-black">₦{Number(deliveryConfig.stateFeesNaira['Ilesa Central (Roundabout, Isokun, Imo)'] ?? deliveryConfig.standardFeeNaira).toLocaleString()}</span>
                     </div>
                   </div>
                   <div>
@@ -2178,19 +2210,23 @@ export const AdminDashboardPage: React.FC = () => {
                   type="button"
                   onClick={() => {
                     setDeliveryConfig({
-                      standardFeeNaira: 2500,
-                      freeDeliveryThresholdNaira: 100000,
-                      expressFeeNaira: 5000,
+                      standardFeeNaira: 1500,
+                      freeDeliveryThresholdNaira: 50000,
+                      expressFeeNaira: 2500,
                       stateFeesNaira: {
-                        Lagos: 2500,
-                        Ogun: 3500,
-                        Abuja: 4500,
-                        Rivers: 5000,
-                        Oyo: 3500,
-                        Default: 2500,
+                        'Ilesa Central (Roundabout, Isokun, Imo)': 1200,
+                        'Ilesa West (Breweries, Omi Aladiye, Ereja)': 1500,
+                        'Ilesa East (Grammar School, Bolorunduro, Irojo)': 1500,
+                        'Ijebu-Jesa / Oriade': 2000,
+                        'Ipetu-Ijesha': 2500,
+                        'Ibokun / Obokun': 2200,
+                        'Osogbo (State Capital)': 3000,
+                        'Ile-Ife (Campus & Town)': 3000,
+                        'Other Osun State Locations': 3500,
+                        Default: 1500,
                       },
                     });
-                    showToast('Reset to default delivery fees. Click Save to apply.');
+                    showToast('Reset to default Ilesa & Osun delivery fees. Click Save to apply.');
                   }}
                   className="px-5 py-3 rounded-xl border border-slate-200 text-slate-700 font-bold text-xs hover:bg-slate-50 transition-colors"
                 >

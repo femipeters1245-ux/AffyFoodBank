@@ -25,6 +25,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const [phone, setPhone] = useState('080');
   const [address, setAddress] = useState('');
   const [state, setState] = useState('Ilesa Central (Roundabout, Isokun, Imo)');
+  const [isExpressDelivery, setIsExpressDelivery] = useState(false);
   const [deliveryNotes, setDeliveryNotes] = useState('');
 
   // Payment method
@@ -48,9 +49,41 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       const saved = localStorage.getItem('affy_delivery_fee_config');
       return saved
         ? JSON.parse(saved)
-        : { standardFeeCents: 250000, freeDeliveryThresholdCents: 10000000 };
+        : {
+            standardFeeCents: 150000,
+            freeDeliveryThresholdCents: 5000000,
+            expressFeeCents: 250000,
+            stateFees: {
+              'Ilesa Central (Roundabout, Isokun, Imo)': 120000,
+              'Ilesa West (Breweries, Omi Aladiye, Ereja)': 150000,
+              'Ilesa East (Grammar School, Bolorunduro, Irojo)': 150000,
+              'Ijebu-Jesa / Oriade': 200000,
+              'Ipetu-Ijesha': 250000,
+              'Ibokun / Obokun': 220000,
+              'Osogbo (State Capital)': 300000,
+              'Ile-Ife (Campus & Town)': 300000,
+              'Other Osun State Locations': 350000,
+              Default: 150000,
+            },
+          };
     } catch {
-      return { standardFeeCents: 250000, freeDeliveryThresholdCents: 10000000 };
+      return {
+        standardFeeCents: 150000,
+        freeDeliveryThresholdCents: 5000000,
+        expressFeeCents: 250000,
+        stateFees: {
+          'Ilesa Central (Roundabout, Isokun, Imo)': 120000,
+          'Ilesa West (Breweries, Omi Aladiye, Ereja)': 150000,
+          'Ilesa East (Grammar School, Bolorunduro, Irojo)': 150000,
+          'Ijebu-Jesa / Oriade': 200000,
+          'Ipetu-Ijesha': 250000,
+          'Ibokun / Obokun': 220000,
+          'Osogbo (State Capital)': 300000,
+          'Ile-Ife (Campus & Town)': 300000,
+          'Other Osun State Locations': 350000,
+          Default: 150000,
+        },
+      };
     }
   });
 
@@ -59,7 +92,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       deliveryApi
         .getDeliveryFee()
         .then((cfg) => {
-          if (cfg) {
+          if (cfg && typeof cfg.standardFeeCents === 'number') {
             setDeliveryConfig(cfg);
             localStorage.setItem('affy_delivery_fee_config', JSON.stringify(cfg));
           }
@@ -76,19 +109,34 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
   // Delivery cost calculation (Affy food collective standard delivery set by Admin/Staff)
   const calculateDeliveryFee = () => {
-    const threshold = Number(deliveryConfig?.freeDeliveryThresholdCents ?? 10000000);
+    const threshold = Number(deliveryConfig?.freeDeliveryThresholdCents ?? 5000000);
+    let baseFee = 0;
+    let isFreeDelivery = false;
+
     if (threshold > 0 && totalAmountCents >= threshold) {
-      return 0;
+      baseFee = 0;
+      isFreeDelivery = true;
+    } else {
+      const stateFee = deliveryConfig?.stateFees?.[state];
+      if (typeof stateFee === 'number' && stateFee >= 0) {
+        baseFee = stateFee;
+      } else {
+        baseFee = Number(deliveryConfig?.stateFees?.Default ?? deliveryConfig?.standardFeeCents ?? 150000);
+      }
     }
-    const stateFee = deliveryConfig?.stateFees?.[state];
-    if (typeof stateFee === 'number' && stateFee >= 0) {
-      return stateFee;
-    }
-    return Number(deliveryConfig?.standardFeeCents ?? 250000);
+
+    const expressFee = isExpressDelivery ? Number(deliveryConfig?.expressFeeCents ?? 250000) : 0;
+    const totalDelivery = baseFee + expressFee;
+    return {
+      totalDeliveryFeeCents: totalDelivery,
+      baseDeliveryFeeCents: baseFee,
+      expressFeeCents: expressFee,
+      isFree: isFreeDelivery,
+    };
   };
 
-  const deliveryFeeCents = calculateDeliveryFee();
-  const grandTotalCents = totalAmountCents + deliveryFeeCents;
+  const { totalDeliveryFeeCents, baseDeliveryFeeCents, expressFeeCents, isFree } = calculateDeliveryFee();
+  const grandTotalCents = totalAmountCents + totalDeliveryFeeCents;
 
   const handleStartPayment = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -112,6 +160,8 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           name: fullName,
           phone,
           address: `${address}, ${state}`,
+          location: state,
+          isExpress: isExpressDelivery,
           items: items.map((i: any) => ({
             productId: i.product?.id || i.id,
             name: i.product?.name || i.name,
@@ -143,7 +193,9 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           email: email || user?.email || 'customer@affyfoodbank.ng',
           name: fullName,
           phone,
-          address,
+          address: `${address}, ${state}`,
+          location: state,
+          isExpress: isExpressDelivery,
           items: items.map((i: any) => ({
             productId: i.product?.id || i.id,
             name: i.product?.name || i.name,
@@ -425,15 +477,11 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                       onChange={(e) => setState(e.target.value)}
                       className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
                     >
-                      <option value="Ilesa Central (Roundabout, Isokun, Imo)">Ilesa Central (Roundabout, Isokun, Imo)</option>
-                      <option value="Ilesa West (Breweries, Omi Aladiye, Ereja)">Ilesa West (Breweries, Omi Aladiye, Ereja)</option>
-                      <option value="Ilesa East (Grammar School, Bolorunduro, Irojo)">Ilesa East (Grammar School, Bolorunduro, Irojo)</option>
-                      <option value="Ijebu-Jesa / Oriade">Ijebu-Jesa / Oriade</option>
-                      <option value="Ipetu-Ijesha">Ipetu-Ijesha</option>
-                      <option value="Ibokun / Obokun">Ibokun / Obokun</option>
-                      <option value="Osogbo (State Capital)">Osogbo (State Capital)</option>
-                      <option value="Ile-Ife (Campus & Town)">Ile-Ife (Campus & Town)</option>
-                      <option value="Other Osun State Locations">Other Osun State Locations</option>
+                      {Object.keys(deliveryConfig?.stateFees || {}).filter((k: string) => k !== 'Default').map((zone: string) => (
+                        <option key={zone} value={zone}>
+                          {zone} {typeof deliveryConfig.stateFees[zone] === 'number' ? `— ₦${(deliveryConfig.stateFees[zone] / 100).toLocaleString()}` : ''}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
@@ -449,6 +497,23 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                     placeholder="e.g. Call when entering gate, deliver to flat 3B"
                     className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-brand-500"
                   />
+                </div>
+
+                {/* Priority / Express Delivery Option */}
+                <div className="p-3 bg-amber-50/80 border border-amber-200 rounded-xl flex items-center justify-between gap-3">
+                  <div className="flex items-center space-x-2.5">
+                    <input
+                      type="checkbox"
+                      id="is-express-delivery"
+                      checked={isExpressDelivery}
+                      onChange={(e) => setIsExpressDelivery(e.target.checked)}
+                      className="w-4 h-4 text-amber-600 rounded border-amber-300 focus:ring-amber-500 cursor-pointer"
+                    />
+                    <label htmlFor="is-express-delivery" className="text-xs font-bold text-amber-950 cursor-pointer">
+                      ⚡ Same-Day Priority Dispatch (+₦{((deliveryConfig?.expressFeeCents ?? 250000) / 100).toLocaleString()})
+                    </label>
+                  </div>
+                  <span className="text-[10px] bg-amber-200/80 text-amber-900 font-bold px-2 py-0.5 rounded-full">3–6 Hrs</span>
                 </div>
               </div>
 
@@ -536,15 +601,21 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 <div className="flex justify-between text-slate-600">
                   <span>Doorstep Delivery ({state}):</span>
                   <span className="font-semibold text-slate-800">
-                    {deliveryFeeCents === 0 ? (
+                    {isFree ? (
                       <span className="text-emerald-600 font-bold">
-                        FREE ({totalAmountCents >= (deliveryConfig?.freeDeliveryThresholdCents ?? 10000000) ? 'Bulk Order' : 'Promotional'})
+                        FREE (Order ≥ ₦{((deliveryConfig?.freeDeliveryThresholdCents ?? 5000000) / 100).toLocaleString()})
                       </span>
                     ) : (
-                      formatNaira(deliveryFeeCents)
+                      formatNaira(baseDeliveryFeeCents)
                     )}
                   </span>
                 </div>
+                {isExpressDelivery && (
+                  <div className="flex justify-between text-amber-700 font-medium">
+                    <span>⚡ Priority Dispatch Surcharge:</span>
+                    <span>+{formatNaira(expressFeeCents)}</span>
+                  </div>
+                )}
                 <div className="flex justify-between text-slate-900 font-black text-sm pt-2 border-t border-slate-200">
                   <span>Total Amount Due:</span>
                   <span className="text-brand-800 text-base">{formatNaira(grandTotalCents)}</span>
