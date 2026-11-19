@@ -310,10 +310,12 @@ export const paymentsApi = {
     customerProfileId?: string;
     description?: string;
   }): Promise<{
-    status: string;
+    // status is now 'pending' — payout is queued, NOT yet finalised
+    status: 'pending' | string;
     reference: string;
     batchReference?: string;
     amountNaira: number;
+    reservedCents?: number;
     destination: {
       bankName: string;
       accountNumber: string;
@@ -322,6 +324,19 @@ export const paymentsApi = {
     message: string;
   }> => {
     const res = await apiClient.post('/payments/transactpay/payout', data);
+    return res.data;
+  },
+  nameEnquiry: async (data: {
+    accountNumber: string;
+    bankCode: string;
+  }): Promise<{
+    status: string;
+    accountName: string;
+    accountNumber: string;
+    bankCode: string;
+    bankName?: string;
+  }> => {
+    const res = await apiClient.post('/payments/transactpay/name-enquiry', data);
     return res.data;
   },
 };

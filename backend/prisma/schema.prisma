@@ -1,4 +1,5 @@
-// backend/prisma/schema.prisma
+// prisma/schema.prisma
+// Synced schema for root and Vercel build runners
 
 generator client {
   provider        = "prisma-client-js"
@@ -10,8 +11,6 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
-
-// Note: uuid-ossp extension is enabled via the SQL migration (001_initial_schema.sql)
 
 // =====================
 // Core Identity
@@ -80,6 +79,7 @@ model CustomerProfile {
   notifications          Notification[]
   notificationPreference NotificationPreference?
   walletTransactions     WalletTransaction[] @relation("ProfileTransactions")
+  virtualAccount         VirtualAccount?
 }
 
 model Address {
@@ -195,6 +195,7 @@ model Wallet {
   customerProfileId          String   @unique
   totalBalanceCents          BigInt   @default(0)
   allocatedToSavingsCents    BigInt   @default(0)
+  reservedWithdrawalCents    BigInt   @default(0)
   currency                   String   @default("NGN")
   status                     String   @default("ACTIVE")
   createdAt                  DateTime @default(now())
@@ -228,19 +229,21 @@ enum TransactionStatus {
 }
 
 model WalletTransaction {
-  id               String   @id @default(uuid()) @db.Uuid
-  walletId         String
-  customerId       String
-  reference        String   @unique
-  type             TransactionType
-  amountCents      BigInt
-  currency         String   @default("NGN")
-  direction        TransactionDirection
-  status           TransactionStatus @default(PENDING)
-  description      String?
-  paymentReference String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  id                String   @id @default(uuid()) @db.Uuid
+  walletId          String
+  customerId        String
+  reference         String   @unique
+  providerSessionId String?
+  providerReference String?
+  type              TransactionType
+  amountCents       BigInt
+  currency          String   @default("NGN")
+  direction         TransactionDirection
+  status            TransactionStatus @default(PENDING)
+  description       String?
+  paymentReference  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
 
   wallet        Wallet          @relation(fields: [walletId], references: [id])
   customerProfile CustomerProfile @relation("ProfileTransactions", fields: [customerId], references: [id])
@@ -453,4 +456,25 @@ model DeliveryFeeConfig {
   createdAt                  DateTime @default(now())
   updatedAt                  DateTime @updatedAt
 }
+
+// =====================
+// Virtual Accounts (TransactPay Dedicated Funding Accounts)
+// =====================
+model VirtualAccount {
+  id                String          @id @default(uuid()) @db.Uuid
+  customerProfileId String          @unique
+  accountNumber     String          @db.VarChar(20)
+  bankName          String          @db.VarChar(100)
+  accountName       String          @db.VarChar(150)
+  accountReference  String          @unique @db.VarChar(100)
+  alias             String?         @db.VarChar(100)
+  currency          String          @default("NGN") @db.VarChar(5)
+  provider          String          @default("TRANSACTPAY") @db.VarChar(50)
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+
+  customerProfile   CustomerProfile @relation(fields: [customerProfileId], references: [id], onDelete: Cascade)
+}
+
 

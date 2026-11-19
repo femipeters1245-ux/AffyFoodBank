@@ -11,6 +11,12 @@
       "maxDuration": 30
     }
   },
+  "crons": [
+    {
+      "path": "/api/v1/payments/transactpay/payout/reconcile-stale",
+      "schedule": "*/5 * * * *"
+    }
+  ],
   "rewrites": [
     {
       "source": "/api/(.*)",

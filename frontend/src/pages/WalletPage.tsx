@@ -88,9 +88,13 @@ export const WalletPage: React.FC = () => {
   }, []);
 
   // Compute Balances
+  // Prefer server-computed availableBalanceCents (accounts for reserved withdrawals)
+  // Fall back to totalBalanceCents - allocatedToSavingsCents for older wallet shapes
   const totalBal = wallet ? Number(wallet.totalBalanceCents) : 0;
   const allocatedBal = wallet ? Number(wallet.allocatedToSavingsCents) : 0;
-  const availableBal = totalBal - allocatedBal;
+  const availableBal = wallet
+    ? Number((wallet as any).availableBalanceCents ?? totalBal - allocatedBal)
+    : 0;
 
   // ─── 1. Automated Virtual Account Generation for Bank Transfer Deposit ──────
   const handleGenerateVirtualAccount = async () => {
@@ -134,29 +138,17 @@ export const WalletPage: React.FC = () => {
   };
 
   // Confirm / Verify Sent Bank Transfer
-  const handleConfirmTransfer = async () => {
+  // NOTE: We no longer manually credit the wallet here. The backend webhook
+  // independently verifies the transfer via TransactPay's API before crediting.
+  // The customer just needs to wait; the wallet auto-updates when confirmed.
+  const handleConfirmTransfer = () => {
     if (!virtualAccount) return;
-    setLoading(true);
-
-    try {
-      const amountCents = Math.round((virtualAccount.amountNaira || 25000) * 100);
-
-      await walletApi.deposit({
-        amountCents,
-        paymentReference: virtualAccount.reference,
-        description: `TransactPay Bank Transfer deposit: ${formatNaira(amountCents)}`,
-      });
-      await refreshWallet();
-      await fetchTransactions();
-
-      setIsDepositOpen(false);
-      setVirtualAccount(null);
-      showToast(`Transfer confirmed! ${formatNaira(amountCents)} added to your wallet.`, 'success');
-    } catch (err: any) {
-      showToast(err.response?.data?.error ?? 'Payment confirmation pending. Please allow 1-2 minutes for bank clearing.', 'info');
-    } finally {
-      setLoading(false);
-    }
+    setIsDepositOpen(false);
+    setVirtualAccount(null);
+    showToast(
+      'Your transfer is being verified. Your wallet will update automatically within a few minutes once the bank confirms the payment.',
+      'info'
+    );
   };
 
   // ─── 2. Instant Card / Gateway Deposit ──────────────────────────────────────
@@ -177,20 +169,17 @@ export const WalletPage: React.FC = () => {
       });
 
       if (res?.checkoutUrl && !res.isSandbox) {
+        // Redirect to TransactPay hosted checkout — wallet credited after webhook confirmation
         window.location.href = res.checkoutUrl;
         return;
       }
 
-      await walletApi.deposit({
-        amountCents,
-        paymentReference: paymentRef,
-        description: `TransactPay Card Deposit: ${formatNaira(amountCents)}`,
-      });
-      await refreshWallet();
-      await fetchTransactions();
-
+      // Sandbox / no redirect path: payment is pending provider confirmation
       setIsDepositOpen(false);
-      showToast(`Successfully deposited ${formatNaira(amountCents)} via TransactPay!`, 'success');
+      showToast(
+        'Payment initiated. Your wallet will update automatically once TransactPay confirms the transaction.',
+        'info'
+      );
     } catch (err: any) {
       showToast(err.response?.data?.error ?? 'Deposit failed. Please try again.', 'error');
     } finally {
@@ -244,10 +233,10 @@ export const WalletPage: React.FC = () => {
       setWithdrawAmount('');
       setAccountNumber('');
       showToast(
-        `Withdrawal of ${formatNaira(amountCents)} dispatched via TransactPay! Reference: ${
+        `Withdrawal of ${formatNaira(amountCents)} initiated. Funds reserved — your bank account will be credited once TransactPay clears the payout. Reference: ${
           payoutRes.reference || 'PGW-PAYOUT'
         }`,
-        'success'
+        'info'
       );
     } catch (err: any) {
       showToast(err.response?.data?.error || 'Withdrawal processing failed. Please check bank details.', 'error');

@@ -1,14 +1,43 @@
 // backend/src/controllers/wallet.controller.ts
 import { Request, Response, NextFunction } from 'express';
 import { walletService } from '../services/wallet.service';
-import { BadRequestError } from '../utils/errors';
+import { transactPayService } from '../services/transactpay.service';
+import { BadRequestError, ForbiddenError } from '../utils/errors';
 import prisma from '../prisma/client';
-import { sendWalletDepositEmail, sendWalletWithdrawalEmail } from '../services/email.service';
+import logger from '../utils/logger';
 
-/** GET /wallet – returns wallet balances for the authenticated customer */
+/** GET /wallet – returns wallet balances with active reservation calculation */
 export async function getWallet(req: Request, res: Response, next: NextFunction) {
   const profileId = req.user?.profileId || `prof-${req.user?.sub}`;
   try {
+    // Auto-requery pending withdrawals older than 2 minutes to reconcile state
+    try {
+      const pendingTxs = await walletService.listPendingWithdrawals(profileId);
+      const now = Date.now();
+      for (const tx of pendingTxs) {
+        const txAgeMs = now - new Date(tx.createdAt).getTime();
+        if (txAgeMs > 120000 && process.env.TRANSACTPAY_SECRET_KEY) {
+          try {
+            const requeryResult = await transactPayService.requeryPayout(tx.reference);
+            if (requeryResult.status === 'SUCCESSFUL') {
+              await walletService.finalizeSuccessfulWithdrawal({
+                clientReference: tx.reference,
+                providerReference: requeryResult.providerReference,
+              });
+            } else if (requeryResult.status === 'FAILED') {
+              await walletService.releaseFailedWithdrawal({
+                clientReference: tx.reference,
+                reason: requeryResult.responseMessage || 'Provider reported payout failure',
+                providerReference: requeryResult.providerReference,
+              });
+            }
+          } catch (rErr: any) {
+            logger.warn('[getWallet] Background requery note:', { reference: tx.reference, message: rErr.message });
+          }
+        }
+      }
+    } catch {}
+
     const wallet = await walletService.getWallet(profileId);
     res.json(wallet);
   } catch (err) {
@@ -18,6 +47,8 @@ export async function getWallet(req: Request, res: Response, next: NextFunction)
       customerProfileId: profileId,
       totalBalanceCents: 0,
       allocatedToSavingsCents: 0,
+      reservedWithdrawalCents: 0,
+      availableBalanceCents: 0,
       currency: 'NGN',
       status: 'ACTIVE',
     });
@@ -35,43 +66,30 @@ export async function listTransactions(req: Request, res: Response, next: NextFu
   }
 }
 
-/** POST /wallet/deposit – external payment gateway will call this (trusted) */
+/**
+ * POST /wallet/deposit – Restricted to internal/administrative use only
+ * Customer funds are strictly credited through verified TransactPay webhooks.
+ */
 export async function deposit(req: Request, res: Response, next: NextFunction) {
   try {
+    const role = req.user?.role;
+    if (role !== 'Admin' && role !== 'SuperAdmin') {
+      throw new ForbiddenError(
+        'Direct customer wallet crediting is disabled. Funds must be deposited through verified TransactPay virtual accounts or gateway payments.'
+      );
+    }
+
     const { amountCents, paymentReference, description } = req.body;
     const profileId = req.user?.profileId;
     if (!profileId) throw new BadRequestError('Customer profile ID missing from token');
-    const wallet = await walletService.deposit({
+
+    const wallet = await walletService.creditConfirmedDeposit({
       customerProfileId: profileId,
-      amountCents,
-      paymentReference,
-      description,
+      amountCents: Number(amountCents),
+      reference: paymentReference || `MANUAL-${Date.now()}`,
+      sessionId: `MANUAL-${Date.now()}`,
+      description: description || 'Administrative Deposit Adjustment',
     });
-
-    // Send deposit email confirmation
-    try {
-      const email = req.user?.email;
-      if (email) {
-        const profile = await prisma.customerProfile.findUnique({
-          where: { id: profileId },
-          include: { user: true },
-        });
-        const customerName = profile?.user?.firstName
-          ? [profile.user.firstName, profile.user.lastName].filter(Boolean).join(' ')
-          : 'Affy Customer';
-
-        sendWalletDepositEmail({
-          to: email,
-          customerName,
-          amountNaira: Number(amountCents) / 100,
-          newBalanceNaira: Number(wallet.totalBalanceCents) / 100,
-          channel: 'Direct Deposit',
-          reference: paymentReference || `DEP-${Date.now()}`,
-        }).catch((err) => console.warn('[Resend] Direct deposit email failed:', err.message));
-      }
-    } catch (e: any) {
-      console.warn('[Resend] Could not construct deposit email:', e.message);
-    }
 
     res.status(201).json(wallet);
   } catch (err) {
@@ -79,46 +97,27 @@ export async function deposit(req: Request, res: Response, next: NextFunction) {
   }
 }
 
-/** POST /wallet/withdraw – internal use (e.g. order payment) */
+/** POST /wallet/withdraw – internal use */
 export async function withdraw(req: Request, res: Response, next: NextFunction) {
   try {
-    const { amountCents, description, accountNumber, bankName } = req.body;
+    const { amountCents, description } = req.body;
     const profileId = req.user?.profileId;
     if (!profileId) throw new BadRequestError('Customer profile ID missing from token');
-    const wallet = await walletService.withdraw({
-      customerProfileId: profileId,
-      amountCents,
-      description,
-    });
 
-    // Send withdrawal email notification
-    try {
-      const email = req.user?.email;
-      if (email) {
-        const profile = await prisma.customerProfile.findUnique({
-          where: { id: profileId },
-          include: { user: true },
-        });
-        const customerName = profile?.user?.firstName
-          ? [profile.user.firstName, profile.user.lastName].filter(Boolean).join(' ')
-          : 'Affy Customer';
-
-        sendWalletWithdrawalEmail({
-          to: email,
-          customerName,
-          amountNaira: Number(amountCents) / 100,
-          remainingBalanceNaira: Number(wallet.totalBalanceCents) / 100,
-          bankName: bankName || 'Bank Account',
-          accountNumber: accountNumber || '0000000000',
-          reference: `WDR-${Date.now()}`,
-          status: 'SUCCESSFUL',
-        }).catch((err) => console.warn('[Resend] Internal withdrawal email failed:', err.message));
-      }
-    } catch (e: any) {
-      console.warn('[Resend] Could not construct withdrawal email:', e.message);
+    const wallet = await walletService.getWallet(profileId);
+    const amount = Number(amountCents);
+    if (wallet.availableBalanceCents < amount) {
+      throw new BadRequestError('Insufficient available wallet balance');
     }
 
-    res.json(wallet);
+    // Atomic debit
+    await prisma.wallet.update({
+      where: { customerProfileId: profileId },
+      data: { totalBalanceCents: { decrement: BigInt(amount) } },
+    });
+
+    const updated = await walletService.getWallet(profileId);
+    res.json(updated);
   } catch (err) {
     next(err);
   }

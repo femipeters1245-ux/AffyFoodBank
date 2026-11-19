@@ -13,6 +13,8 @@ import {
   sendWalletWithdrawalEmail,
 } from '../services/email.service';
 import { walletService } from '../services/wallet.service';
+import { transactPayService } from '../services/transactpay.service';
+import { virtualAccountStore } from '../services/virtual-account.store';
 
 const router = Router();
 
@@ -480,148 +482,239 @@ router.post('/transactpay/verify', async (req: Request, res: Response, next: Nex
 
 
 /**
- * POST /api/v1/payments/transactpay/webhook
- * Handles incoming webhooks from TransactPay for Card, Bank Transfer, and Reserved Accounts.
- * Specification: https://transactpay.readme.io/reference/webhooks-1.md
+ * Webhook Secret Authentication Middleware / Helper
  */
-router.post('/transactpay/webhook', async (req: Request, res: Response) => {
+function isAuthorizedWebhook(req: Request): boolean {
+  const secret = process.env.TRANSACTPAY_WEBHOOK_SECRET;
+  if (!secret) return true; // If not configured yet, pass through to independent API verification
+  const header =
+    req.headers['x-webhook-secret'] ||
+    req.headers['x-transactpay-secret'] ||
+    req.headers['authorization'] ||
+    req.query.secret;
+
+  if (!header) return false;
+  // Normalize to plain string regardless of Express header/query type variants
+  let rawStr: string;
+  if (Array.isArray(header)) {
+    rawStr = typeof header[0] === 'string' ? header[0] : String(header[0] ?? '');
+  } else if (typeof header === 'string') {
+    rawStr = header;
+  } else {
+    rawStr = String(header);
+  }
+  return rawStr.replace(/^Bearer\s+/i, '').trim() === secret.trim();
+}
+
+/**
+ * POST /api/v1/payments/transactpay/webhook/funding
+ * Dedicated Webhook Handler for bank transfer and virtual account deposits.
+ * Documented fields: paymentReference, productName, totalAmountCharged, status, statusId, currencyName, datePaymentConfirmed, sessionId, sourceAccountName, accountReference.
+ */
+router.post('/transactpay/webhook/funding', async (req: Request, res: Response) => {
+  if (!isAuthorizedWebhook(req)) {
+    console.warn('[TransactPay Funding Webhook] Unauthorized request rejected');
+    return res.status(401).json({ status: 'error', message: 'Unauthorized webhook request' });
+  }
+
+  const payload = req.body || {};
+  const data = payload?.data || payload?.Data || payload;
+
+  const sessionId = data?.sessionId || payload?.sessionId;
+  const paymentReference = data?.paymentReference || payload?.paymentReference || `FPAY-${Date.now()}`;
+  const accountReference = data?.accountReference || payload?.accountReference;
+
+  console.log('[TransactPay Funding Webhook] Received event:', {
+    sessionId,
+    paymentReference,
+    accountReference,
+    status: data?.status,
+  });
+
+  if (!sessionId) {
+    return res.status(400).json({ status: 'error', message: 'SessionId is required for funding verification' });
+  }
+
   try {
-    const payload = req.body;
-    console.log('[TransactPay Webhook] Received webhook payload:', JSON.stringify(payload, null, 2));
+    // Phase 2C: Independent Funding Details Verification from TransactPay API
+    const verified = await transactPayService.verifyFundingDetails(sessionId);
 
-    const data = payload?.data || payload?.Data || payload;
-    const orderReference = data?.orderReference || data?.OrderReference || data?.narration;
-    const paymentReference = data?.paymentReference || data?.PaymentReference;
-    const status = data?.status || data?.Status;
-    const statusCode = payload?.statusCode || payload?.StatusCode;
+    // Verify status, currency, and amount
+    const isSuccessful = verified.statusId === 5 || verified.status.toLowerCase() === 'successful';
+    if (!isSuccessful) {
+      console.warn('[TransactPay Funding Webhook] Transaction not confirmed as successful by provider:', verified.status);
+      return res.status(200).json({ status: 'ignored', message: 'Transaction not successful on provider verification' });
+    }
 
-    const isSuccessful =
-      status?.toLowerCase() === 'successful' ||
-      status?.toLowerCase() === 'success' ||
-      statusCode === '00' ||
-      data?.statusId === 5;
+    if (verified.currencyName !== 'NGN') {
+      console.warn('[TransactPay Funding Webhook] Currency mismatch:', verified.currencyName);
+      return res.status(400).json({ status: 'error', message: 'Invalid currency' });
+    }
 
-    if (isSuccessful && orderReference) {
-      console.log(`[TransactPay Webhook] Transaction succeeded for order: ${orderReference} (${paymentReference})`);
+    if (verified.amountCents <= 0) {
+      console.warn('[TransactPay Funding Webhook] Zero or negative amount:', verified.amountCents);
+      return res.status(400).json({ status: 'error', message: 'Invalid transaction amount' });
+    }
 
-      try {
-        // 1. Update database transaction atomically if found
-        const tx = await prisma.walletTransaction.findUnique({
-          where: { reference: orderReference },
+    // Identify customer via VirtualAccount match or email fallback
+    let customerProfileId: string | null = null;
+    let customerEmail: string | null = null;
+    let customerName: string = 'Valued Member';
+
+    const vaLookup = await virtualAccountStore.getByAccountOrReference(
+      verified.accountReference || accountReference || ''
+    );
+
+    if (vaLookup) {
+      customerProfileId = vaLookup.customerProfileId;
+    } else {
+      const email = data?.customer?.email || payload?.email || data?.email;
+      if (email) {
+        const prof = await prisma.customerProfile.findFirst({
+          where: { user: { email } },
+          include: { user: true },
         });
-        if (tx) {
-          if (tx.type === 'DEPOSIT') {
-            await prisma.$transaction(async (db) => {
-              const res = await db.walletTransaction.updateMany({
-                where: {
-                  reference: orderReference,
-                  status: { not: 'SUCCESSFUL' },
-                },
-                data: { status: 'SUCCESSFUL' },
-              });
-              if (res.count > 0) {
-                await db.wallet.update({
-                  where: { id: tx.walletId },
-                  data: { totalBalanceCents: { increment: tx.amountCents } },
-                });
-                console.log(`[TransactPay Webhook] Auto-credited wallet ${tx.walletId} with ${tx.amountCents} cents`);
-              }
-            });
-          } else {
-            await prisma.walletTransaction.update({
-              where: { reference: orderReference },
-              data: { status: 'SUCCESSFUL' },
-            });
-          }
+        if (prof) {
+          customerProfileId = prof.id;
+          customerEmail = prof.user?.email || email;
+          customerName = prof.user?.firstName || 'Valued Member';
         }
-
-        // Update any associated Order to PROCESSING and decrement stock
-        const existingOrder = await prisma.order.findFirst({
-          where: {
-            delivery: { notes: { contains: orderReference } },
-          },
-          include: { items: true },
-        });
-        if (existingOrder && existingOrder.status !== 'PROCESSING') {
-          await prisma.order.update({
-            where: { id: existingOrder.id },
-            data: { status: 'PROCESSING' },
-          });
-          for (const it of existingOrder.items) {
-            systemProductStore.deductStock(it.productId, Number(it.quantity)).catch(() => {});
-          }
-        } else if (orderReference.startsWith('WLT_') || data?.productName === 'Account Funding') {
-          // Automated Virtual Account or Wallet Funding webhook
-          const customerEmail = data?.customer?.emailAddress || data?.customer?.email || data?.email || payload?.email;
-          const chargedCents = Math.round(Number(data?.totalAmountCharged || data?.amount || 0) * 100);
-
-          if (customerEmail && chargedCents > 0) {
-            const customerProfile = await prisma.customerProfile.findFirst({
-              where: { user: { email: customerEmail } },
-              include: { wallet: true },
-            });
-
-            if (customerProfile?.wallet) {
-              const updatedWallet = await walletService.deposit({
-                customerProfileId: customerProfile.id,
-                amountCents: chargedCents,
-                paymentReference: orderReference,
-                description: `Automated Bank Transfer Deposit via TransactPay (${data?.paymentMethod || 'Virtual Account'})`,
-              });
-              console.log(`[TransactPay Webhook] Auto-funded customer wallet ${customerProfile.wallet.id} via virtual account`);
-
-              sendWalletDepositEmail({
-                to: customerEmail,
-                customerName: (customerProfile as any).user?.firstName || 'Valued Member',
-                amountNaira: chargedCents / 100,
-                newBalanceNaira: Number(updatedWallet.totalBalanceCents) / 100,
-                reference: orderReference,
-                channel: data?.paymentMethod || 'TransactPay Virtual Account',
-              }).catch((e) => console.warn('[Deposit Email] Resend note:', e.message));
-            }
-          }
-        }
-      } catch (err: any) {
-        console.warn('[TransactPay Webhook] DB update note:', err.message);
-      }
-
-      // Dispatch Resend email receipt & admin alert on webhook confirmation
-      const customerEmail = data?.customer?.email || data?.email || payload?.email;
-      const chargedAmount = Number(
-        data?.totalAmountCharged || data?.amount || data?.order?.amount || 0
-      );
-      if (customerEmail) {
-        sendOrderReceiptEmail({
-          to: customerEmail,
-          orderReference,
-          amountNaira: chargedAmount,
-          channel: data?.paymentMethod || 'TransactPay Gateway',
-        }).catch((e) => console.warn('[Webhook Email] Receipt note:', e.message));
-
-        sendAdminOrderAlert({
-          orderReference,
-          amountNaira: chargedAmount,
-          customerEmail,
-        }).catch((e) => console.warn('[Webhook Email] Admin alert note:', e.message));
       }
     }
 
-    // TransactPay expects HTTP 200 OK acknowledgment
-    res.status(200).json({
+    if (!customerProfileId) {
+      console.warn('[TransactPay Funding Webhook] No customer profile found matching accountReference:', {
+        accountReference: verified.accountReference,
+      });
+      return res.status(200).json({ status: 'ignored', message: 'Customer account not found' });
+    }
+
+    // Atomic & Idempotent Ledger Credit
+    const updatedWallet = await walletService.creditConfirmedDeposit({
+      customerProfileId,
+      amountCents: verified.amountCents,
+      reference: verified.paymentReference || paymentReference,
+      sessionId: verified.sessionId,
+      providerReference: verified.paymentReference,
+      description: `Bank Transfer Deposit via TransactPay Virtual Account (${verified.sessionId})`,
+    });
+
+    console.log(`[TransactPay Funding Webhook] Confirmed deposit credited to wallet ${updatedWallet.id}: ₦${verified.totalAmountCharged}`);
+
+    // Send confirmation email
+    if (!customerEmail) {
+      const p = await prisma.customerProfile.findUnique({
+        where: { id: customerProfileId },
+        include: { user: true },
+      });
+      customerEmail = p?.user?.email || null;
+      customerName = p?.user?.firstName || customerName;
+    }
+
+    if (customerEmail) {
+      sendWalletDepositEmail({
+        to: customerEmail,
+        customerName,
+        amountNaira: verified.totalAmountCharged,
+        newBalanceNaira: Number(updatedWallet.totalBalanceCents) / 100,
+        reference: verified.paymentReference || paymentReference,
+        channel: 'TransactPay Virtual Account',
+      }).catch((e) => console.warn('[Deposit Email] Note:', e.message));
+    }
+
+    return res.status(200).json({
       status: 'success',
-      message: 'Webhook received and processed',
+      message: 'Funding verified and credited',
+      sessionId: verified.sessionId,
+      amountNaira: verified.totalAmountCharged,
     });
   } catch (err: any) {
-    console.error('[TransactPay Webhook Error]:', err);
-    // Always acknowledge with 200 to avoid webhook retry loops
-    res.status(200).json({ status: 'error', message: err.message });
+    console.error('[TransactPay Funding Webhook Error]:', err.message);
+    return res.status(500).json({ status: 'error', message: err.message });
   }
 });
 
 /**
+ * POST /api/v1/payments/transactpay/webhook/payout
+ * Dedicated Webhook Handler for outbound payout events.
+ * Documented fields: PayoutReference, ProductName, Amount, StatusId, Status, PayoutResponseCode, PayoutResponseMessage, Currency, SessionId.
+ */
+router.post('/transactpay/webhook/payout', async (req: Request, res: Response) => {
+  if (!isAuthorizedWebhook(req)) {
+    console.warn('[TransactPay Payout Webhook] Unauthorized request rejected');
+    return res.status(401).json({ status: 'error', message: 'Unauthorized webhook request' });
+  }
+
+  const payload = req.body || {};
+  const data = payload?.data || payload?.Data || payload;
+
+  const clientReference =
+    data?.clientReference ||
+    data?.PayoutReference ||
+    payload?.PayoutReference ||
+    data?.narration;
+
+  console.log('[TransactPay Payout Webhook] Received payout event:', {
+    clientReference,
+    status: data?.Status || data?.status,
+    responseCode: data?.PayoutResponseCode,
+  });
+
+  if (!clientReference) {
+    return res.status(400).json({ status: 'error', message: 'ClientReference is required' });
+  }
+
+  try {
+    // Requery independently before finalizing
+    const requery = await transactPayService.requeryPayout(clientReference);
+
+    if (requery.status === 'SUCCESSFUL') {
+      await walletService.finalizeSuccessfulWithdrawal({
+        clientReference,
+        providerReference: requery.providerReference,
+      });
+      console.log(`[TransactPay Payout Webhook] Withdrawal finalized as SUCCESSFUL: ${clientReference}`);
+    } else if (requery.status === 'FAILED') {
+      await walletService.releaseFailedWithdrawal({
+        clientReference,
+        reason: requery.responseMessage || 'Provider reported payout failure',
+        providerReference: requery.providerReference,
+      });
+      console.log(`[TransactPay Payout Webhook] Withdrawal marked FAILED and funds released: ${clientReference}`);
+    }
+
+    return res.status(200).json({
+      status: 'success',
+      message: 'Payout event processed and verified',
+      clientReference,
+      currentStatus: requery.status,
+    });
+  } catch (err: any) {
+    console.error('[TransactPay Payout Webhook Error]:', err.message);
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+/**
+ * POST /api/v1/payments/transactpay/webhook
+ * Unified fallback webhook handler routing to funding or payout handler based on payload shape.
+ */
+router.post('/transactpay/webhook', async (req: Request, res: Response) => {
+  const payload = req.body || {};
+  const data = payload?.data || payload?.Data || payload;
+
+  if (data?.PayoutReference || payload?.PayoutReference || data?.clientReference?.startsWith('WLT_WDR_')) {
+    // Payout event
+    return (router as any).handle({ ...req, url: '/transactpay/webhook/payout' }, res);
+  }
+
+  // Otherwise, default to funding / deposit event
+  return (router as any).handle({ ...req, url: '/transactpay/webhook/funding' }, res);
+});
+
+/**
  * GET /api/v1/payments/transactpay/banks
- * Fetches list of Nigerian commercial & fintech banks from TransactPay for automated withdrawals/payouts.
- * Specification: https://transactpay.readme.io/reference/get_payment-banks-1.md
+ * Fetches list of Nigerian commercial & fintech banks from TransactPay.
  */
 router.get('/transactpay/banks', async (_req: Request, res: Response) => {
   const fallbackBanks = [
@@ -650,9 +743,7 @@ router.get('/transactpay/banks', async (_req: Request, res: Response) => {
   try {
     const tpRes = await fetch(`${TRANSACTPAY_BASE_URL}/payment/banks`, {
       method: 'GET',
-      headers: {
-        accept: 'application/json',
-      },
+      headers: { accept: 'application/json' },
     });
 
     if (tpRes.ok) {
@@ -665,7 +756,7 @@ router.get('/transactpay/banks', async (_req: Request, res: Response) => {
       }
     }
   } catch (err: any) {
-    console.warn('[TransactPay Banks] Using curated fallback banks:', err.message);
+    console.warn('[TransactPay Banks] Using fallback banks list:', err.message);
   }
 
   res.json({
@@ -677,66 +768,90 @@ router.get('/transactpay/banks', async (_req: Request, res: Response) => {
 /**
  * POST /api/v1/payments/transactpay/virtual-account
  * Generates an automated Virtual Account for dedicated wallet deposits.
- * Specification: https://transactpay.readme.io/docs/accept-bank-transfers-with-virtual-accounts.md
+ * Reuses existing persistent account per customer profile.
  */
 router.post('/transactpay/virtual-account', async (req: Request, res: Response, next: NextFunction) => {
   try {
     const { amountNaira, customerName, email } = req.body;
-    const reference = `WLT_VA_${Date.now()}_${uuidv4().slice(0, 6)}`;
-    const secretKey = process.env.TRANSACTPAY_SECRET_KEY;
-    const encKey = process.env.TRANSACTPAY_ENCRYPTION_KEY;
 
-    const payload = {
-      customer_name: customerName || 'Affy Customer',
-      reference,
-      currency: 'NGN',
-      amount: amountNaira ? Number(amountNaira) : undefined,
-      email: email || 'customer@affyfoodbank.ng',
-    };
+    // 1. Resolve customer profile
+    let customerProfile = req.user?.sub
+      ? await prisma.customerProfile.findFirst({
+          where: { userId: req.user.sub },
+          include: { user: true },
+        })
+      : null;
 
-    let createdAccount: any = null;
-
-    if (secretKey || encKey) {
-      try {
-        const bodyPayload = encKey
-          ? { data: encryptTransactPayPayload(payload, encKey) }
-          : payload;
-
-        const tpRes = await fetch(`${TRANSACTPAY_BASE_URL}/virtual-account/create`, {
-          method: 'POST',
-          headers: {
-            'accept': 'application/json',
-            'content-type': 'application/json',
-            ...(secretKey ? { Authorization: `Bearer ${secretKey}` } : {}),
-            ...(process.env.TRANSACTPAY_PUBLIC_KEY ? { 'api-key': process.env.TRANSACTPAY_PUBLIC_KEY } : {}),
-          },
-          body: JSON.stringify(bodyPayload),
-        });
-
-        const resData: any = await tpRes.json();
-        console.log('[TransactPay VA Create] Response:', JSON.stringify(resData));
-        if (resData.status === true || resData.status === 'success' || resData.data) {
-          createdAccount = resData.data;
-        }
-      } catch (err: any) {
-        console.warn('[TransactPay VA] API warning:', err.message);
-      }
+    if (!customerProfile && email) {
+      customerProfile = await prisma.customerProfile.findFirst({
+        where: { user: { email } },
+        include: { user: true },
+      });
     }
 
-    // Dynamic virtual account with Wema / Providus Bank integration
-    const accountNumber = createdAccount?.account_number || createdAccount?.accountNumber || `99${Math.floor(10000000 + Math.random() * 90000000)}`;
-    const bankName = createdAccount?.bank_name || createdAccount?.bankName || 'Wema Bank (TransactPay PSSP)';
-    const accountName = createdAccount?.account_name || createdAccount?.accountName || `Affy / ${customerName || 'Customer'}`;
+    const profileId = customerProfile?.id || req.user?.profileId || `temp-${email || 'guest'}`;
+
+    // 2. Check if customer already has a dedicated virtual account
+    const existing = await virtualAccountStore.getByCustomerProfileId(profileId);
+    if (existing) {
+      return res.json({
+        status: 'success',
+        reference: existing.accountReference,
+        accountNumber: existing.accountNumber,
+        bankName: existing.bankName,
+        accountName: existing.accountName,
+        amountNaira: amountNaira ? Number(amountNaira) : null,
+        currency: existing.currency,
+        instructions: 'Transfer the exact amount to your dedicated Affy FoodBank account number. Your wallet will credit automatically upon bank clearing.',
+      });
+    }
+
+    // 3. Generate through TransactPay API
+    const alias = (customerName || customerProfile?.user?.firstName || 'Affy Customer').trim();
+    const reference = `WLT_VA_${Date.now()}_${uuidv4().slice(0, 8)}`;
+
+    let generated: any;
+    try {
+      generated = await transactPayService.generateVirtualAccount({
+        alias,
+        reference,
+        narration: `Affy FoodBank Wallet - ${alias}`,
+      });
+    } catch (genErr: any) {
+      console.warn('[TransactPay VA] Provider generation notice:', genErr.message);
+      // In sandbox/test environment if key credentials restrict VA creation, create a consistent sandbox virtual account
+      generated = {
+        accountNumber: `77${Math.floor(10000000 + Math.random() * 90000000)}`,
+        bankName: 'Wema Bank (TransactPay PSSP)',
+        accountName: `Affy / ${alias}`,
+        accountReference: reference,
+        alias,
+        currency: 'NGN',
+      };
+    }
+
+    // 4. Save account permanently linked to customer profile
+    await virtualAccountStore.save({
+      customerProfileId: profileId,
+      accountNumber: generated.accountNumber,
+      bankName: generated.bankName,
+      accountName: generated.accountName,
+      accountReference: generated.accountReference || reference,
+      alias,
+      currency: generated.currency || 'NGN',
+      provider: 'TRANSACTPAY',
+      isActive: true,
+    });
 
     res.json({
       status: 'success',
-      reference,
-      accountNumber,
-      bankName,
-      accountName,
+      reference: generated.accountReference || reference,
+      accountNumber: generated.accountNumber,
+      bankName: generated.bankName,
+      accountName: generated.accountName,
       amountNaira: amountNaira ? Number(amountNaira) : null,
       currency: 'NGN',
-      instructions: 'Transfer the exact amount to this dedicated account number. Your Affy FoodBank wallet will be credited automatically upon bank confirmation.',
+      instructions: 'Transfer the exact amount to this dedicated account number. Your Affy FoodBank wallet will credit automatically upon bank clearing.',
     });
   } catch (err) {
     next(err);
@@ -744,10 +859,47 @@ router.post('/transactpay/virtual-account', async (req: Request, res: Response, 
 });
 
 /**
+ * POST /api/v1/payments/transactpay/name-enquiry
+ * Validates bank code and account number, returning registered beneficiary account name.
+ */
+router.post('/transactpay/name-enquiry', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { accountNumber, bankCode } = req.body;
+    if (!accountNumber || accountNumber.trim().length !== 10) {
+      throw new BadRequestError('Valid 10-digit account number is required');
+    }
+    if (!bankCode) {
+      throw new BadRequestError('Bank code is required');
+    }
+
+    try {
+      const result = await transactPayService.nameEnquiry({
+        accountNumber: accountNumber.trim(),
+        bankCode: bankCode.trim(),
+      });
+
+      return res.json({
+        status: 'success',
+        accountName: result.accountName,
+        accountNumber: result.accountNumber,
+        bankCode: result.bankCode,
+      });
+    } catch (neErr: any) {
+      console.warn('[TransactPay Name Enquiry] Notice:', neErr.message);
+      return res.status(400).json({
+        status: 'error',
+        message: neErr.message || 'Beneficiary name enquiry failed. Check account number and bank code.',
+      });
+    }
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * POST /api/v1/payments/transactpay/payout
- * Initiates an automated withdrawal from customer wallet directly to a Nigerian bank account via TransactPay Payout API.
+ * Initiates an automated withdrawal with fund reservation.
  * Requires user authentication.
- * Specification: https://transactpay.readme.io/reference/payout.md
  */
 router.post('/transactpay/payout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -768,7 +920,7 @@ router.post('/transactpay/payout', authenticate, async (req: Request, res: Respo
     if (!amountNum || amountNum <= 0) {
       throw new BadRequestError('Valid withdrawal amount in Naira is required');
     }
-    if (!accountNumber || accountNumber.length < 10) {
+    if (!accountNumber || accountNumber.trim().length !== 10) {
       throw new BadRequestError('Valid 10-digit Nigerian bank account number is required');
     }
     if (!bankCode) {
@@ -779,7 +931,7 @@ router.post('/transactpay/payout', authenticate, async (req: Request, res: Respo
     }
 
     const amountCents = Math.round(amountNum * 100);
-    const payoutReference = `WLT_WDR_${Date.now()}_${uuidv4().slice(0, 8)}`;
+    const clientReference = `WLT_WDR_${Date.now()}_${uuidv4().replace(/-/g, '').slice(0, 8)}`;
 
     // 1. Resolve customer profile strictly for authenticated user
     let customerProfile = await prisma.customerProfile.findFirst({
@@ -798,141 +950,148 @@ router.post('/transactpay/payout', authenticate, async (req: Request, res: Respo
       throw new BadRequestError('Customer wallet profile not found');
     }
 
-    const wallet = customerProfile.wallet;
-    const availableCents = Number(wallet.totalBalanceCents) - Number(wallet.allocatedToSavingsCents);
-    if (availableCents < amountCents) {
-      throw new BadRequestError(
-        `Insufficient wallet balance. Available: ₦${(availableCents / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}`
-      );
-    }
+    // 2. Atomically check balance and reserve funds BEFORE calling provider
+    await walletService.reserveWithdrawalFunds({
+      customerProfileId: customerProfile.id,
+      amountCents,
+      clientReference,
+      description: description || `Withdrawal to ${bankName || 'Bank'} (${accountNumber}) - ${accountName}`,
+    });
 
-    // Atomically decrement wallet and record withdrawal transaction
-    await prisma.$transaction([
-      prisma.wallet.update({
-        where: { id: wallet.id },
-        data: { totalBalanceCents: { decrement: amountCents } },
-      }),
-      prisma.walletTransaction.create({
-        data: {
-          id: uuidv4(),
-          walletId: wallet.id,
-          customerId: customerProfile.id,
-          reference: payoutReference,
-          type: 'WITHDRAWAL',
-          amountCents: BigInt(amountCents),
-          currency: 'NGN',
-          direction: 'OUT',
-          status: 'PENDING',
-          description: description || `Withdrawal to ${bankName || 'Bank'} (${accountNumber}) - ${accountName}`,
-          paymentReference: payoutReference,
-        },
-      }),
-    ]);
-
-    // 2. Dispatch Automated Payout to TransactPay Payout API
-    const publicKey = process.env.TRANSACTPAY_PUBLIC_KEY || 'PGW-PUBLICKEY-493151248075433389622408C227C1E2';
-    const encKey = process.env.TRANSACTPAY_ENCRYPTION_KEY;
-
-    const payoutPayload = {
-      payoutDetails: [
-        {
-          clientReference: payoutReference,
-          accountNumber,
-          bankCode,
-          amount: amountNum,
-          description: description || 'Affy FoodBank Automated Wallet Withdrawal',
-          accountName,
-          creditCurrency: 'NGN',
-          debitCurrency: 'NGN',
-        },
-      ],
-    };
-
-    let gatewayResult: any = null;
-
+    // 3. Dispatch automated payout to TransactPay
+    let initiationResult: any;
     try {
-      const bodyPayload = encKey
-        ? { data: encryptTransactPayPayload(payoutPayload, encKey) }
-        : payoutPayload;
-
-      const tpRes = await fetch(`${TRANSACTPAY_BASE_URL}/payout/initiate`, {
-        method: 'POST',
-        headers: {
-          'accept': 'application/json',
-          'content-type': 'application/json',
-          'api-key': publicKey,
-        },
-        body: JSON.stringify(bodyPayload),
+      initiationResult = await transactPayService.initiatePayout({
+        clientReference,
+        accountNumber: accountNumber.trim(),
+        bankCode: bankCode.trim(),
+        amountNaira: amountNum,
+        description: description || 'Affy FoodBank Wallet Withdrawal',
+        accountName: accountName.trim(),
       });
-
-      gatewayResult = await tpRes.json();
-      console.log('[TransactPay Payout] Response:', JSON.stringify(gatewayResult));
     } catch (tpErr: any) {
-      console.warn('[TransactPay Payout] Gateway network warning:', tpErr.message);
-    }
-
-    // Check for explicit gateway failure (e.g., rejected recipient bank details)
-    if (gatewayResult && gatewayResult.status === 'error') {
-      // Re-credit the wallet balance and mark transaction as FAILED
-      await prisma.$transaction([
-        prisma.wallet.update({
-          where: { id: wallet.id },
-          data: { totalBalanceCents: { increment: amountCents } },
-        }),
-        prisma.walletTransaction.updateMany({
-          where: { reference: payoutReference },
-          data: { status: 'FAILED' },
-        }),
-      ]);
-      throw new BadRequestError(
-        gatewayResult.message || gatewayResult.statusDescription || 'Payout was rejected by bank gateway. Your wallet balance has been refunded.'
-      );
-    }
-
-    // 3. Mark transaction as SUCCESSFUL or PENDING in database
-    const payoutStatus = gatewayResult?.status === 'success' || gatewayResult?.statusCode === '00' ? 'SUCCESSFUL' : 'PENDING';
-    try {
-      await prisma.walletTransaction.updateMany({
-        where: { reference: payoutReference },
-        data: {
-          status: payoutStatus,
-        },
+      console.warn('[TransactPay Payout] Immediate initiation error, releasing reserved funds:', tpErr.message);
+      await walletService.releaseFailedWithdrawal({
+        clientReference,
+        reason: tpErr.message || 'Gateway rejected payout initiation',
       });
-    } catch {}
+      throw new BadRequestError(`Payout failed to initiate: ${tpErr.message}`);
+    }
 
-    // 4. Send withdrawal receipt email via Resend
+    // 4. Send withdrawal initiation receipt email
     try {
       const recipientEmail = customerProfile.user.email || req.user.email;
       const recipientName = [customerProfile.user.firstName, customerProfile.user.lastName].filter(Boolean).join(' ') || accountName;
-      const remainingBalanceNaira = Math.max(0, (availableCents - amountCents) / 100);
+      const currentWallet = await walletService.getWallet(customerProfile.id);
 
       if (recipientEmail) {
         sendWalletWithdrawalEmail({
           to: recipientEmail,
           customerName: recipientName || 'Affy Customer',
           amountNaira: amountNum,
-          remainingBalanceNaira,
+          remainingBalanceNaira: currentWallet.availableBalanceCents / 100,
           bankName: bankName || 'Bank Account',
           accountNumber,
-          reference: payoutReference,
-          status: payoutStatus as 'SUCCESSFUL' | 'PENDING',
+          reference: clientReference,
+          status: 'PENDING',
         }).catch((err) => console.warn('[Resend] Withdrawal email failed:', err.message));
       }
-    } catch (e: any) {
-      console.warn('[Resend] Could not construct withdrawal email:', e.message);
-    }
+    } catch {}
 
+    // Notice: Response status is PENDING (funds reserved). Final debit happens upon verified confirmation.
     res.json({
-      status: 'success',
-      reference: payoutReference,
-      batchReference: gatewayResult?.data?.batchReference || `PGW-BATCH-${uuidv4().replace(/-/g, '').slice(0, 16).toUpperCase()}`,
+      status: 'pending',
+      reference: clientReference,
+      batchReference: initiationResult.batchReference || `BATCH-${clientReference}`,
       amountNaira: amountNum,
       destination: {
         bankName: bankName || 'Commercial Bank',
         accountNumber,
         accountName,
       },
-      message: 'Automated withdrawal initiated successfully via TransactPay Payout Service. Funds will arrive within minutes.',
+      message: 'Withdrawal initiated successfully. Funds are reserved and will complete upon bank clearing.',
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/payments/transactpay/payout/status/:clientReference
+ * Explicit requery of payout status
+ */
+router.get('/transactpay/payout/status/:clientReference', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { clientReference } = req.params;
+    if (!clientReference) throw new BadRequestError('clientReference is required');
+
+    const requery = await transactPayService.requeryPayout(clientReference);
+
+    if (requery.status === 'SUCCESSFUL') {
+      await walletService.finalizeSuccessfulWithdrawal({
+        clientReference,
+        providerReference: requery.providerReference,
+      });
+    } else if (requery.status === 'FAILED') {
+      await walletService.releaseFailedWithdrawal({
+        clientReference,
+        reason: requery.responseMessage,
+        providerReference: requery.providerReference,
+      });
+    }
+
+    res.json({
+      status: requery.status,
+      clientReference,
+      providerReference: requery.providerReference,
+      message: requery.responseMessage,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/payments/transactpay/payout/reconcile-stale
+ * Reconciles all pending payouts older than 2 minutes across the system
+ */
+router.post('/transactpay/payout/reconcile-stale', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const staleTxs = await prisma.walletTransaction.findMany({
+      where: {
+        type: 'WITHDRAWAL',
+        status: 'PENDING',
+        createdAt: { lt: new Date(Date.now() - 120000) },
+      },
+      take: 20,
+    });
+
+    const results: Array<{ reference: string; status: string; error?: string }> = [];
+    for (const tx of staleTxs) {
+      try {
+        const requery = await transactPayService.requeryPayout(tx.reference);
+        if (requery.status === 'SUCCESSFUL') {
+          await walletService.finalizeSuccessfulWithdrawal({
+            clientReference: tx.reference,
+            providerReference: requery.providerReference,
+          });
+        } else if (requery.status === 'FAILED') {
+          await walletService.releaseFailedWithdrawal({
+            clientReference: tx.reference,
+            reason: requery.responseMessage,
+            providerReference: requery.providerReference,
+          });
+        }
+        results.push({ reference: tx.reference, status: requery.status });
+      } catch (e: any) {
+        results.push({ reference: tx.reference, status: 'ERROR', error: e.message });
+      }
+    }
+
+    res.json({
+      status: 'success',
+      reconciledCount: results.length,
+      details: results,
     });
   } catch (err) {
     next(err);
@@ -942,7 +1101,6 @@ router.post('/transactpay/payout', authenticate, async (req: Request, res: Respo
 /**
  * GET /api/v1/payments/transactpay/config
  * Exposes TransactPay public keys and merchant configuration for Standard Kit client integration.
- * Specification: https://transactpay.readme.io/docs/standard-kit-checkout.md
  */
 router.get('/transactpay/config', (_req: Request, res: Response) => {
   res.json({
@@ -954,3 +1112,4 @@ router.get('/transactpay/config', (_req: Request, res: Response) => {
 });
 
 export default router;
+
