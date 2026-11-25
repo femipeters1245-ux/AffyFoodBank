@@ -14,7 +14,7 @@
   "crons": [
     {
       "path": "/api/v1/payments/transactpay/payout/reconcile-stale",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 2 * * *"
     }
   ],
   "rewrites": [
