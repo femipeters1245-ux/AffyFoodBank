@@ -425,6 +425,39 @@ export const AdminDashboardPage: React.FC = () => {
     totalCustFundsCents: number;
   } | null>(null);
 
+  // ─── TransactPay Dedicated Funding Events Oversight ─────────────────────────
+  const [fundingEvents, setFundingEvents] = useState<any[]>([]);
+  const [fundingEventsLoading, setFundingEventsLoading] = useState(false);
+  const [fundingFilter, setFundingFilter] = useState<'ALL' | 'NEEDS_REVIEW'>('ALL');
+  const [reverifyingSessionId, setReverifyingSessionId] = useState<string | null>(null);
+
+  const loadFundingEvents = useCallback(async (needsReview = false) => {
+    try {
+      setFundingEventsLoading(true);
+      const res = await adminApi.getFundingEvents({ needsReview });
+      if (res?.events) {
+        setFundingEvents(res.events);
+      }
+    } catch (e) {
+      console.warn('[Admin] Could not load funding events:', e);
+    } finally {
+      setFundingEventsLoading(false);
+    }
+  }, []);
+
+  const handleReverify = async (sessionId: string) => {
+    try {
+      setReverifyingSessionId(sessionId);
+      const res = await adminApi.reverifyFundingEvent(sessionId);
+      alert(`Re-verification result: ${res.status} - ${res.message}`);
+      loadFundingEvents(fundingFilter === 'NEEDS_REVIEW');
+    } catch (err: any) {
+      alert(`Re-verification error: ${err.response?.data?.message || err.message}`);
+    } finally {
+      setReverifyingSessionId(null);
+    }
+  };
+
   const loadProducts = useCallback(async () => {
     try {
       setProductsLoading(true);
@@ -490,6 +523,12 @@ export const AdminDashboardPage: React.FC = () => {
       window.removeEventListener('affy_packages_updated', handlePackagesChange);
     };
   }, [loadProducts, loadPackages]);
+
+  useEffect(() => {
+    if (activeTab === 'transactions') {
+      loadFundingEvents(fundingFilter === 'NEEDS_REVIEW');
+    }
+  }, [activeTab, fundingFilter, loadFundingEvents]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
@@ -2274,6 +2313,157 @@ export const AdminDashboardPage: React.FC = () => {
               <div className="text-2xl font-black text-emerald-700 mt-1">
                 {transactions.filter((t) => t.status === 'SUCCESSFUL').length} of {transactions.length}
               </div>
+            </div>
+          </div>
+
+          {/* ─── TransactPay Dedicated Virtual Account Funding Oversight (Step 7) ─── */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              <div>
+                <div className="flex items-center space-x-2">
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
+                    ⚡ Provider Verification Audit
+                  </span>
+                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold">
+                    TransactPay Reserved Accounts
+                  </span>
+                </div>
+                <h2 className="text-lg font-black text-slate-900 mt-1">Virtual Account Funding Oversight</h2>
+                <p className="text-xs text-slate-500">
+                  Read-only audit of customer bank transfers. Wallet balances are credited strictly upon independent API confirmation.
+                </p>
+              </div>
+
+              {/* Filter Tabs */}
+              <div className="flex items-center space-x-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFundingFilter('ALL');
+                    loadFundingEvents(false);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                    fundingFilter === 'ALL'
+                      ? 'bg-slate-900 text-white'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  All Events ({fundingEvents.length})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFundingFilter('NEEDS_REVIEW');
+                    loadFundingEvents(true);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-colors ${
+                    fundingFilter === 'NEEDS_REVIEW'
+                      ? 'bg-rose-600 text-white'
+                      : 'bg-rose-50 text-rose-700 border border-rose-200 hover:bg-rose-100'
+                  }`}
+                >
+                  ⚠️ Needs Review
+                </button>
+                <button
+                  type="button"
+                  onClick={() => loadFundingEvents(fundingFilter === 'NEEDS_REVIEW')}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-colors"
+                >
+                  🔄 Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100 text-[10px]">
+                  <tr>
+                    <th className="px-6 py-3.5">Session ID &amp; Ref</th>
+                    <th className="px-6 py-3.5">Customer &amp; Account</th>
+                    <th className="px-6 py-3.5">Amount (NGN)</th>
+                    <th className="px-6 py-3.5">Status</th>
+                    <th className="px-6 py-3.5">Provider Details / Notes</th>
+                    <th className="px-6 py-3.5 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {fundingEventsLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                        Loading funding events from database...
+                      </td>
+                    </tr>
+                  ) : fundingEvents.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-6 py-12 text-center text-slate-400">
+                        {fundingFilter === 'NEEDS_REVIEW'
+                          ? '✓ No unmatched or failed funding events requiring review.'
+                          : 'No virtual account funding events recorded yet.'}
+                      </td>
+                    </tr>
+                  ) : (
+                    fundingEvents.map((ev) => {
+                      const isCredited = ev.status === 'CREDITED';
+                      const isPending = ev.status === 'RECEIVED' || ev.status === 'VERIFYING';
+                      return (
+                        <tr key={ev.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-6 py-4">
+                            <div className="font-mono font-bold text-slate-900 text-xs">{ev.sessionId}</div>
+                            <div className="text-[10px] text-slate-400 font-mono mt-0.5">{ev.paymentReference}</div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-bold text-slate-900">{ev.customerName || 'Unassigned'}</div>
+                            <div className="text-[10px] text-slate-500 font-mono">
+                              VA: {ev.destinationAccountNumber || ev.accountReference || '—'}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4">
+                            <div className="font-extrabold text-slate-900">
+                              ₦{(ev.netAmountNaira || ev.grossAmountNaira || 0).toLocaleString()}
+                            </div>
+                            {ev.feeNaira > 0 && (
+                              <div className="text-[10px] text-slate-400">Fee: ₦{ev.feeNaira.toLocaleString()}</div>
+                            )}
+                          </td>
+                          <td className="px-6 py-4">
+                            <span
+                              className={`inline-flex items-center space-x-1.5 border px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                                isCredited
+                                  ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                  : isPending
+                                  ? 'text-amber-700 bg-amber-50 border-amber-200'
+                                  : 'text-rose-700 bg-rose-50 border-rose-200'
+                              }`}
+                            >
+                              <span>●</span>
+                              <span>{ev.status}</span>
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 max-w-xs">
+                            <div className="text-[11px] text-slate-600 truncate">
+                              {ev.failureReason || (isCredited ? 'Verified with TransactPay' : 'Awaiting confirmation')}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-0.5">
+                              {new Date(ev.createdAt).toLocaleString()}
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              type="button"
+                              disabled={isCredited || reverifyingSessionId === ev.sessionId}
+                              onClick={() => handleReverify(ev.sessionId)}
+                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-bold text-[11px] rounded-lg transition-colors"
+                              title={isCredited ? 'Already credited' : 'Re-run independent verification'}
+                            >
+                              {reverifyingSessionId === ev.sessionId ? 'Verifying...' : 'Re-verify ➔'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 

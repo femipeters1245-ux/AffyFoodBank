@@ -15,6 +15,7 @@ import {
 import { walletService } from '../services/wallet.service';
 import { transactPayService } from '../services/transactpay.service';
 import { virtualAccountStore } from '../services/virtual-account.store';
+import { fundingService } from '../services/funding.service';
 
 const router = Router();
 
@@ -510,6 +511,8 @@ function isAuthorizedWebhook(req: Request): boolean {
  * POST /api/v1/payments/transactpay/webhook/funding
  * Dedicated Webhook Handler for bank transfer and virtual account deposits.
  * Documented fields: paymentReference, productName, totalAmountCharged, status, statusId, currencyName, datePaymentConfirmed, sessionId, sourceAccountName, accountReference.
+ *
+ * Durably records event first before acknowledging HTTP 200, then triggers independent TransactPay verification.
  */
 router.post('/transactpay/webhook/funding', async (req: Request, res: Response) => {
   if (!isAuthorizedWebhook(req)) {
@@ -520,114 +523,39 @@ router.post('/transactpay/webhook/funding', async (req: Request, res: Response) 
   const payload = req.body || {};
   const data = payload?.data || payload?.Data || payload;
 
-  const sessionId = data?.sessionId || payload?.sessionId;
-  const paymentReference = data?.paymentReference || payload?.paymentReference || `FPAY-${Date.now()}`;
-  const accountReference = data?.accountReference || payload?.accountReference;
-
-  console.log('[TransactPay Funding Webhook] Received event:', {
-    sessionId,
-    paymentReference,
-    accountReference,
-    status: data?.status,
-  });
-
+  const sessionId = (data?.sessionId || payload?.sessionId || '').toString().trim();
   if (!sessionId) {
     return res.status(400).json({ status: 'error', message: 'SessionId is required for funding verification' });
   }
 
+  const paymentReference = (data?.paymentReference || payload?.paymentReference || `FPAY-${Date.now()}`).toString().trim();
+
+  console.log('[TransactPay Funding Webhook] Received event:', {
+    sessionId,
+    paymentReference,
+    accountReference: data?.accountReference || payload?.accountReference,
+  });
+
   try {
-    // Phase 2C: Independent Funding Details Verification from TransactPay API
-    const verified = await transactPayService.verifyFundingDetails(sessionId);
+    // 1. Durably record the raw event in WalletFundingEvent table (deduplicated by sessionId / paymentReference)
+    const { isDuplicate } = await fundingService.recordFundingEvent(payload);
 
-    // Verify status, currency, and amount
-    const isSuccessful = verified.statusId === 5 || verified.status.toLowerCase() === 'successful';
-    if (!isSuccessful) {
-      console.warn('[TransactPay Funding Webhook] Transaction not confirmed as successful by provider:', verified.status);
-      return res.status(200).json({ status: 'ignored', message: 'Transaction not successful on provider verification' });
-    }
-
-    if (verified.currencyName !== 'NGN') {
-      console.warn('[TransactPay Funding Webhook] Currency mismatch:', verified.currencyName);
-      return res.status(400).json({ status: 'error', message: 'Invalid currency' });
-    }
-
-    if (verified.amountCents <= 0) {
-      console.warn('[TransactPay Funding Webhook] Zero or negative amount:', verified.amountCents);
-      return res.status(400).json({ status: 'error', message: 'Invalid transaction amount' });
-    }
-
-    // Identify customer via VirtualAccount match or email fallback
-    let customerProfileId: string | null = null;
-    let customerEmail: string | null = null;
-    let customerName: string = 'Valued Member';
-
-    const vaLookup = await virtualAccountStore.getByAccountOrReference(
-      verified.accountReference || accountReference || ''
-    );
-
-    if (vaLookup) {
-      customerProfileId = vaLookup.customerProfileId;
-    } else {
-      const email = data?.customer?.email || payload?.email || data?.email;
-      if (email) {
-        const prof = await prisma.customerProfile.findFirst({
-          where: { user: { email } },
-          include: { user: true },
-        });
-        if (prof) {
-          customerProfileId = prof.id;
-          customerEmail = prof.user?.email || email;
-          customerName = prof.user?.firstName || 'Valued Member';
-        }
-      }
-    }
-
-    if (!customerProfileId) {
-      console.warn('[TransactPay Funding Webhook] No customer profile found matching accountReference:', {
-        accountReference: verified.accountReference,
-      });
-      return res.status(200).json({ status: 'ignored', message: 'Customer account not found' });
-    }
-
-    // Atomic & Idempotent Ledger Credit
-    const updatedWallet = await walletService.creditConfirmedDeposit({
-      customerProfileId,
-      amountCents: verified.amountCents,
-      reference: verified.paymentReference || paymentReference,
-      sessionId: verified.sessionId,
-      providerReference: verified.paymentReference,
-      description: `Bank Transfer Deposit via TransactPay Virtual Account (${verified.sessionId})`,
-    });
-
-    console.log(`[TransactPay Funding Webhook] Confirmed deposit credited to wallet ${updatedWallet.id}: ₦${verified.totalAmountCharged}`);
-
-    // Send confirmation email
-    if (!customerEmail) {
-      const p = await prisma.customerProfile.findUnique({
-        where: { id: customerProfileId },
-        include: { user: true },
-      });
-      customerEmail = p?.user?.email || null;
-      customerName = p?.user?.firstName || customerName;
-    }
-
-    if (customerEmail) {
-      sendWalletDepositEmail({
-        to: customerEmail,
-        customerName,
-        amountNaira: verified.totalAmountCharged,
-        newBalanceNaira: Number(updatedWallet.totalBalanceCents) / 100,
-        reference: verified.paymentReference || paymentReference,
-        channel: 'TransactPay Virtual Account',
-      }).catch((e) => console.warn('[Deposit Email] Note:', e.message));
-    }
-
-    return res.status(200).json({
+    // 2. Acknowledge with HTTP 200 once durably recorded
+    res.status(200).json({
       status: 'success',
-      message: 'Funding verified and credited',
-      sessionId: verified.sessionId,
-      amountNaira: verified.totalAmountCharged,
+      message: 'Funding event received and durably recorded',
+      sessionId,
+      isDuplicate,
     });
+
+    // 3. Trigger independent verification & atomic crediting asynchronously
+    fundingService.verifyAndProcessFundingEvent(sessionId)
+      .then((result) => {
+        console.log(`[TransactPay Funding Webhook] Verification completed: ${result.status} - ${result.message}`);
+      })
+      .catch((err) => {
+        console.error('[TransactPay Funding Webhook] Background verification error:', err.message);
+      });
   } catch (err: any) {
     console.error('[TransactPay Funding Webhook Error]:', err.message);
     return res.status(500).json({ status: 'error', message: err.message });
@@ -767,92 +695,178 @@ router.get('/transactpay/banks', async (_req: Request, res: Response) => {
 
 /**
  * POST /api/v1/payments/transactpay/virtual-account
- * Generates an automated Virtual Account for dedicated wallet deposits.
+ * Generates an automated permanent Virtual Account for dedicated wallet funding.
  * Reuses existing persistent account per customer profile.
+ * Concurrency-safe: uses mutex lock so simultaneous requests return the exact same account.
+ * Recovery-capable: queries getAccountDetailsByAlias before making a new generate call.
+ * Strictly avoids fake account numbers on provider failure.
  */
-router.post('/transactpay/virtual-account', async (req: Request, res: Response, next: NextFunction) => {
+router.post('/transactpay/virtual-account', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { amountNaira, customerName, email } = req.body;
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedError('Authentication required to generate or access virtual account');
+    }
 
-    // 1. Resolve customer profile
-    let customerProfile = req.user?.sub
-      ? await prisma.customerProfile.findFirst({
-          where: { userId: req.user.sub },
-          include: { user: true },
-        })
-      : null;
+    // 1. Resolve customer profile from authenticated session
+    let customerProfile = await prisma.customerProfile.findFirst({
+      where: { userId },
+      include: { user: true },
+    });
 
-    if (!customerProfile && email) {
-      customerProfile = await prisma.customerProfile.findFirst({
-        where: { user: { email } },
+    if (!customerProfile) {
+      customerProfile = await prisma.customerProfile.create({
+        data: { userId },
         include: { user: true },
       });
     }
 
-    const profileId = customerProfile?.id || req.user?.profileId || `temp-${email || 'guest'}`;
+    const profileId = customerProfile.id;
 
-    // 2. Check if customer already has a dedicated virtual account
-    const existing = await virtualAccountStore.getByCustomerProfileId(profileId);
-    if (existing) {
-      return res.json({
-        status: 'success',
-        reference: existing.accountReference,
-        accountNumber: existing.accountNumber,
-        bankName: existing.bankName,
-        accountName: existing.accountName,
-        amountNaira: amountNaira ? Number(amountNaira) : null,
-        currency: existing.currency,
-        instructions: 'Transfer the exact amount to your dedicated Affy FoodBank account number. Your wallet will credit automatically upon bank clearing.',
-      });
-    }
+    // Concurrency Lock: ensures only one generation task runs per customer profile
+    const accountRecord = await virtualAccountStore.withLock(profileId, async () => {
+      // Step 2.1: Look in DB/store for existing virtual account
+      const existing = await virtualAccountStore.getByCustomerProfileId(profileId);
+      if (existing) {
+        return existing;
+      }
 
-    // 3. Generate through TransactPay API
-    const alias = (customerName || customerProfile?.user?.firstName || 'Affy Customer').trim();
-    const reference = `WLT_VA_${Date.now()}_${uuidv4().slice(0, 8)}`;
+      // Identity values: deterministic, derived from the immutable user ID
+      const alias = `AFFY-CUST-${userId}`;
+      const reference = `AFFY-WLT-${userId}`;
+      const narration = 'AffyFoodBank Wallet Funding';
 
-    let generated: any;
-    try {
-      generated = await transactPayService.generateVirtualAccount({
+      // Step 2.2: Check if TransactPay already has one (alias recovery path)
+      const existingAtProvider = await transactPayService.getAccountDetailsByAlias(alias);
+      if (existingAtProvider) {
+        console.log(`[Virtual Account] Recovered existing account from TransactPay via alias "${alias}":`, existingAtProvider.accountNumber);
+        return await virtualAccountStore.save({
+          customerProfileId: profileId,
+          accountNumber: existingAtProvider.accountNumber,
+          bankName: existingAtProvider.bankName,
+          bankCode: existingAtProvider.bankCode,
+          accountName: existingAtProvider.accountName,
+          accountReference: existingAtProvider.accountReference || reference,
+          alias,
+          currency: existingAtProvider.currency || 'NGN',
+          provider: 'TRANSACTPAY',
+          isActive: true,
+        });
+      }
+
+      // Step 2.3: Only if neither exists, call Generate Virtual Account
+      console.log(`[Virtual Account] Calling Generate Virtual Account for alias "${alias}"`);
+      const generated = await transactPayService.generateVirtualAccount({
         alias,
         reference,
-        narration: `Affy FoodBank Wallet - ${alias}`,
+        narration,
       });
-    } catch (genErr: any) {
-      console.warn('[TransactPay VA] Provider generation notice:', genErr.message);
-      // In sandbox/test environment if key credentials restrict VA creation, create a consistent sandbox virtual account
-      generated = {
-        accountNumber: `77${Math.floor(10000000 + Math.random() * 90000000)}`,
-        bankName: 'Wema Bank (TransactPay PSSP)',
-        accountName: `Affy / ${alias}`,
-        accountReference: reference,
-        alias,
-        currency: 'NGN',
-      };
-    }
 
-    // 4. Save account permanently linked to customer profile
-    await virtualAccountStore.save({
-      customerProfileId: profileId,
-      accountNumber: generated.accountNumber,
-      bankName: generated.bankName,
-      accountName: generated.accountName,
-      accountReference: generated.accountReference || reference,
-      alias,
-      currency: generated.currency || 'NGN',
-      provider: 'TRANSACTPAY',
-      isActive: true,
+      // Step 2.4: Save REAL returned values (never fabricated)
+      return await virtualAccountStore.save({
+        customerProfileId: profileId,
+        accountNumber: generated.accountNumber,
+        bankName: generated.bankName,
+        bankCode: generated.bankCode,
+        accountName: generated.accountName,
+        accountReference: generated.accountReference || reference,
+        alias,
+        currency: generated.currency || 'NGN',
+        provider: 'TRANSACTPAY',
+        isActive: true,
+      });
     });
 
     res.json({
       status: 'success',
-      reference: generated.accountReference || reference,
-      accountNumber: generated.accountNumber,
-      bankName: generated.bankName,
-      accountName: generated.accountName,
-      amountNaira: amountNaira ? Number(amountNaira) : null,
-      currency: 'NGN',
+      reference: accountRecord.accountReference,
+      accountNumber: accountRecord.accountNumber,
+      bankName: accountRecord.bankName,
+      bankCode: accountRecord.bankCode,
+      accountName: accountRecord.accountName,
+      currency: accountRecord.currency || 'NGN',
       instructions: 'Transfer the exact amount to this dedicated account number. Your Affy FoodBank wallet will credit automatically upon bank clearing.',
     });
+  } catch (err: any) {
+    console.error('[Virtual Account Generation Failed]:', err.message);
+    const statusCode = err.statusCode || (err.message?.includes('rejected') ? 502 : 503);
+    res.status(statusCode).json({
+      status: 'error',
+      message: err.message || 'Unable to setup virtual account right now. Please try again shortly or contact support.',
+    });
+  }
+});
+
+/**
+ * GET /api/v1/payments/transactpay/funding-events
+ * Operational Portal oversight: lists funding webhook events with filters and pagination.
+ * Restricted to Admin and SuperAdmin roles.
+ */
+router.get('/transactpay/funding-events', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'Admin' && role !== 'SuperAdmin') {
+      return res.status(403).json({ status: 'error', message: 'Forbidden: Admin access required' });
+    }
+
+    const { status, needsReview, limit, offset } = req.query;
+    const result = await fundingService.listFundingEvents({
+      status: typeof status === 'string' ? status : undefined,
+      needsReview: needsReview === 'true',
+      limit: limit ? parseInt(limit as string, 10) : undefined,
+      offset: offset ? parseInt(offset as string, 10) : undefined,
+    });
+
+    res.json({ status: 'success', result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/payments/transactpay/funding-events/reverify
+ * Re-runs independent verification for any funding event.
+ * Follows the same strict provider check — no manual bypass.
+ * Restricted to Admin and SuperAdmin roles.
+ */
+router.post('/transactpay/funding-events/reverify', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'Admin' && role !== 'SuperAdmin') {
+      return res.status(403).json({ status: 'error', message: 'Forbidden: Admin access required' });
+    }
+
+    const { sessionId } = req.body;
+    if (!sessionId) {
+      throw new BadRequestError('Session ID is required for re-verification');
+    }
+
+    const result = await fundingService.reverifyFundingEvent(sessionId);
+    res.json({ status: 'success', result });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/payments/transactpay/virtual-account/backfill
+ * Rate-limited resumable backfill to generate virtual accounts for existing customers.
+ * Restricted to Admin and SuperAdmin roles.
+ */
+router.post('/transactpay/virtual-account/backfill', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const role = req.user?.role;
+    if (role !== 'Admin' && role !== 'SuperAdmin') {
+      return res.status(403).json({ status: 'error', message: 'Forbidden: Admin access required' });
+    }
+
+    const { limit, delayMs } = req.body || {};
+    const result = await fundingService.backfillExistingCustomers({
+      limit: limit ? Number(limit) : 10,
+      delayMs: delayMs ? Number(delayMs) : 500,
+    });
+
+    res.json({ status: 'success', result });
   } catch (err) {
     next(err);
   }

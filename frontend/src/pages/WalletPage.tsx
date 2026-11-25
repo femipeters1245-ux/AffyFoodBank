@@ -24,13 +24,14 @@ export const WalletPage: React.FC = () => {
 
   // Deposit Form State
   const [depositAmount, setDepositAmount] = useState('25000');
-  const [generatingVA, setGeneratingVA] = useState(false);
+  const [loadingVA, setLoadingVA] = useState(false);
+  const [vaError, setVaError] = useState<string | null>(null);
   const [virtualAccount, setVirtualAccount] = useState<{
     accountNumber: string;
     bankName: string;
     accountName: string;
     reference: string;
-    amountNaira?: number | null;
+    bankCode?: string;
   } | null>(null);
   const [copiedAccount, setCopiedAccount] = useState(false);
 
@@ -96,38 +97,36 @@ export const WalletPage: React.FC = () => {
     ? Number((wallet as any).availableBalanceCents ?? totalBal - allocatedBal)
     : 0;
 
-  // ─── 1. Automated Virtual Account Generation for Bank Transfer Deposit ──────
-  const handleGenerateVirtualAccount = async () => {
-    const amountNum = parseFloat(depositAmount);
-    if (isNaN(amountNum) || amountNum < 500) {
-      showToast('Minimum deposit amount is ₦500', 'error');
-      return;
-    }
-
-    setGeneratingVA(true);
+  // ─── 1. Automated Permanent Virtual Account for Bank Transfer Deposit ─────
+  const fetchVirtualAccount = useCallback(async () => {
+    if (!isAuthenticated) return;
+    setLoadingVA(true);
+    setVaError(null);
     try {
-      const res = await paymentsApi.createVirtualAccount({
-        amountNaira: amountNum,
-        customerName: user?.firstName ? `${user.firstName} ${user.lastName || ''}`.trim() : 'Affy Customer',
-        email: user?.email || 'customer@affyfoodbank.ng',
-      });
-
+      const res = await paymentsApi.createVirtualAccount();
       if (res?.accountNumber) {
         setVirtualAccount({
           accountNumber: res.accountNumber,
           bankName: res.bankName || 'Wema Bank (TransactPay PSSP)',
+          bankCode: res.bankCode,
           accountName: res.accountName || `Affy / ${user?.firstName || 'Customer'}`,
           reference: res.reference,
-          amountNaira: amountNum,
         });
-        showToast('Dedicated TransactPay Virtual Account generated!', 'success');
       }
     } catch (err: any) {
-      showToast(err.response?.data?.error || 'Unable to generate virtual account. Please try card deposit.', 'error');
+      setVaError(
+        err.response?.data?.message || err.response?.data?.error || 'Unable to retrieve dedicated account. Please try again shortly.'
+      );
     } finally {
-      setGeneratingVA(false);
+      setLoadingVA(false);
     }
-  };
+  }, [isAuthenticated, user?.firstName]);
+
+  useEffect(() => {
+    if (isDepositOpen && !virtualAccount && !loadingVA) {
+      fetchVirtualAccount();
+    }
+  }, [isDepositOpen, virtualAccount, loadingVA, fetchVirtualAccount]);
 
   // Copy Account Number
   const handleCopyAccount = (text: string) => {
@@ -138,15 +137,10 @@ export const WalletPage: React.FC = () => {
   };
 
   // Confirm / Verify Sent Bank Transfer
-  // NOTE: We no longer manually credit the wallet here. The backend webhook
-  // independently verifies the transfer via TransactPay's API before crediting.
-  // The customer just needs to wait; the wallet auto-updates when confirmed.
   const handleConfirmTransfer = () => {
-    if (!virtualAccount) return;
     setIsDepositOpen(false);
-    setVirtualAccount(null);
     showToast(
-      'Your transfer is being verified. Your wallet will update automatically within a few minutes once the bank confirms the payment.',
+      'Your transfer is being processed. Your wallet will update automatically once TransactPay confirms the transaction.',
       'info'
     );
   };
@@ -435,7 +429,15 @@ export const WalletPage: React.FC = () => {
                       >
                         {isIncoming ? '+' : '-'} {formatNaira(tx.amountCents)}
                       </div>
-                      <span className="inline-block text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-full border border-emerald-200 mt-0.5">
+                      <span
+                        className={`inline-block text-[9px] font-bold px-1.5 py-0.2 rounded-full border mt-0.5 ${
+                          tx.status === 'SUCCESSFUL'
+                            ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                            : tx.status === 'PENDING'
+                            ? 'text-amber-700 bg-amber-50 border-amber-200'
+                            : 'text-rose-700 bg-rose-50 border-rose-200'
+                        }`}
+                      >
                         {tx.status}
                       </span>
                     </div>
@@ -484,7 +486,15 @@ export const WalletPage: React.FC = () => {
                           {tx.description ?? '—'}
                         </td>
                         <td className="px-6 py-4">
-                          <span className="inline-flex items-center space-x-1.5 text-emerald-700 bg-emerald-50 border border-emerald-200 px-2.5 py-0.5 rounded-full text-[10px] font-black">
+                          <span
+                            className={`inline-flex items-center space-x-1.5 border px-2.5 py-0.5 rounded-full text-[10px] font-black ${
+                              tx.status === 'SUCCESSFUL'
+                                ? 'text-emerald-700 bg-emerald-50 border-emerald-200'
+                                : tx.status === 'PENDING'
+                                ? 'text-amber-700 bg-amber-50 border-amber-200'
+                                : 'text-rose-700 bg-rose-50 border-rose-200'
+                            }`}
+                          >
                             <span>●</span>
                             <span>{tx.status}</span>
                           </span>
@@ -552,79 +562,32 @@ export const WalletPage: React.FC = () => {
               </button>
             </div>
 
-            {/* TAB 1: AUTOMATED VIRTUAL ACCOUNT TRANSFER */}
+            {/* TAB 1: PERMANENT VIRTUAL ACCOUNT TRANSFER */}
             {depositTab === 'virtual_account' && (
               <div className="space-y-3.5">
-                {!virtualAccount ? (
-                  <>
-                    <div>
-                      <label className="block text-xs font-bold text-slate-700 mb-1">
-                        Amount to Deposit in Naira (₦) *
-                      </label>
-                      <input
-                        type="number"
-                        min="500"
-                        step="500"
-                        required
-                        placeholder="25000"
-                        value={depositAmount}
-                        onChange={(e) => setDepositAmount(e.target.value)}
-                        className="w-full px-3.5 py-2.5 border border-slate-200 rounded-xl text-base font-black focus:outline-none focus:ring-2 focus:ring-brand-500"
-                      />
-                    </div>
-
-                    {/* Quick Picks */}
-                    <div className="grid grid-cols-4 gap-1.5 sm:gap-2">
-                      {[5000, 10000, 25000, 50000].map((val) => (
-                        <button
-                          key={val}
-                          type="button"
-                          onClick={() => setDepositAmount(val.toString())}
-                          className={`py-1.5 sm:py-2 rounded-lg sm:rounded-xl text-xs font-bold border transition-all ${
-                            depositAmount === val.toString()
-                              ? 'bg-brand-50 border-brand-500 text-brand-700'
-                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
-                          }`}
-                        >
-                          ₦{(val / 1000).toFixed(0)}k
-                        </button>
-                      ))}
-                    </div>
-
-                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 space-y-1">
-                      <div className="font-extrabold flex items-center space-x-1.5">
-                        <span>⚡ Instant Automated Reconciliation</span>
-                      </div>
-                      <div className="text-[11px] text-emerald-700 leading-relaxed">
-                        TransactPay will generate a dedicated bank account number for this deposit. When you transfer from your Nigerian banking app, your food wallet credits automatically.
-                      </div>
-                    </div>
-
-                    <div className="pt-1">
-                      <button
-                        type="button"
-                        disabled={generatingVA}
-                        onClick={handleGenerateVirtualAccount}
-                        className="w-full py-3 text-xs font-black text-white bg-brand-600 hover:bg-brand-700 disabled:opacity-50 rounded-xl shadow-xs transition-all flex items-center justify-center space-x-2 active:scale-95"
-                      >
-                        {generatingVA ? (
-                          <>
-                            <span className="animate-spin text-sm">⚡</span>
-                            <span>Generating Dedicated Account...</span>
-                          </>
-                        ) : (
-                          <span>Generate Dedicated Account Details →</span>
-                        )}
-                      </button>
-                    </div>
-                  </>
-                ) : (
-                  /* Display Virtual Account Details */
+                {loadingVA ? (
+                  <div className="py-12 flex flex-col items-center justify-center space-y-3">
+                    <div className="w-8 h-8 border-3 border-brand-600 border-t-transparent rounded-full animate-spin"></div>
+                    <p className="text-xs text-slate-500 font-semibold">Retrieving your dedicated account details...</p>
+                  </div>
+                ) : vaError ? (
+                  <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl text-center space-y-2.5">
+                    <p className="text-xs text-rose-700 font-bold">{vaError}</p>
+                    <button
+                      type="button"
+                      onClick={fetchVirtualAccount}
+                      className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-lg transition-colors"
+                    >
+                      Retry Account Setup
+                    </button>
+                  </div>
+                ) : virtualAccount ? (
+                  /* Display Permanent Virtual Account Details */
                   <div className="space-y-3 animate-fadeIn">
                     <div className="bg-gradient-to-br from-slate-900 via-slate-800 to-brand-950 text-white p-4 sm:p-5 rounded-2xl border border-slate-700 space-y-2.5">
                       <div className="flex justify-between items-center text-[10px] text-slate-300 font-bold">
-                        <span>TRANSACTPAY RESERVED ACCOUNT</span>
-                        <span className="text-emerald-400 font-mono">LIVE CLEARING</span>
+                        <span>YOUR PERMANENT RESERVED ACCOUNT</span>
+                        <span className="text-emerald-400 font-mono">LIVE PSSP CLEARING</span>
                       </div>
 
                       <div className="bg-white/10 p-3.5 rounded-xl border border-white/10 space-y-1.5">
@@ -647,41 +610,33 @@ export const WalletPage: React.FC = () => {
 
                         <div className="text-[10px] text-slate-400 font-semibold pt-1">Beneficiary Account Name:</div>
                         <div className="text-xs font-bold text-slate-200 truncate">{virtualAccount.accountName}</div>
-
-                        <div className="text-[10px] text-slate-400 font-semibold pt-1">Exact Amount to Transfer:</div>
-                        <div className="text-sm sm:text-base font-black text-amber-300">
-                          {formatNaira((virtualAccount.amountNaira || 25000) * 100)}
-                        </div>
                       </div>
 
                       <div className="text-[10px] text-slate-400 truncate">
-                        Reference: <span className="font-mono text-slate-300">{virtualAccount.reference}</span>
+                        Account Ref: <span className="font-mono text-slate-300">{virtualAccount.reference}</span>
                       </div>
                     </div>
 
-                    <div className="p-2.5 bg-amber-50 rounded-xl border border-amber-200 text-[11px] text-amber-800">
-                      💡 Open your bank app (GTB, Access, Zenith, OPay, PalmPay, Kuda, etc.) and transfer the exact amount above.
+                    <div className="p-3 bg-emerald-50 rounded-xl border border-emerald-200 text-xs text-emerald-800 space-y-1">
+                      <div className="font-extrabold flex items-center space-x-1.5">
+                        <span>⚡ Instant Automated Bank Transfer Crediting</span>
+                      </div>
+                      <div className="text-[11px] text-emerald-700 leading-relaxed">
+                        This is your permanent dedicated account. Transfer any amount from any Nigerian bank (Access, GTB, Zenith, OPay, PalmPay, Kuda, etc.). Your food wallet is credited automatically once confirmed by the bank.
+                      </div>
                     </div>
 
-                    <div className="flex space-x-2 pt-1">
+                    <div className="pt-1">
                       <button
                         type="button"
-                        onClick={() => setVirtualAccount(null)}
-                        className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors"
-                      >
-                        ← Back
-                      </button>
-                      <button
-                        type="button"
-                        disabled={loading}
                         onClick={handleConfirmTransfer}
-                        className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-black rounded-xl text-xs transition-colors shadow-2xs active:scale-95"
+                        className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-black rounded-xl text-xs transition-colors shadow-2xs active:scale-95"
                       >
-                        {loading ? 'Checking...' : 'I Have Sent Money ✓'}
+                        I Have Sent Money ✓
                       </button>
                     </div>
                   </div>
-                )}
+                ) : null}
               </div>
             )}
 

@@ -205,7 +205,7 @@ async function loadPermissions(roleId: string | null, roleName?: string | null):
           .filter((rp: any) => rp.permission)
           .map((rp: any) => `${rp.permission.action}:${rp.permission.resource}`);
       }
-    } catch {}
+    } catch { }
   }
 
   // Fallback defaults for Customer
@@ -446,7 +446,7 @@ export async function loginUser(body: unknown) {
               isActive: true,
             }).select().single();
             dbUser = createdUser;
-          } catch {}
+          } catch { }
         }
 
         if (dbUser) {
@@ -533,7 +533,7 @@ export async function validateLoginCredentials(body: unknown) {
         }
         return await ensureUserProfileAndWallet(user);
       }
-    } catch {}
+    } catch { }
   }
 
   throw new UnauthorizedError('Invalid email or password');

@@ -7,6 +7,7 @@ const TRANSACTPAY_BASE_URL = process.env.TRANSACTPAY_BASE_URL || 'https://paymen
 export interface VirtualAccountResult {
   accountNumber: string;
   bankName: string;
+  bankCode?: string;
   accountName: string;
   accountReference: string;
   alias?: string;
@@ -155,12 +156,14 @@ export const transactPayService = {
     if (
       resJson.statusCode === '00' ||
       resJson.status === 'success' ||
+      resJson.status === true ||
       data?.accountNumber ||
       data?.account_number
     ) {
       return {
         accountNumber: data.accountNumber || data.account_number,
-        bankName: data.bankName || data.bank_name || 'Wema Bank (TransactPay)',
+        bankName: data.bankName || data.bank_name || data.bank || 'Wema Bank (TransactPay)',
+        bankCode: data.bankCode || data.bank_code,
         accountName: data.accountName || data.account_name || `Affy / ${params.alias}`,
         accountReference: data.accountReference || data.account_reference || payload.Reference,
         alias: data.alias || params.alias,
@@ -173,6 +176,70 @@ export const transactPayService = {
     throw new Error(
       resJson.statusDescription || resJson.message || `Virtual account generation rejected by provider (code ${resJson.statusCode})`
     );
+  },
+
+  /**
+   * 2. Get Virtual Account Details with Alias
+   * Endpoint: GET /payment/account-details?alias={alias}
+   * Used to check whether TransactPay already generated a virtual account for this alias
+   * before making an unnecessary generate call or recovering from earlier save failure.
+   */
+  async getAccountDetailsByAlias(alias: string): Promise<VirtualAccountResult | null> {
+    const publicKey = process.env.TRANSACTPAY_PUBLIC_KEY;
+    if (!publicKey) {
+      throw new Error('TRANSACTPAY_PUBLIC_KEY is not configured');
+    }
+
+    if (!alias || !alias.trim()) {
+      return null;
+    }
+
+    const cleanAlias = alias.trim();
+    logger.info('[TransactPay] Querying account details by alias:', { alias: cleanAlias });
+
+    try {
+      const response = await fetch(
+        `${TRANSACTPAY_BASE_URL}/payment/account-details?alias=${encodeURIComponent(cleanAlias)}`,
+        {
+          method: 'GET',
+          headers: {
+            'accept': 'application/json',
+            'api-key': publicKey,
+          },
+        }
+      );
+
+      if (!response.ok) {
+        if (response.status === 404) return null;
+        logger.warn('[TransactPay Alias Lookup] Non-200 response:', { status: response.status });
+        return null;
+      }
+
+      const resJson: any = await response.json();
+      const data = resJson.data || resJson;
+
+      if (
+        (resJson.code === '00' || resJson.status === true || resJson.status === 'success') &&
+        (data?.accountNumber || data?.account_number)
+      ) {
+        return {
+          accountNumber: data.accountNumber || data.account_number,
+          bankName: data.bankName || data.bank_name || data.bank || 'Wema Bank (TransactPay)',
+          bankCode: data.bankCode || data.bank_code,
+          accountName: data.accountName || data.account_name || `Affy / ${cleanAlias}`,
+          accountReference: data.accountReference || data.account_reference || `VA_${cleanAlias}`,
+          alias: data.alias || cleanAlias,
+          currency: data.currency || 'NGN',
+          status: 'ACTIVE',
+          raw: data,
+        };
+      }
+
+      return null;
+    } catch (err: any) {
+      logger.warn('[TransactPay Alias Lookup] Failed with error:', { message: err.message });
+      return null;
+    }
   },
 
   /**

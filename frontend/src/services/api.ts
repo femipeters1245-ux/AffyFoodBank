@@ -284,7 +284,7 @@ export const paymentsApi = {
     const res = await apiClient.get('/payments/transactpay/banks');
     return res.data;
   },
-  createVirtualAccount: async (data: {
+  createVirtualAccount: async (data?: {
     amountNaira?: number;
     customerName?: string;
     email?: string;
@@ -293,12 +293,13 @@ export const paymentsApi = {
     reference: string;
     accountNumber: string;
     bankName: string;
+    bankCode?: string;
     accountName: string;
     amountNaira?: number | null;
     currency: string;
     instructions: string;
   }> => {
-    const res = await apiClient.post('/payments/transactpay/virtual-account', data);
+    const res = await apiClient.post('/payments/transactpay/virtual-account', data || {});
     return res.data;
   },
   initiatePayout: async (data: {
@@ -408,6 +409,18 @@ export const adminApi = {
   },
   deactivatePackage: async (id: string) => {
     const res = await apiClient.delete(`/admin/packages/${id}`);
+    return res.data;
+  },
+  getFundingEvents: async (params?: { status?: string; needsReview?: boolean; limit?: number; offset?: number }) => {
+    const res = await apiClient.get('/payments/transactpay/funding-events', { params });
+    return res.data;
+  },
+  reverifyFundingEvent: async (sessionId: string) => {
+    const res = await apiClient.post('/payments/transactpay/funding-events/reverify', { sessionId });
+    return res.data;
+  },
+  backfillVirtualAccounts: async (params?: { limit?: number; delayMs?: number }) => {
+    const res = await apiClient.post('/payments/transactpay/virtual-account/backfill', params || {});
     return res.data;
   },
 };

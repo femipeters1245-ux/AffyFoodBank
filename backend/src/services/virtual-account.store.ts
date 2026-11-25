@@ -11,6 +11,7 @@ export interface VirtualAccountRecord {
   customerProfileId: string;
   accountNumber: string;
   bankName: string;
+  bankCode?: string;
   accountName: string;
   accountReference: string;
   alias?: string;
@@ -23,6 +24,9 @@ export interface VirtualAccountRecord {
 
 const DATA_DIR = path.resolve(process.cwd(), '.data');
 const VA_FILE = path.join(DATA_DIR, 'virtual_accounts.json');
+
+// Concurrency Mutex: prevents two concurrent requests from creating duplicate accounts
+const inFlightGenerations = new Map<string, Promise<any>>();
 
 function ensureDataDir(): void {
   try {
@@ -51,6 +55,71 @@ function writeLocalBackup(records: VirtualAccountRecord[]): void {
 
 export const virtualAccountStore = {
   /**
+   * Concurrency guard: executes an async account generation task under a per-key lock
+   */
+  async withLock<T>(key: string, task: () => Promise<T>): Promise<T> {
+    if (inFlightGenerations.has(key)) {
+      logger.info('[virtualAccountStore] Concurrent request waiting for in-flight generation:', { key });
+      return inFlightGenerations.get(key) as Promise<T>;
+    }
+
+    const promise = task().finally(() => {
+      inFlightGenerations.delete(key);
+    });
+
+    inFlightGenerations.set(key, promise);
+    return promise;
+  },
+
+  /**
+   * Find existing virtual account by alias
+   */
+  async getByAlias(alias: string): Promise<VirtualAccountRecord | null> {
+    if (!alias) return null;
+    const cleanAlias = alias.trim();
+
+    try {
+      const pRecord = await (prisma as any).virtualAccount?.findFirst({
+        where: { alias: cleanAlias },
+      });
+      if (pRecord) {
+        return {
+          id: pRecord.id,
+          customerProfileId: pRecord.customerProfileId,
+          accountNumber: pRecord.accountNumber,
+          bankName: pRecord.bankName,
+          bankCode: pRecord.bankCode,
+          accountName: pRecord.accountName,
+          accountReference: pRecord.accountReference,
+          alias: pRecord.alias,
+          currency: pRecord.currency || 'NGN',
+          provider: pRecord.provider || 'TRANSACTPAY',
+          isActive: pRecord.isActive ?? true,
+          createdAt: pRecord.createdAt ? new Date(pRecord.createdAt).toISOString() : new Date().toISOString(),
+          updatedAt: pRecord.updatedAt ? new Date(pRecord.updatedAt).toISOString() : new Date().toISOString(),
+        };
+      }
+    } catch {}
+
+    if (isSupabaseAdminConfigured && supabaseAdmin) {
+      try {
+        const { data: supaRow, error } = await supabaseAdmin
+          .from('VirtualAccount')
+          .select('*')
+          .eq('alias', cleanAlias)
+          .maybeSingle();
+
+        if (supaRow && !error) {
+          return supaRow as VirtualAccountRecord;
+        }
+      } catch {}
+    }
+
+    const local = readLocalBackup().find((r) => r.alias === cleanAlias && r.isActive);
+    return local || null;
+  },
+
+  /**
    * Find existing virtual account for customer to avoid creating duplicate accounts
    */
   async getByCustomerProfileId(customerProfileId: string): Promise<VirtualAccountRecord | null> {
@@ -65,6 +134,7 @@ export const virtualAccountStore = {
           customerProfileId: pRecord.customerProfileId,
           accountNumber: pRecord.accountNumber,
           bankName: pRecord.bankName,
+          bankCode: pRecord.bankCode,
           accountName: pRecord.accountName,
           accountReference: pRecord.accountReference,
           alias: pRecord.alias,
@@ -206,6 +276,7 @@ export const virtualAccountStore = {
         update: {
           accountNumber: fullRecord.accountNumber,
           bankName: fullRecord.bankName,
+          bankCode: fullRecord.bankCode,
           accountName: fullRecord.accountName,
           accountReference: fullRecord.accountReference,
           alias: fullRecord.alias,
