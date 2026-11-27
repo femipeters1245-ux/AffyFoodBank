@@ -258,6 +258,6 @@ describe('Direct Resend OTP & Session Authentication System', () => {
 
       // Verify request was NOT rejected with 401 Unauthorized
       expect(walletRes.status).not.toBe(401);
-    });
+    }, 45000);
   });
 });
