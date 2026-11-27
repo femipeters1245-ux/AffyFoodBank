@@ -423,6 +423,33 @@ export const adminApi = {
     const res = await apiClient.post('/payments/transactpay/virtual-account/backfill', params || {});
     return res.data;
   },
+  getZones: async () => {
+    const res = await apiClient.get('/zones/admin');
+    return res.data?.data ?? [];
+  },
+  createZone: async (data: { name: string; targetAdpCount?: number }) => {
+    const res = await apiClient.post('/zones/admin', data);
+    return res.data?.data;
+  },
+  toggleZone: async (id: string, isActive: boolean) => {
+    const res = await apiClient.patch(`/zones/admin/${id}/toggle`, { isActive });
+    return res.data?.data;
+  },
+  updateZoneTarget: async (id: string, targetAdpCount: number) => {
+    const res = await apiClient.patch(`/zones/admin/${id}/target`, { targetAdpCount });
+    return res.data?.data;
+  },
+  seedZones: async () => {
+    const res = await apiClient.post('/zones/admin/seed');
+    return res.data;
+  },
+};
+
+export const zonesApi = {
+  getActiveZones: async () => {
+    const res = await apiClient.get('/zones');
+    return res.data?.data ?? [];
+  },
 };
 
 export const ordersApi = {

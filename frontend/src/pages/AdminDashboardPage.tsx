@@ -389,9 +389,9 @@ export const AdminDashboardPage: React.FC = () => {
     isFinanceStaff ||
     isLogisticsStaff;
 
-  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' =
+  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' =
     isFinanceStaff ? 'transactions' : isLogisticsStaff ? 'deliveries' : 'overview';
-  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones'>(defaultTab);
 
   // ─── Products state — sourced exclusively from Supabase ──────────────────────
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -455,6 +455,82 @@ export const AdminDashboardPage: React.FC = () => {
       alert(`Re-verification error: ${err.response?.data?.message || err.message}`);
     } finally {
       setReverifyingSessionId(null);
+    }
+  };
+
+  // ─── UNILESA Coverage Zones & ADP Network (Milestones 1 & 5) ────────────────
+  const [zones, setZones] = useState<any[]>([]);
+  const [zonesLoading, setZonesLoading] = useState(false);
+  const [newZoneName, setNewZoneName] = useState('');
+  const [newZoneTarget, setNewZoneTarget] = useState(2);
+  const [isCreatingZone, setIsCreatingZone] = useState(false);
+  const [seedingZones, setSeedingZones] = useState(false);
+  const [zoneSearchQuery, setZoneSearchQuery] = useState('');
+
+  const loadZones = useCallback(async () => {
+    try {
+      setZonesLoading(true);
+      const data = await adminApi.getZones();
+      if (Array.isArray(data)) {
+        setZones(data);
+      }
+    } catch (err: any) {
+      console.warn('[Admin] Could not load coverage zones:', err);
+    } finally {
+      setZonesLoading(false);
+    }
+  }, []);
+
+  const handleCreateZone = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newZoneName.trim()) return;
+    try {
+      setIsCreatingZone(true);
+      await adminApi.createZone({ name: newZoneName.trim(), targetAdpCount: Number(newZoneTarget) || 2 });
+      showToast(`✓ Zone "${newZoneName.trim()}" created successfully`);
+      setNewZoneName('');
+      setNewZoneTarget(2);
+      await loadZones();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to create zone');
+    } finally {
+      setIsCreatingZone(false);
+    }
+  };
+
+  const handleToggleZone = async (zone: any) => {
+    const nextState = !zone.isActive;
+    try {
+      await adminApi.toggleZone(zone.id, nextState);
+      showToast(`✓ Zone "${zone.name}" ${nextState ? 'activated' : 'deactivated'}`);
+      await loadZones();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to update zone status');
+    }
+  };
+
+  const handleUpdateZoneTarget = async (zone: any, newTarget: number) => {
+    if (newTarget < 1) return;
+    try {
+      await adminApi.updateZoneTarget(zone.id, newTarget);
+      showToast(`✓ Target for "${zone.name}" updated to ${newTarget}`);
+      await loadZones();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to update target count');
+    }
+  };
+
+  const handleSeedZones = async () => {
+    if (!confirm('Seed or refresh the 13 official UNILESA coverage zones? This is idempotent and will not delete any existing records.')) return;
+    try {
+      setSeedingZones(true);
+      const res = await adminApi.seedZones();
+      showToast(`✓ ${res.message || 'Successfully seeded official 13 zones'}`);
+      await loadZones();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to seed zones');
+    } finally {
+      setSeedingZones(false);
     }
   };
 
@@ -529,6 +605,16 @@ export const AdminDashboardPage: React.FC = () => {
       loadFundingEvents(fundingFilter === 'NEEDS_REVIEW');
     }
   }, [activeTab, fundingFilter, loadFundingEvents]);
+
+  useEffect(() => {
+    loadZones();
+  }, [loadZones]);
+
+  useEffect(() => {
+    if (activeTab === 'adp-zones') {
+      loadZones();
+    }
+  }, [activeTab, loadZones]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
@@ -1152,6 +1238,21 @@ export const AdminDashboardPage: React.FC = () => {
             <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{transactions.length}</span>
           </button>
         )}
+
+        {/* UNILESA Coverage Zones & ADP Network: Admin, SuperAdmin, LogisticsStaff */}
+        {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+          <button
+            onClick={() => setActiveTab('adp-zones')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'adp-zones'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>📍 UNILESA Coverage Zones</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{zones.length}</span>
+          </button>
+        )}
       </div>
 
       {/* =========================================================================
@@ -1308,6 +1409,22 @@ export const AdminDashboardPage: React.FC = () => {
                 <h3 className="font-extrabold text-slate-900 text-sm">Financial & Payment Ledger</h3>
                 <p className="text-xs text-slate-500">
                   Audit payment settlements, TransactPay card payments, and internal wallet ledger transactions.
+                </p>
+              </div>
+            )}
+
+            {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+              <div
+                onClick={() => setActiveTab('adp-zones')}
+                className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
+              >
+                <div className="flex items-center justify-between">
+                  <span className="text-2xl">📍</span>
+                  <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
+                </div>
+                <h3 className="font-extrabold text-slate-900 text-sm">UNILESA Coverage Zones</h3>
+                <p className="text-xs text-slate-500">
+                  Manage the 13 official UNILESA student delivery zones, set targets, and monitor ADP host coverage.
                 </p>
               </div>
             )}
@@ -2535,6 +2652,234 @@ export const AdminDashboardPage: React.FC = () => {
                       </td>
                     </tr>
                   ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB: UNILESA COVERAGE ZONES & ADP NETWORK (Milestone 1 & 5)
+      ========================================================================= */}
+      {activeTab === 'adp-zones' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header & Metrics */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-800 rounded-full text-xs font-bold mb-2">
+                  <span>📍</span>
+                  <span>UNILESA Student-Partner Network</span>
+                </div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">Official Coverage Zones (Database-Driven)</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Manage the 13 UNILESA delivery zones. Zones are retrieved live across registration, portal oversight, and checkout.
+                </p>
+              </div>
+
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleSeedZones}
+                  disabled={seedingZones}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs"
+                >
+                  <span>🌱</span>
+                  <span>{seedingZones ? 'Seeding...' : 'Seed / Sync 13 Zones'}</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={loadZones}
+                  disabled={zonesLoading}
+                  className="px-4 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs"
+                >
+                  <span className={zonesLoading ? 'animate-spin' : ''}>🔄</span>
+                  <span>Refresh</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Quick Metrics Bar */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200/80">
+                <span className="text-[11px] font-bold text-slate-500 block">Total Zones</span>
+                <span className="text-2xl font-black text-slate-900 mt-1 block">{zones.length}</span>
+                <span className="text-[10px] text-slate-400">13 official UNILESA areas</span>
+              </div>
+
+              <div className="p-4 bg-emerald-50/60 rounded-2xl border border-emerald-200/80">
+                <span className="text-[11px] font-bold text-emerald-800 block">Active & Open</span>
+                <span className="text-2xl font-black text-emerald-700 mt-1 block">
+                  {zones.filter((z) => z.isActive).length}
+                </span>
+                <span className="text-[10px] text-emerald-600">Available for checkout</span>
+              </div>
+
+              <div className="p-4 bg-blue-50/60 rounded-2xl border border-blue-200/80">
+                <span className="text-[11px] font-bold text-blue-800 block">Target Met (≥ 2 ADPs)</span>
+                <span className="text-2xl font-black text-blue-700 mt-1 block">
+                  {zones.filter((z) => (z.activeAdps || 0) >= (z.targetAdpCount || 2)).length}
+                </span>
+                <span className="text-[10px] text-blue-600">Robust student coverage</span>
+              </div>
+
+              <div className="p-4 bg-amber-50/60 rounded-2xl border border-amber-200/80">
+                <span className="text-[11px] font-bold text-amber-800 block">Needs Coverage</span>
+                <span className="text-2xl font-black text-amber-700 mt-1 block">
+                  {zones.filter((z) => (z.activeAdps || 0) < (z.targetAdpCount || 2)).length}
+                </span>
+                <span className="text-[10px] text-amber-600">&lt; 2 verified ADPs</span>
+              </div>
+            </div>
+
+            {/* Add Zone Inline Form */}
+            <form onSubmit={handleCreateZone} className="p-4 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center gap-3">
+              <div className="flex-1 w-full">
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Add New Coverage Zone</label>
+                <input
+                  type="text"
+                  placeholder="e.g. Isokun Junction, Imo Gate"
+                  value={newZoneName}
+                  onChange={(e) => setNewZoneName(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div className="w-full sm:w-36">
+                <label className="text-[11px] font-bold text-slate-700 block mb-1">Target ADP Count</label>
+                <input
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={newZoneTarget}
+                  onChange={(e) => setNewZoneTarget(Number(e.target.value))}
+                  className="w-full px-3 py-2 bg-white border border-slate-300 rounded-xl text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+              <div className="w-full sm:w-auto pt-0 sm:pt-5">
+                <button
+                  type="submit"
+                  disabled={isCreatingZone || !newZoneName.trim()}
+                  className="w-full sm:w-auto px-5 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-xs transition-all"
+                >
+                  {isCreatingZone ? 'Adding...' : '+ Add Zone'}
+                </button>
+              </div>
+            </form>
+          </div>
+
+          {/* Zones Table Card */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="p-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+              <div className="text-xs font-bold text-slate-700">
+                Official Zones Catalog <span className="text-slate-400 font-normal">({zones.length} zones found)</span>
+              </div>
+              <div className="w-full sm:w-64">
+                <input
+                  type="text"
+                  placeholder="Search zone by name..."
+                  value={zoneSearchQuery}
+                  onChange={(e) => setZoneSearchQuery(e.target.value)}
+                  className="w-full px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 text-slate-500 uppercase tracking-wider font-bold border-b border-slate-100">
+                  <tr>
+                    <th className="px-6 py-4">#</th>
+                    <th className="px-6 py-4">Coverage Zone Name</th>
+                    <th className="px-6 py-4 text-center">Target ADPs</th>
+                    <th className="px-6 py-4 text-center">Active Verified ADPs</th>
+                    <th className="px-6 py-4 text-center">Total Applicants</th>
+                    <th className="px-6 py-4 text-center">Coverage Health</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {zones
+                    .filter((z) => !zoneSearchQuery || z.name.toLowerCase().includes(zoneSearchQuery.toLowerCase()))
+                    .map((zone, idx) => {
+                      const activeAdps = zone.activeAdps || 0;
+                      const target = zone.targetAdpCount || 2;
+                      const isTargetMet = activeAdps >= target;
+                      const isPartial = activeAdps > 0 && activeAdps < target;
+
+                      return (
+                        <tr key={zone.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-6 py-4 text-slate-400 font-mono text-[11px]">{idx + 1}</td>
+                          <td className="px-6 py-4 font-extrabold text-slate-900 text-sm">
+                            {zone.name}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <div className="inline-flex items-center gap-1">
+                              <span className="font-mono font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded text-xs">
+                                {target}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const val = prompt(`Enter new target ADP count for "${zone.name}":`, String(target));
+                                  if (val && !isNaN(Number(val))) handleUpdateZoneTarget(zone, Number(val));
+                                }}
+                                className="text-[10px] text-slate-400 hover:text-brand-600 font-bold p-0.5"
+                                title="Edit target"
+                              >
+                                ✏️
+                              </button>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 text-center font-bold text-slate-800">
+                            {activeAdps}
+                          </td>
+                          <td className="px-6 py-4 text-center text-slate-500 font-semibold">
+                            {zone.totalApplications || 0}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {isTargetMet ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-700 border border-emerald-200">
+                                ✓ Target Reached ({activeAdps}/{target})
+                              </span>
+                            ) : isPartial ? (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-700 border border-amber-200">
+                                ⚠ Insufficient ({activeAdps}/{target})
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-rose-50 text-rose-700 border border-rose-200">
+                                ✕ Not Covered (0/{target})
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            {zone.isActive ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
+                                Active
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600">
+                                Inactive
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleToggleZone(zone)}
+                              className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${
+                                zone.isActive
+                                  ? 'bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200'
+                                  : 'bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200'
+                              }`}
+                            >
+                              {zone.isActive ? 'Deactivate' : 'Activate'}
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })}
                 </tbody>
               </table>
             </div>

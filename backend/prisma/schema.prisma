@@ -61,6 +61,7 @@ model User {
   profile      CustomerProfile?
   deliveries   Delivery[]
   auditLogs    AuditLog[]
+  adpOperators AdpOperator[]
 }
 
 model CustomerProfile {
@@ -337,6 +338,10 @@ model Order {
   wallet            Wallet? @relation(fields: [walletId], references: [id])
   items             OrderItem[]
   delivery          Delivery?
+  adpOperatorId     String?      @db.Uuid
+  adpSnapshot       Json?
+  adpOperator       AdpOperator? @relation(fields: [adpOperatorId], references: [id])
+  adpEarning        AdpEarning?
 }
 
 enum DeliveryStatus {
@@ -515,5 +520,139 @@ model WalletFundingEvent {
 
   customerProfile          CustomerProfile?   @relation(fields: [customerProfileId], references: [id], onDelete: SetNull)
 }
+
+// =====================
+// Coverage Zones & Affy's Delivery Ports (ADP)
+// =====================
+model CoverageZone {
+  id             String   @id @default(uuid()) @db.Uuid
+  name           String   @db.VarChar(100)
+  normalizedName String   @unique @db.VarChar(100)
+  targetAdpCount Int      @default(2)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  operators      AdpOperator[]
+  rates          AdpCompensationRate[]
+  earnings       AdpEarning[]
+}
+
+model AdpOperator {
+  id                        String   @id @default(uuid()) @db.Uuid
+  applicationReference      String   @unique @db.VarChar(50)
+  userId                    String   @db.Uuid
+  coverageZoneId            String   @db.Uuid
+  fullName                  String   @db.VarChar(150)
+  matricNumber              String   @db.VarChar(50)
+  normalizedMatric          String   @db.VarChar(50)
+  institution               String   @default("University of Ilesa (UNILESA)") @db.VarChar(150)
+  faculty                   String   @db.VarChar(100)
+  department                String   @db.VarChar(100)
+  academicLevel             String   @db.VarChar(20)
+  phone                     String   @db.VarChar(20)
+  email                     String   @db.VarChar(150)
+  studentIdDocPath          String   @db.Text
+  hostelName                String   @db.VarChar(150)
+  hostelAddress             String   @db.Text
+  closestLandmark           String?  @db.VarChar(150)
+  bankName                  String   @db.VarChar(100)
+  bankCode                  String   @db.VarChar(20)
+  accountNumberEncrypted    String   @db.Text
+  accountNumberMasked       String   @db.VarChar(20)
+  accountName               String   @db.VarChar(150)
+  nameEnquiryVerifiedName   String?  @db.VarChar(150)
+  alternativeContact        String?  @db.VarChar(50)
+  status                    String   @default("PENDING_REVIEW") @db.VarChar(50)
+  studentVerificationStatus String   @default("PENDING") @db.VarChar(50)
+  studentVerificationNotes  String?  @db.Text
+  studentVerifiedBy         String?  @db.Uuid
+  studentVerifiedAt         DateTime?
+  hostelVerificationStatus  String   @default("PENDING") @db.VarChar(50)
+  hostelVerificationNotes   String?  @db.Text
+  hostelVerifiedBy          String?  @db.Uuid
+  hostelVerifiedAt          DateTime?
+  paymentVerificationStatus String   @default("PENDING") @db.VarChar(50)
+  paymentVerificationNotes  String?  @db.Text
+  paymentVerifiedBy         String?  @db.Uuid
+  paymentVerifiedAt         DateTime?
+  isActive                  Boolean  @default(false)
+  rejectionReason           String?  @db.Text
+  suspensionReason          String?  @db.Text
+  createdAt                 DateTime @default(now())
+  updatedAt                 DateTime @updatedAt
+
+  user                      User                 @relation(fields: [userId], references: [id])
+  coverageZone              CoverageZone         @relation(fields: [coverageZoneId], references: [id])
+  histories                 AdpVerificationHistory[]
+  earnings                  AdpEarning[]
+  payoutBatches             AdpPayoutBatch[]
+  orders                    Order[]
+}
+
+model AdpVerificationHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  adpOperatorId String   @db.Uuid
+  track         String   @db.VarChar(50)
+  oldStatus     String   @db.VarChar(50)
+  newStatus     String   @db.VarChar(50)
+  reason        String?  @db.Text
+  officerUserId String?  @db.Uuid
+  createdAt     DateTime @default(now())
+
+  adpOperator   AdpOperator @relation(fields: [adpOperatorId], references: [id], onDelete: Cascade)
+}
+
+model AdpCompensationRate {
+  id                     String   @id @default(uuid()) @db.Uuid
+  coverageZoneId         String?  @db.Uuid
+  ratePerCollectionCents BigInt
+  effectiveFrom          DateTime @default(now())
+  isActive               Boolean  @default(true)
+  createdBy              String?  @db.Uuid
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
+
+  coverageZone           CoverageZone? @relation(fields: [coverageZoneId], references: [id], onDelete: Cascade)
+}
+
+model AdpEarning {
+  id             String   @id @default(uuid()) @db.Uuid
+  orderId        String   @unique @db.Uuid
+  adpOperatorId  String   @db.Uuid
+  amountCents    BigInt
+  rateUsedCents  BigInt
+  coverageZoneId String   @db.Uuid
+  status         String   @default("PENDING") @db.VarChar(50)
+  payoutBatchId  String?  @db.Uuid
+  collectedAt    DateTime @default(now())
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  order          Order          @relation(fields: [orderId], references: [id])
+  adpOperator    AdpOperator    @relation(fields: [adpOperatorId], references: [id])
+  coverageZone   CoverageZone   @relation(fields: [coverageZoneId], references: [id])
+  payoutBatch    AdpPayoutBatch? @relation(fields: [payoutBatchId], references: [id])
+}
+
+model AdpPayoutBatch {
+  id               String   @id @default(uuid()) @db.Uuid
+  batchReference   String   @unique @db.VarChar(50)
+  adpOperatorId    String   @db.Uuid
+  totalAmountCents BigInt
+  earningsCount    Int
+  status           String   @default("PENDING") @db.VarChar(50)
+  channel          String   @default("MANUAL") @db.VarChar(50)
+  clientReference  String?  @unique @db.VarChar(100)
+  paymentReference String?  @db.VarChar(100)
+  processedBy      String?  @db.Uuid
+  paidAt           DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  adpOperator      AdpOperator  @relation(fields: [adpOperatorId], references: [id])
+  earnings         AdpEarning[]
+}
+
 
 

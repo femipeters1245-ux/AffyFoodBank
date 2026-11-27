@@ -18,6 +18,7 @@ import paymentRouter from './routes/payments';
 import adminRouter from './routes/admin';
 import emailRouter from './routes/email';
 import ordersRouter from './routes/orders';
+import zonesRouter from './routes/zones';
 
 // Middleware
 import errorHandler from './middleware/errorHandler';
@@ -106,6 +107,7 @@ app.use(`${API}/orders`, ordersRouter);
 app.use(`${API}/me/orders`, ordersRouter);
 app.use(`${API}/admin`, adminRouter);
 app.use(`${API}/email`, emailRouter);
+app.use([`${API}/zones`, '/api/zones', '/zones'], zonesRouter);
 
 // Public units endpoint
 app.get(['/units', '/api/units', `${API}/units`], async (_req: Request, res: Response) => {
