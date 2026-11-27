@@ -296,6 +296,392 @@ export class AdpOperatorService {
   }
 
   /**
+   * Retrieves all applications for administrative and operational verification.
+   */
+  async listApplicationsForAdmin(filters?: { zoneId?: string; status?: string; search?: string }) {
+    try {
+      const where: any = {};
+      if (filters?.zoneId) where.coverageZoneId = filters.zoneId;
+      if (filters?.status) where.status = filters.status;
+      if (filters?.search) {
+        where.OR = [
+          { fullName: { contains: filters.search, mode: 'insensitive' } },
+          { matricNumber: { contains: filters.search, mode: 'insensitive' } },
+          { applicationReference: { contains: filters.search, mode: 'insensitive' } },
+          { hostelName: { contains: filters.search, mode: 'insensitive' } },
+        ];
+      }
+
+      const records = await prisma.adpOperator.findMany({
+        where,
+        include: {
+          coverageZone: true,
+          histories: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+
+      return records.map((r) => this.sanitizeOperatorRecord(r));
+    } catch {
+      if (!supabaseAdmin) return [];
+      let query = supabaseAdmin
+        .from('AdpOperator')
+        .select('*, coverageZone:CoverageZone(*), verificationHistories:AdpVerificationHistory(*)')
+        .order('createdAt', { ascending: false });
+
+      if (filters?.zoneId) query = query.eq('coverageZoneId', filters.zoneId);
+      if (filters?.status) query = query.eq('status', filters.status);
+
+      const { data, error } = await query;
+      if (error) {
+        logger.error('[AdpOperatorService] listApplicationsForAdmin fallback failed:', error);
+        return [];
+      }
+
+      let res = (data || []).map((r) => this.sanitizeOperatorRecord(r));
+      if (filters?.search) {
+        const s = filters.search.toLowerCase();
+        res = res.filter(
+          (r: any) =>
+            r.fullName?.toLowerCase().includes(s) ||
+            r.matricNumber?.toLowerCase().includes(s) ||
+            r.applicationReference?.toLowerCase().includes(s) ||
+            r.hostelName?.toLowerCase().includes(s)
+        );
+      }
+      return res;
+    }
+  }
+
+  /**
+   * Fetch a single application by ID
+   */
+  async getApplicationById(id: string) {
+    try {
+      const record = await prisma.adpOperator.findUnique({
+        where: { id },
+        include: {
+          coverageZone: true,
+          histories: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
+      if (!record) throw new NotFoundError('ADP operator application not found');
+      return this.sanitizeOperatorRecord(record);
+    } catch (e: any) {
+      if (e instanceof NotFoundError) throw e;
+      if (!supabaseAdmin) throw new NotFoundError('ADP application not found');
+      const { data, error } = await supabaseAdmin
+        .from('AdpOperator')
+        .select('*, coverageZone:CoverageZone(*), verificationHistories:AdpVerificationHistory(*)')
+        .eq('id', id)
+        .single();
+      if (error || !data) throw new NotFoundError('ADP application not found');
+      return this.sanitizeOperatorRecord(data);
+    }
+  }
+
+  /**
+   * Verify an individual track: STUDENT | HOSTEL | PAYMENT
+   */
+  async verifyTrack(params: {
+    operatorId: string;
+    track: 'STUDENT' | 'HOSTEL' | 'PAYMENT';
+    status: 'PENDING' | 'APPROVED' | 'REJECTED' | 'INFO_REQUESTED' | 'MANUAL_REVIEW';
+    notes?: string;
+    officerUserId: string;
+  }) {
+    const operator = await this.getApplicationById(params.operatorId);
+
+    // Guard: Officers cannot verify their own application
+    if (params.officerUserId === operator.userId) {
+      throw new BadRequestError('Security violation: You cannot verify or approve your own application.');
+    }
+
+    const trackFieldMap = {
+      STUDENT: {
+        statusField: 'studentVerificationStatus',
+        notesField: 'studentVerificationNotes',
+        byField: 'studentVerifiedBy',
+        atField: 'studentVerifiedAt',
+      },
+      HOSTEL: {
+        statusField: 'hostelVerificationStatus',
+        notesField: 'hostelVerificationNotes',
+        byField: 'hostelVerifiedBy',
+        atField: 'hostelVerifiedAt',
+      },
+      PAYMENT: {
+        statusField: 'paymentVerificationStatus',
+        notesField: 'paymentVerificationNotes',
+        byField: 'paymentVerifiedBy',
+        atField: 'paymentVerifiedAt',
+      },
+    } as const;
+
+    const fields = trackFieldMap[params.track];
+    const oldStatus = operator[fields.statusField] || 'PENDING';
+    const now = new Date();
+
+    const updateData: any = {
+      [fields.statusField]: params.status,
+      [fields.notesField]: params.notes || null,
+      [fields.byField]: params.officerUserId,
+      [fields.atField]: now,
+      updatedAt: now,
+    };
+
+    // If any track is rejected, update overall status
+    if (params.status === 'REJECTED') {
+      updateData.status = 'REJECTED';
+      updateData.rejectionReason = `Rejected on ${params.track} track: ${params.notes || 'Did not meet criteria'}`;
+    } else if (params.status === 'INFO_REQUESTED') {
+      updateData.status = 'INFO_REQUESTED';
+    } else if (operator.status === 'PENDING_REVIEW') {
+      updateData.status = 'UNDER_VERIFICATION';
+    }
+
+    try {
+      await prisma.adpOperator.update({
+        where: { id: params.operatorId },
+        data: updateData,
+      });
+
+      await prisma.adpVerificationHistory.create({
+        data: {
+          adpOperatorId: params.operatorId,
+          track: params.track,
+          oldStatus,
+          newStatus: params.status,
+          reason: params.notes || `Track ${params.track} updated to ${params.status}`,
+          officerUserId: params.officerUserId,
+        },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('AdpOperator').update(updateData).eq('id', params.operatorId);
+        await supabaseAdmin.from('AdpVerificationHistory').insert([
+          {
+            adpOperatorId: params.operatorId,
+            track: params.track,
+            oldStatus,
+            newStatus: params.status,
+            reason: params.notes || `Track ${params.track} updated to ${params.status}`,
+            officerUserId: params.officerUserId,
+          },
+        ]);
+      }
+    }
+
+    return this.getApplicationById(params.operatorId);
+  }
+
+  /**
+   * Final activation: sets status = APPROVED, isActive = true, assigns role
+   * Requires ALL three verification tracks to be APPROVED.
+   */
+  async approveAndActivateOperator(params: {
+    operatorId: string;
+    officerUserId: string;
+    notes?: string;
+  }) {
+    const operator = await this.getApplicationById(params.operatorId);
+
+    if (params.officerUserId === operator.userId) {
+      throw new BadRequestError('Security violation: You cannot approve your own application.');
+    }
+
+    if (
+      operator.studentVerificationStatus !== 'APPROVED' ||
+      operator.hostelVerificationStatus !== 'APPROVED' ||
+      operator.paymentVerificationStatus !== 'APPROVED'
+    ) {
+      throw new BadRequestError(
+        'Cannot activate delivery port. All three tracks (Student Identity, Hostel Location, Payment Details) must be APPROVED first.'
+      );
+    }
+
+    const now = new Date();
+    const updateData = {
+      status: 'APPROVED',
+      isActive: true,
+      updatedAt: now,
+    };
+
+    try {
+      await prisma.adpOperator.update({
+        where: { id: params.operatorId },
+        data: updateData,
+      });
+
+      // Assign AdpOperator role to user if role exists
+      const adpRole = await prisma.role.findUnique({ where: { name: 'AdpOperator' } });
+      if (adpRole) {
+        await prisma.user.update({
+          where: { id: operator.userId },
+          data: { roleId: adpRole.id },
+        });
+      }
+
+      await prisma.adpVerificationHistory.create({
+        data: {
+          adpOperatorId: params.operatorId,
+          track: 'OVERALL',
+          oldStatus: operator.status,
+          newStatus: 'APPROVED',
+          reason: params.notes || 'All 3 tracks approved. Operator activated.',
+          officerUserId: params.officerUserId,
+        },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('AdpOperator').update(updateData).eq('id', params.operatorId);
+        const { data: roleData } = await supabaseAdmin
+          .from('Role')
+          .select('id')
+          .eq('name', 'AdpOperator')
+          .maybeSingle();
+
+        if (roleData?.id) {
+          await supabaseAdmin.from('User').update({ roleId: roleData.id }).eq('id', operator.userId);
+        }
+
+        await supabaseAdmin.from('AdpVerificationHistory').insert([
+          {
+            adpOperatorId: params.operatorId,
+            track: 'OVERALL',
+            oldStatus: operator.status,
+            newStatus: 'APPROVED',
+            reason: params.notes || 'All 3 tracks approved. Operator activated.',
+            officerUserId: params.officerUserId,
+          },
+        ]);
+      }
+    }
+
+    return this.getApplicationById(params.operatorId);
+  }
+
+  /**
+   * Suspend an active operator with mandatory reason
+   */
+  async suspendOperator(params: { operatorId: string; officerUserId: string; reason: string }) {
+    if (!params.reason?.trim()) {
+      throw new BadRequestError('A specific suspension reason is required.');
+    }
+    const operator = await this.getApplicationById(params.operatorId);
+
+    const now = new Date();
+    const updateData = {
+      status: 'SUSPENDED',
+      isActive: false,
+      suspensionReason: params.reason.trim(),
+      updatedAt: now,
+    };
+
+    try {
+      await prisma.adpOperator.update({
+        where: { id: params.operatorId },
+        data: updateData,
+      });
+
+      await prisma.adpVerificationHistory.create({
+        data: {
+          adpOperatorId: params.operatorId,
+          track: 'OVERALL',
+          oldStatus: operator.status,
+          newStatus: 'SUSPENDED',
+          reason: params.reason.trim(),
+          officerUserId: params.officerUserId,
+        },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('AdpOperator').update(updateData).eq('id', params.operatorId);
+        await supabaseAdmin.from('AdpVerificationHistory').insert([
+          {
+            adpOperatorId: params.operatorId,
+            track: 'OVERALL',
+            oldStatus: operator.status,
+            newStatus: 'SUSPENDED',
+            reason: params.reason.trim(),
+            officerUserId: params.officerUserId,
+          },
+        ]);
+      }
+    }
+
+    return this.getApplicationById(params.operatorId);
+  }
+
+  /**
+   * Block an operator permanently with mandatory reason
+   */
+  async blockOperator(params: { operatorId: string; officerUserId: string; reason: string }) {
+    if (!params.reason?.trim()) {
+      throw new BadRequestError('A specific blocking reason is required.');
+    }
+    const operator = await this.getApplicationById(params.operatorId);
+
+    const now = new Date();
+    const updateData = {
+      status: 'BLOCKED',
+      isActive: false,
+      rejectionReason: params.reason.trim(),
+      updatedAt: now,
+    };
+
+    try {
+      await prisma.adpOperator.update({
+        where: { id: params.operatorId },
+        data: updateData,
+      });
+
+      await prisma.adpVerificationHistory.create({
+        data: {
+          adpOperatorId: params.operatorId,
+          track: 'OVERALL',
+          oldStatus: operator.status,
+          newStatus: 'BLOCKED',
+          reason: params.reason.trim(),
+          officerUserId: params.officerUserId,
+        },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('AdpOperator').update(updateData).eq('id', params.operatorId);
+        await supabaseAdmin.from('AdpVerificationHistory').insert([
+          {
+            adpOperatorId: params.operatorId,
+            track: 'OVERALL',
+            oldStatus: operator.status,
+            newStatus: 'BLOCKED',
+            reason: params.reason.trim(),
+            officerUserId: params.officerUserId,
+          },
+        ]);
+      }
+    }
+
+    return this.getApplicationById(params.operatorId);
+  }
+
+  /**
+   * Returns a 15-minute signed URL to securely view an applicant's student ID card.
+   */
+  async getStudentDocumentSignedUrl(operatorId: string, _officerUserId: string) {
+    const operator = await this.getApplicationById(operatorId);
+    if (!operator?.studentIdDocPath) {
+      throw new NotFoundError('No verification document attached to this application');
+    }
+    const { storageService } = await import('./storage.service');
+    return storageService.createSignedDownloadUrl(operator.studentIdDocPath, 900);
+  }
+
+  /**
    * Strips out raw encrypted fields before returning to frontend.
    */
   private sanitizeOperatorRecord(record: any) {

@@ -443,6 +443,35 @@ export const adminApi = {
     const res = await apiClient.post('/zones/admin/seed');
     return res.data;
   },
+  // ADP Verification Portal Methods
+  listAdpApplications: async (params?: { zoneId?: string; status?: string; search?: string }) => {
+    const res = await apiClient.get('/admin/adp/applications', { params });
+    return res.data?.data ?? [];
+  },
+  getAdpApplication: async (id: string) => {
+    const res = await apiClient.get(`/admin/adp/applications/${id}`);
+    return res.data?.data;
+  },
+  getAdpDocumentUrl: async (id: string) => {
+    const res = await apiClient.get(`/admin/adp/applications/${id}/doc-url`);
+    return res.data?.signedUrl;
+  },
+  verifyAdpTrack: async (id: string, data: { track: 'STUDENT' | 'HOSTEL' | 'PAYMENT'; status: string; notes?: string }) => {
+    const res = await apiClient.patch(`/admin/adp/applications/${id}/track`, data);
+    return res.data?.data;
+  },
+  approveAdpOperator: async (id: string, notes?: string) => {
+    const res = await apiClient.patch(`/admin/adp/applications/${id}/approve`, { notes });
+    return res.data?.data;
+  },
+  suspendAdpOperator: async (id: string, reason: string) => {
+    const res = await apiClient.patch(`/admin/adp/applications/${id}/suspend`, { reason });
+    return res.data?.data;
+  },
+  blockAdpOperator: async (id: string, reason: string) => {
+    const res = await apiClient.patch(`/admin/adp/applications/${id}/block`, { reason });
+    return res.data?.data;
+  },
 };
 
 export const zonesApi = {

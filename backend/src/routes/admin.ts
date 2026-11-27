@@ -4,7 +4,7 @@ import fs from 'fs';
 import path from 'path';
 import prisma from '../prisma/client';
 import { authenticate } from '../middleware/authenticate';
-import { BadRequestError, NotFoundError, ForbiddenError } from '../utils/errors';
+import { BadRequestError, NotFoundError, ForbiddenError, UnauthorizedError } from '../utils/errors';
 import { v4 as uuidv4 } from 'uuid';
 import { sendDeliveryStageUpdateEmail } from '../services/email.service';
 import { systemProductStore } from '../services/system-product.store';
@@ -879,6 +879,176 @@ router.post('/delivery-fee', async (req: Request, res: Response, next: NextFunct
       status: 'success',
       message: 'Delivery fee settings updated successfully',
       config: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── ADP Delivery Port Operator Verification ──────────────────────────────────
+
+/**
+ * GET /api/v1/admin/adp/applications
+ * List all ADP student delivery port applications with optional filters
+ */
+router.get('/adp/applications', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const { zoneId, status, search } = req.query;
+    const applications = await adpOperatorService.listApplicationsForAdmin({
+      zoneId: zoneId as string | undefined,
+      status: status as string | undefined,
+      search: search as string | undefined,
+    });
+    res.json({
+      status: 'success',
+      count: applications.length,
+      data: applications,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/admin/adp/applications/:id
+ * Retrieve a specific application by ID
+ */
+router.get('/adp/applications/:id', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const application = await adpOperatorService.getApplicationById(req.params.id);
+    res.json({
+      status: 'success',
+      data: application,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/admin/adp/applications/:id/doc-url
+ * Returns short-lived signed URL for officer to view student ID doc
+ */
+router.get('/adp/applications/:id/doc-url', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const officerUserId = req.user?.sub || 'system';
+    const signedUrl = await adpOperatorService.getStudentDocumentSignedUrl(req.params.id, officerUserId);
+    res.json({
+      status: 'success',
+      signedUrl,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/v1/admin/adp/applications/:id/track
+ * Verify an individual track (STUDENT | HOSTEL | PAYMENT)
+ */
+router.patch('/adp/applications/:id/track', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const officerUserId = req.user?.sub;
+    if (!officerUserId) {
+      throw new UnauthorizedError('Officer authentication required');
+    }
+    const { track, status, notes } = req.body;
+    const updated = await adpOperatorService.verifyTrack({
+      operatorId: req.params.id,
+      track,
+      status,
+      notes,
+      officerUserId,
+    });
+    res.json({
+      status: 'success',
+      message: `Track ${track} updated to ${status}`,
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/v1/admin/adp/applications/:id/approve
+ * Final approval and activation of ADP delivery port
+ */
+router.patch('/adp/applications/:id/approve', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const officerUserId = req.user?.sub;
+    if (!officerUserId) {
+      throw new UnauthorizedError('Officer authentication required');
+    }
+    const { notes } = req.body;
+    const updated = await adpOperatorService.approveAndActivateOperator({
+      operatorId: req.params.id,
+      officerUserId,
+      notes,
+    });
+    res.json({
+      status: 'success',
+      message: 'ADP Operator successfully activated',
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/v1/admin/adp/applications/:id/suspend
+ * Suspend an active ADP delivery port
+ */
+router.patch('/adp/applications/:id/suspend', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const officerUserId = req.user?.sub;
+    if (!officerUserId) {
+      throw new UnauthorizedError('Officer authentication required');
+    }
+    const { reason } = req.body;
+    const updated = await adpOperatorService.suspendOperator({
+      operatorId: req.params.id,
+      officerUserId,
+      reason,
+    });
+    res.json({
+      status: 'success',
+      message: 'ADP Operator suspended',
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/v1/admin/adp/applications/:id/block
+ * Block an operator permanently
+ */
+router.patch('/adp/applications/:id/block', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpOperatorService } = await import('../services/adpOperator.service');
+    const officerUserId = req.user?.sub;
+    if (!officerUserId) {
+      throw new UnauthorizedError('Officer authentication required');
+    }
+    const { reason } = req.body;
+    const updated = await adpOperatorService.blockOperator({
+      operatorId: req.params.id,
+      officerUserId,
+      reason,
+    });
+    res.json({
+      status: 'success',
+      message: 'ADP Operator blocked',
+      data: updated,
     });
   } catch (err) {
     next(err);

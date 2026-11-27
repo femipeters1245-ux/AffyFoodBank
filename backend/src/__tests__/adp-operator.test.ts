@@ -14,9 +14,17 @@ jest.mock('../prisma/client', () => ({
     findFirst: jest.fn(),
     create: jest.fn(),
     findMany: jest.fn(),
+    findUnique: jest.fn(),
+    update: jest.fn(),
   },
   adpVerificationHistory: {
     create: jest.fn(),
+  },
+  role: {
+    findUnique: jest.fn(),
+  },
+  user: {
+    update: jest.fn(),
   },
 }));
 
@@ -297,6 +305,142 @@ describe('ADP Operator & Financial Encryption Suite', () => {
       });
 
       expect(result.paymentVerificationStatus).toBe('MANUAL_REVIEW');
+    });
+  });
+
+  describe('4. Operational Portal & Multi-Track Verification', () => {
+    const mockApp = {
+      id: 'op-1',
+      userId: 'student-user-1',
+      applicationReference: 'ADP-20261127-TEST',
+      fullName: 'Boluwatife Adeleke',
+      status: 'PENDING_REVIEW',
+      studentVerificationStatus: 'PENDING',
+      hostelVerificationStatus: 'PENDING',
+      paymentVerificationStatus: 'PENDING',
+      isActive: false,
+    };
+
+    it('should prevent officers from verifying their own application', async () => {
+      (prisma.adpOperator.findUnique as jest.Mock).mockResolvedValue(mockApp);
+
+      await expect(
+        adpOperatorService.verifyTrack({
+          operatorId: 'op-1',
+          track: 'STUDENT',
+          status: 'APPROVED',
+          officerUserId: 'student-user-1', // Same as applicant!
+        })
+      ).rejects.toThrow(/cannot verify or approve your own application/i);
+    });
+
+    it('should verify an individual track and log verification history', async () => {
+      (prisma.adpOperator.findUnique as jest.Mock).mockResolvedValue(mockApp);
+      (prisma.adpOperator.update as jest.Mock).mockResolvedValue({
+        ...mockApp,
+        studentVerificationStatus: 'APPROVED',
+        status: 'UNDER_VERIFICATION',
+      });
+      (prisma.adpVerificationHistory.create as jest.Mock).mockResolvedValue({ id: 'hist-2' });
+
+      await adpOperatorService.verifyTrack({
+        operatorId: 'op-1',
+        track: 'STUDENT',
+        status: 'APPROVED',
+        notes: 'Valid student ID confirmed against UNILESA registry',
+        officerUserId: 'admin-officer-9',
+      });
+
+      expect(prisma.adpOperator.update).toHaveBeenCalledWith({
+        where: { id: 'op-1' },
+        data: expect.objectContaining({
+          studentVerificationStatus: 'APPROVED',
+          studentVerifiedBy: 'admin-officer-9',
+          status: 'UNDER_VERIFICATION',
+        }),
+      });
+
+      expect(prisma.adpVerificationHistory.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          adpOperatorId: 'op-1',
+          track: 'STUDENT',
+          oldStatus: 'PENDING',
+          newStatus: 'APPROVED',
+          officerUserId: 'admin-officer-9',
+        }),
+      });
+    });
+
+    it('should reject activation if not all 3 tracks are approved', async () => {
+      (prisma.adpOperator.findUnique as jest.Mock).mockResolvedValue({
+        ...mockApp,
+        studentVerificationStatus: 'APPROVED',
+        hostelVerificationStatus: 'PENDING', // Not yet approved
+        paymentVerificationStatus: 'APPROVED',
+      });
+
+      await expect(
+        adpOperatorService.approveAndActivateOperator({
+          operatorId: 'op-1',
+          officerUserId: 'admin-officer-9',
+        })
+      ).rejects.toThrow(/All three tracks.*must be APPROVED first/i);
+    });
+
+    it('should activate operator and assign AdpOperator role when all 3 tracks are approved', async () => {
+      (prisma.adpOperator.findUnique as jest.Mock).mockResolvedValue({
+        ...mockApp,
+        studentVerificationStatus: 'APPROVED',
+        hostelVerificationStatus: 'APPROVED',
+        paymentVerificationStatus: 'APPROVED',
+      });
+
+      (prisma.role.findUnique as jest.Mock).mockResolvedValue({
+        id: 'role-adp-id',
+        name: 'AdpOperator',
+      });
+
+      await adpOperatorService.approveAndActivateOperator({
+        operatorId: 'op-1',
+        officerUserId: 'admin-officer-9',
+        notes: 'Final activation approved',
+      });
+
+      expect(prisma.adpOperator.update).toHaveBeenCalledWith({
+        where: { id: 'op-1' },
+        data: expect.objectContaining({
+          status: 'APPROVED',
+          isActive: true,
+        }),
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: 'student-user-1' },
+        data: { roleId: 'role-adp-id' },
+      });
+    });
+
+    it('should suspend an active operator with mandatory reason and log in history', async () => {
+      (prisma.adpOperator.findUnique as jest.Mock).mockResolvedValue({
+        ...mockApp,
+        status: 'APPROVED',
+        isActive: true,
+      });
+
+      await adpOperatorService.suspendOperator({
+        operatorId: 'op-1',
+        officerUserId: 'admin-officer-9',
+        reason: 'Temporary semester examination leave',
+      });
+
+      expect(prisma.adpOperator.update).toHaveBeenCalledWith({
+        where: { id: 'op-1' },
+        data: expect.objectContaining({
+          status: 'SUSPENDED',
+          isActive: false,
+          suspensionReason: 'Temporary semester examination leave',
+        }),
+      });
     });
   });
 });

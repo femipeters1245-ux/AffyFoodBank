@@ -389,9 +389,9 @@ export const AdminDashboardPage: React.FC = () => {
     isFinanceStaff ||
     isLogisticsStaff;
 
-  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' =
+  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' | 'adp-applications' =
     isFinanceStaff ? 'transactions' : isLogisticsStaff ? 'deliveries' : 'overview';
-  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' | 'adp-applications'>(defaultTab);
 
   // ─── Products state — sourced exclusively from Supabase ──────────────────────
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -534,6 +534,135 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // ─── ADP Operator Applications Oversight ───────────────────────────────────
+  const [adpApplications, setAdpApplications] = useState<any[]>([]);
+  const [adpLoading, setAdpLoading] = useState(false);
+  const [adpFilterStatus, setAdpFilterStatus] = useState<string>('ALL');
+  const [adpFilterZone, setAdpFilterZone] = useState<string>('ALL');
+  const [adpSearchQuery, setAdpSearchQuery] = useState('');
+  const [selectedApp, setSelectedApp] = useState<any | null>(null);
+  const [selectedDocUrl, setSelectedDocUrl] = useState<string | null>(null);
+  const [loadingDocUrl, setLoadingDocUrl] = useState(false);
+  const [verificationNotes, setVerificationNotes] = useState('');
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [suspensionReasonInput, setSuspensionReasonInput] = useState('');
+  const [showSuspendModal, setShowSuspendModal] = useState(false);
+  const [showBlockModal, setShowBlockModal] = useState(false);
+
+  const loadAdpApplications = useCallback(async () => {
+    try {
+      setAdpLoading(true);
+      const params: any = {};
+      if (adpFilterZone !== 'ALL') params.zoneId = adpFilterZone;
+      if (adpFilterStatus !== 'ALL') params.status = adpFilterStatus;
+      if (adpSearchQuery.trim()) params.search = adpSearchQuery.trim();
+      const apps = await adminApi.listAdpApplications(params);
+      setAdpApplications(apps || []);
+    } catch (e) {
+      console.warn('[Admin] Could not load ADP applications:', e);
+    } finally {
+      setAdpLoading(false);
+    }
+  }, [adpFilterZone, adpFilterStatus, adpSearchQuery]);
+
+  const handleOpenAppDetails = async (app: any) => {
+    setSelectedApp(app);
+    setSelectedDocUrl(null);
+    setVerificationNotes('');
+    try {
+      setLoadingDocUrl(true);
+      const url = await adminApi.getAdpDocumentUrl(app.id);
+      setSelectedDocUrl(url);
+    } catch (e) {
+      console.warn('Could not load doc URL:', e);
+    } finally {
+      setLoadingDocUrl(false);
+    }
+  };
+
+  const handleVerifyTrack = async (track: 'STUDENT' | 'HOSTEL' | 'PAYMENT', status: string) => {
+    if (!selectedApp) return;
+    try {
+      setIsVerifying(true);
+      const updated = await adminApi.verifyAdpTrack(selectedApp.id, {
+        track,
+        status,
+        notes: verificationNotes.trim() || undefined,
+      });
+      setSelectedApp(updated);
+      showToast(`✓ ${track} track updated to ${status}`);
+      await loadAdpApplications();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Verification update failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleApproveOperator = async () => {
+    if (!selectedApp) return;
+    if (
+      selectedApp.studentVerificationStatus !== 'APPROVED' ||
+      selectedApp.hostelVerificationStatus !== 'APPROVED' ||
+      selectedApp.paymentVerificationStatus !== 'APPROVED'
+    ) {
+      alert('All three tracks (Student, Hostel, Payment) must be approved before activating the delivery port.');
+      return;
+    }
+    if (!confirm(`Activate ${selectedApp.fullName} as an official ADP operator for ${selectedApp.coverageZone?.name || 'their zone'}?`)) return;
+    try {
+      setIsVerifying(true);
+      const updated = await adminApi.approveAdpOperator(selectedApp.id, verificationNotes.trim() || undefined);
+      setSelectedApp(updated);
+      showToast(`✓ ${selectedApp.fullName} is now an ACTIVE ADP Operator!`);
+      await loadAdpApplications();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Approval failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleSuspendOperator = async () => {
+    if (!selectedApp || !suspensionReasonInput.trim()) {
+      alert('Please provide a reason for suspension.');
+      return;
+    }
+    try {
+      setIsVerifying(true);
+      const updated = await adminApi.suspendAdpOperator(selectedApp.id, suspensionReasonInput.trim());
+      setSelectedApp(updated);
+      setShowSuspendModal(false);
+      setSuspensionReasonInput('');
+      showToast(`✓ Operator ${selectedApp.fullName} suspended`);
+      await loadAdpApplications();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Suspension failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
+  const handleBlockOperator = async () => {
+    if (!selectedApp || !suspensionReasonInput.trim()) {
+      alert('Please provide a reason for blocking.');
+      return;
+    }
+    try {
+      setIsVerifying(true);
+      const updated = await adminApi.blockAdpOperator(selectedApp.id, suspensionReasonInput.trim());
+      setSelectedApp(updated);
+      setShowBlockModal(false);
+      setSuspensionReasonInput('');
+      showToast(`✓ Operator ${selectedApp.fullName} blocked`);
+      await loadAdpApplications();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Blocking failed');
+    } finally {
+      setIsVerifying(false);
+    }
+  };
+
   const loadProducts = useCallback(async () => {
     try {
       setProductsLoading(true);
@@ -615,6 +744,12 @@ export const AdminDashboardPage: React.FC = () => {
       loadZones();
     }
   }, [activeTab, loadZones]);
+
+  useEffect(() => {
+    if (activeTab === 'adp-applications') {
+      loadAdpApplications();
+    }
+  }, [activeTab, loadAdpApplications]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
@@ -1251,6 +1386,21 @@ export const AdminDashboardPage: React.FC = () => {
           >
             <span>📍 UNILESA Coverage Zones</span>
             <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{zones.length}</span>
+          </button>
+        )}
+
+        {/* ADP Partner Applications & Multi-Track Verification: Admin, SuperAdmin, LogisticsStaff */}
+        {(isAdminOrSuperAdmin || isLogisticsStaff) && (
+          <button
+            onClick={() => setActiveTab('adp-applications')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'adp-applications'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>🎓 ADP Partner Applications</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{adpApplications.length}</span>
           </button>
         )}
       </div>
@@ -2882,6 +3032,655 @@ export const AdminDashboardPage: React.FC = () => {
                     })}
                 </tbody>
               </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB: ADP PARTNER APPLICATIONS & MULTI-TRACK VERIFICATION (Milestone 4)
+      ========================================================================= */}
+      {activeTab === 'adp-applications' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header & Metrics */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-brand-50 text-brand-800 rounded-full text-xs font-bold mb-2">
+                  <span>🎓</span>
+                  <span>UNILESA Delivery Partner Vetting</span>
+                </div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                  ADP Operator Applications & Multi-Track Verification
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Three independent verification tracks (Student Identity, Hostel Location, and Bank Details) must be approved before activating an operator.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={loadAdpApplications}
+                  disabled={adpLoading}
+                  className="px-4 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs"
+                >
+                  <span className={adpLoading ? 'animate-spin' : ''}>🔄</span>
+                  <span>Refresh Applications</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <span className="text-xs text-slate-500 font-semibold block">Total Applications</span>
+                <span className="text-2xl font-black text-slate-900">{adpApplications.length}</span>
+              </div>
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                <span className="text-xs text-amber-700 font-semibold block">Pending / Under Review</span>
+                <span className="text-2xl font-black text-amber-800">
+                  {adpApplications.filter((a) => a.status === 'PENDING_REVIEW' || a.status === 'UNDER_VERIFICATION').length}
+                </span>
+              </div>
+              <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                <span className="text-xs text-emerald-700 font-semibold block">Active Ports (Approved)</span>
+                <span className="text-2xl font-black text-emerald-800">
+                  {adpApplications.filter((a) => a.status === 'APPROVED' && a.isActive).length}
+                </span>
+              </div>
+              <div className="p-4 bg-rose-50 rounded-2xl border border-rose-100">
+                <span className="text-xs text-rose-700 font-semibold block">Suspended / Rejected</span>
+                <span className="text-2xl font-black text-rose-800">
+                  {adpApplications.filter((a) => a.status === 'REJECTED' || a.status === 'SUSPENDED' || a.status === 'BLOCKED').length}
+                </span>
+              </div>
+            </div>
+
+            {/* Search & Filters */}
+            <div className="flex flex-col sm:flex-row gap-3 pt-2">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  value={adpSearchQuery}
+                  onChange={(e) => setAdpSearchQuery(e.target.value)}
+                  placeholder="Search by student name, matric, hostel, or ADP reference..."
+                  className="w-full h-10 px-3.5 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div className="w-full sm:w-48">
+                <select
+                  value={adpFilterZone}
+                  onChange={(e) => setAdpFilterZone(e.target.value)}
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="ALL">All Zones</option>
+                  {zones.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="w-full sm:w-44">
+                <select
+                  value={adpFilterStatus}
+                  onChange={(e) => setAdpFilterStatus(e.target.value)}
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="PENDING_REVIEW">Pending Review</option>
+                  <option value="UNDER_VERIFICATION">Under Verification</option>
+                  <option value="INFO_REQUESTED">Info Requested</option>
+                  <option value="APPROVED">Approved</option>
+                  <option value="REJECTED">Rejected</option>
+                  <option value="SUSPENDED">Suspended</option>
+                  <option value="BLOCKED">Blocked</option>
+                </select>
+              </div>
+            </div>
+          </div>
+
+          {/* Applications Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 border-b border-slate-100 text-[11px] uppercase tracking-wider text-slate-500 font-bold">
+                  <tr>
+                    <th className="px-5 py-4">Reference & Date</th>
+                    <th className="px-5 py-4">Student Identity</th>
+                    <th className="px-5 py-4">Zone & Hostel</th>
+                    <th className="px-5 py-4 text-center">Track Statuses (Student / Hostel / Pay)</th>
+                    <th className="px-5 py-4 text-center">Overall Status</th>
+                    <th className="px-5 py-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adpLoading ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                        <div className="inline-block w-6 h-6 border-2 border-brand-600 border-t-transparent rounded-full animate-spin mb-2" />
+                        <div>Loading ADP applications...</div>
+                      </td>
+                    </tr>
+                  ) : adpApplications.length === 0 ? (
+                    <tr>
+                      <td colSpan={6} className="px-5 py-8 text-center text-slate-400">
+                        No ADP applications found matching your criteria.
+                      </td>
+                    </tr>
+                  ) : (
+                    adpApplications.map((app) => {
+                      const isAllApproved =
+                        app.studentVerificationStatus === 'APPROVED' &&
+                        app.hostelVerificationStatus === 'APPROVED' &&
+                        app.paymentVerificationStatus === 'APPROVED';
+
+                      return (
+                        <tr key={app.id} className="hover:bg-slate-50/80 transition-colors">
+                          <td className="px-5 py-4">
+                            <span className="font-mono font-bold text-brand-700 bg-brand-50 px-2 py-0.5 rounded text-[11px] block w-max">
+                              {app.applicationReference}
+                            </span>
+                            <span className="text-[10px] text-slate-400 block mt-1">
+                              {new Date(app.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span className="font-bold text-slate-900 block">{app.fullName}</span>
+                            <span className="text-slate-500 text-[11px] block">{app.matricNumber} • {app.academicLevel}</span>
+                            <span className="text-[10px] text-slate-400 block">{app.faculty} ({app.department})</span>
+                          </td>
+
+                          <td className="px-5 py-4">
+                            <span className="font-bold text-slate-800 block">{app.coverageZone?.name || 'Assigned Zone'}</span>
+                            <span className="text-slate-600 text-[11px] block truncate max-w-[200px]" title={app.hostelAddress}>
+                              {app.hostelName}
+                            </span>
+                          </td>
+
+                          <td className="px-5 py-4 text-center">
+                            <div className="flex items-center justify-center gap-1.5">
+                              {/* Student Track */}
+                              <span
+                                title={`Student ID Track: ${app.studentVerificationStatus}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  app.studentVerificationStatus === 'APPROVED'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : app.studentVerificationStatus === 'REJECTED'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                🎓 {app.studentVerificationStatus === 'APPROVED' ? '✓' : '…'}
+                              </span>
+
+                              {/* Hostel Track */}
+                              <span
+                                title={`Hostel Track: ${app.hostelVerificationStatus}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  app.hostelVerificationStatus === 'APPROVED'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : app.hostelVerificationStatus === 'REJECTED'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                🏠 {app.hostelVerificationStatus === 'APPROVED' ? '✓' : '…'}
+                              </span>
+
+                              {/* Payment Track */}
+                              <span
+                                title={`Payment Track: ${app.paymentVerificationStatus}`}
+                                className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                                  app.paymentVerificationStatus === 'APPROVED'
+                                    ? 'bg-emerald-100 text-emerald-800'
+                                    : app.paymentVerificationStatus === 'MANUAL_REVIEW'
+                                    ? 'bg-purple-100 text-purple-800'
+                                    : app.paymentVerificationStatus === 'REJECTED'
+                                    ? 'bg-rose-100 text-rose-800'
+                                    : 'bg-amber-100 text-amber-800'
+                                }`}
+                              >
+                                💳 {app.paymentVerificationStatus === 'APPROVED' ? '✓' : app.paymentVerificationStatus === 'MANUAL_REVIEW' ? '⚙️' : '…'}
+                              </span>
+                            </div>
+                          </td>
+
+                          <td className="px-5 py-4 text-center">
+                            {app.status === 'APPROVED' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800">
+                                ✓ Active Operator
+                              </span>
+                            ) : app.status === 'REJECTED' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-rose-100 text-rose-800">
+                                ✕ Rejected
+                              </span>
+                            ) : app.status === 'SUSPENDED' ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-purple-100 text-purple-800">
+                                ⏸️ Suspended
+                              </span>
+                            ) : isAllApproved ? (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-blue-100 text-blue-800">
+                                ⭐ Ready to Activate
+                              </span>
+                            ) : (
+                              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-100 text-amber-800">
+                                ⏳ Under Review
+                              </span>
+                            )}
+                          </td>
+
+                          <td className="px-5 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => handleOpenAppDetails(app)}
+                              className="px-3 py-1.5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs transition shadow-2xs"
+                            >
+                              Inspect & Verify
+                            </button>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          MODAL: ADP OPERATOR INSPECTION & MULTI-TRACK VERIFICATION
+      ========================================================================= */}
+      {selectedApp && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-100 overflow-hidden max-h-[92vh] flex flex-col text-xs">
+            {/* Modal Header */}
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-mono font-bold text-brand-700 bg-brand-100 px-2 py-0.5 rounded text-[11px]">
+                    {selectedApp.applicationReference}
+                  </span>
+                  <span className="px-2 py-0.5 bg-slate-200 text-slate-800 font-bold rounded text-[11px]">
+                    {selectedApp.coverageZone?.name || 'Coverage Zone'}
+                  </span>
+                </div>
+                <h3 className="text-lg font-black text-slate-900 mt-1">
+                  {selectedApp.fullName} ({selectedApp.matricNumber})
+                </h3>
+              </div>
+              <button
+                onClick={() => setSelectedApp(null)}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-slate-700 text-base"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 space-y-6 overflow-y-auto flex-1">
+              {/* Top Banner: Verification Readiness */}
+              {selectedApp.studentVerificationStatus === 'APPROVED' &&
+              selectedApp.hostelVerificationStatus === 'APPROVED' &&
+              selectedApp.paymentVerificationStatus === 'APPROVED' &&
+              !selectedApp.isActive ? (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-emerald-900 block text-sm">
+                      ✓ All 3 Verification Tracks Approved!
+                    </span>
+                    <span className="text-emerald-700 text-[11px]">
+                      This applicant is eligible to become an active delivery port operator.
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleApproveOperator}
+                    disabled={isVerifying}
+                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-sm transition"
+                  >
+                    {isVerifying ? 'Activating...' : '🚀 Activate Delivery Port'}
+                  </button>
+                </div>
+              ) : selectedApp.isActive ? (
+                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between">
+                  <div>
+                    <span className="font-bold text-emerald-900 block text-sm">
+                      ✓ Currently Active ADP Operator
+                    </span>
+                    <span className="text-emerald-700 text-[11px]">
+                      Serving coverage zone: {selectedApp.coverageZone?.name || 'UNILESA Zone'}
+                    </span>
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setShowSuspendModal(true)}
+                      className="px-3 py-1.5 bg-purple-100 hover:bg-purple-200 text-purple-800 font-bold rounded-xl text-xs transition"
+                    >
+                      ⏸️ Suspend
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowBlockModal(true)}
+                      className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-800 font-bold rounded-xl text-xs transition"
+                    >
+                      🚫 Block
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
+              {/* Grid: 3 Verification Tracks */}
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Track 1: Student Identity */}
+                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold uppercase tracking-wider text-slate-700 text-[11px]">
+                      🎓 Student Identity
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        selectedApp.studentVerificationStatus === 'APPROVED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : selectedApp.studentVerificationStatus === 'REJECTED'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {selectedApp.studentVerificationStatus}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-slate-600 text-[11px]">
+                    <div><strong>Faculty:</strong> {selectedApp.faculty}</div>
+                    <div><strong>Dept:</strong> {selectedApp.department}</div>
+                    <div><strong>Level:</strong> {selectedApp.academicLevel}</div>
+                    <div><strong>Phone:</strong> {selectedApp.phone}</div>
+                    <div><strong>Email:</strong> {selectedApp.email}</div>
+                  </div>
+
+                  {/* Document View Button */}
+                  <div className="pt-2 border-t border-slate-200">
+                    {loadingDocUrl ? (
+                      <span className="text-slate-400 text-[11px]">Loading doc...</span>
+                    ) : selectedDocUrl ? (
+                      <a
+                        href={selectedDocUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-brand-50 hover:bg-brand-100 text-brand-700 font-bold rounded-xl text-[11px] transition"
+                      >
+                        <span>📄</span>
+                        <span>View Student ID (Signed URL)</span>
+                      </a>
+                    ) : (
+                      <span className="text-slate-400 text-[11px]">Doc link unavailable</span>
+                    )}
+                  </div>
+
+                  {/* Track Actions */}
+                  <div className="flex gap-1.5 pt-2">
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('STUDENT', 'APPROVED')}
+                      className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('STUDENT', 'INFO_REQUESTED')}
+                      className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ❓ Info
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('STUDENT', 'REJECTED')}
+                      className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+
+                {/* Track 2: Hostel Location */}
+                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold uppercase tracking-wider text-slate-700 text-[11px]">
+                      🏠 Hostel Location
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        selectedApp.hostelVerificationStatus === 'APPROVED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : selectedApp.hostelVerificationStatus === 'REJECTED'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {selectedApp.hostelVerificationStatus}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-slate-600 text-[11px]">
+                    <div><strong>Hostel:</strong> {selectedApp.hostelName}</div>
+                    <div><strong>Address:</strong> {selectedApp.hostelAddress}</div>
+                    <div><strong>Landmark:</strong> {selectedApp.closestLandmark || 'None provided'}</div>
+                    <div><strong>Zone:</strong> {selectedApp.coverageZone?.name}</div>
+                  </div>
+
+                  {/* Track Actions */}
+                  <div className="flex gap-1.5 pt-6">
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('HOSTEL', 'APPROVED')}
+                      className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('HOSTEL', 'INFO_REQUESTED')}
+                      className="flex-1 py-1.5 bg-amber-500 hover:bg-amber-600 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ❓ Info
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('HOSTEL', 'REJECTED')}
+                      className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+
+                {/* Track 3: Payment Details */}
+                <div className="p-4 rounded-2xl border border-slate-200 bg-slate-50/50 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold uppercase tracking-wider text-slate-700 text-[11px]">
+                      💳 Payment & Bank
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                        selectedApp.paymentVerificationStatus === 'APPROVED'
+                          ? 'bg-emerald-100 text-emerald-800'
+                          : selectedApp.paymentVerificationStatus === 'MANUAL_REVIEW'
+                          ? 'bg-purple-100 text-purple-800'
+                          : selectedApp.paymentVerificationStatus === 'REJECTED'
+                          ? 'bg-rose-100 text-rose-800'
+                          : 'bg-amber-100 text-amber-800'
+                      }`}
+                    >
+                      {selectedApp.paymentVerificationStatus}
+                    </span>
+                  </div>
+
+                  <div className="space-y-1 text-slate-600 text-[11px]">
+                    <div><strong>Bank:</strong> {selectedApp.bankName}</div>
+                    <div><strong>NUBAN:</strong> {selectedApp.accountNumberMasked}</div>
+                    <div><strong>Claimed Name:</strong> {selectedApp.accountName}</div>
+                    {selectedApp.nameEnquiryVerifiedName && (
+                      <div className="text-emerald-700">
+                        <strong>TransactPay Confirmed:</strong> {selectedApp.nameEnquiryVerifiedName}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Track Actions */}
+                  <div className="flex gap-1.5 pt-6">
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('PAYMENT', 'APPROVED')}
+                      className="flex-1 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ✓ Approve
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('PAYMENT', 'MANUAL_REVIEW')}
+                      className="flex-1 py-1.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ⚙️ Review
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isVerifying}
+                      onClick={() => handleVerifyTrack('PAYMENT', 'REJECTED')}
+                      className="flex-1 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-lg text-[10px] transition"
+                    >
+                      ✕ Reject
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Notes Input for Track Decisions */}
+              <div>
+                <label className="block text-[11px] font-bold uppercase tracking-wider text-slate-700 mb-1">
+                  Verification Decision Notes (Recorded in Immutable Audit Log)
+                </label>
+                <input
+                  type="text"
+                  value={verificationNotes}
+                  onChange={(e) => setVerificationNotes(e.target.value)}
+                  placeholder="e.g. Student ID matched with UNILESA department database..."
+                  className="w-full h-10 px-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              {/* Audit History */}
+              <div className="border-t border-slate-100 pt-4">
+                <h4 className="font-bold text-slate-800 text-xs mb-3">Verification History Audit Trail</h4>
+                {selectedApp.histories && selectedApp.histories.length > 0 ? (
+                  <div className="space-y-2 max-h-40 overflow-y-auto">
+                    {selectedApp.histories.map((h: any) => (
+                      <div key={h.id} className="p-2.5 bg-slate-50 rounded-xl border border-slate-100 text-[11px] flex justify-between items-center">
+                        <div>
+                          <span className="font-bold text-slate-700">[{h.track}]</span> {h.oldStatus} → <strong className="text-brand-700">{h.newStatus}</strong>
+                          {h.reason && <span className="text-slate-500 block text-[10px]">{h.reason}</span>}
+                        </div>
+                        <span className="text-[10px] text-slate-400">
+                          {new Date(h.createdAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <span className="text-slate-400 text-[11px]">No history logged yet.</span>
+                )}
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setSelectedApp(null)}
+                className="px-5 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 font-bold rounded-xl text-xs transition"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Suspend Reason Modal */}
+      {showSuspendModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 text-xs space-y-4">
+            <h3 className="text-base font-bold text-slate-900">Suspend Delivery Port Operator</h3>
+            <p className="text-slate-500">Provide an official reason for suspending {selectedApp?.fullName}. This will temporarily pause order distribution.</p>
+            <textarea
+              rows={3}
+              value={suspensionReasonInput}
+              onChange={(e) => setSuspensionReasonInput(e.target.value)}
+              placeholder="e.g. Student on semester examination leave..."
+              className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs focus:ring-2 focus:ring-brand-500"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowSuspendModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleSuspendOperator}
+                disabled={isVerifying}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition"
+              >
+                Confirm Suspension
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Block Reason Modal */}
+      {showBlockModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fadeIn">
+          <div className="w-full max-w-md bg-white rounded-3xl p-6 shadow-2xl border border-slate-100 text-xs space-y-4">
+            <h3 className="text-base font-bold text-rose-700">Block Delivery Port Operator Permanently</h3>
+            <p className="text-slate-500">Provide an official reason for permanently blocking {selectedApp?.fullName}.</p>
+            <textarea
+              rows={3}
+              value={suspensionReasonInput}
+              onChange={(e) => setSuspensionReasonInput(e.target.value)}
+              placeholder="e.g. Policy violation or fraudulent matriculation documents..."
+              className="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-slate-800 text-xs focus:ring-2 focus:ring-rose-500"
+            />
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                onClick={() => setShowBlockModal(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleBlockOperator}
+                disabled={isVerifying}
+                className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition"
+              >
+                Confirm Permanent Block
+              </button>
             </div>
           </div>
         </div>
