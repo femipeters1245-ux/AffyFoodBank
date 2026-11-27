@@ -389,9 +389,9 @@ export const AdminDashboardPage: React.FC = () => {
     isFinanceStaff ||
     isLogisticsStaff;
 
-  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' | 'adp-applications' =
+  const defaultTab: 'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' | 'adp-applications' | 'adp-earnings' =
     isFinanceStaff ? 'transactions' : isLogisticsStaff ? 'deliveries' : 'overview';
-  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' | 'adp-applications'>(defaultTab);
+  const [activeTab, setActiveTab] = useState<'inventory' | 'bundles' | 'kyc' | 'deliveries' | 'delivery-fee' | 'transactions' | 'overview' | 'adp-zones' | 'adp-applications' | 'adp-earnings'>(defaultTab);
 
   // ─── Products state — sourced exclusively from Supabase ──────────────────────
   const [products, setProducts] = useState<AdminProduct[]>([]);
@@ -663,6 +663,95 @@ export const AdminDashboardPage: React.FC = () => {
     }
   };
 
+  // ─── ADP Rates & Earnings Oversight (Milestone 7) ───────────────────────────
+  const [adpRates, setAdpRates] = useState<any[]>([]);
+  const [adpRatesLoading, setAdpRatesLoading] = useState(false);
+  const [newRateNaira, setNewRateNaira] = useState<number>(300); // ₦300 default per collection
+  const [newRateZoneId, setNewRateZoneId] = useState<string>('GLOBAL');
+  const [savingRate, setSavingRate] = useState(false);
+
+  const [adpEarnings, setAdpEarnings] = useState<any[]>([]);
+  const [adpEarningsLoading, setAdpEarningsLoading] = useState(false);
+  const [adpEarningFilterStatus, setAdpEarningFilterStatus] = useState<string>('ALL');
+  const [selectedEarningIds, setSelectedEarningIds] = useState<string[]>([]);
+  const [isProcessingPayout, setIsProcessingPayout] = useState(false);
+
+  const loadAdpRates = useCallback(async () => {
+    try {
+      setAdpRatesLoading(true);
+      const rates = await adminApi.listAdpRates();
+      setAdpRates(rates || []);
+    } catch (e) {
+      console.warn('[Admin] Could not load compensation rates:', e);
+    } finally {
+      setAdpRatesLoading(false);
+    }
+  }, []);
+
+  const handleSaveAdpRate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newRateNaira || newRateNaira <= 0) {
+      alert('Please enter a valid rate in Naira');
+      return;
+    }
+    try {
+      setSavingRate(true);
+      const rateCents = Math.round(newRateNaira * 100);
+      await adminApi.setAdpRate({
+        coverageZoneId: newRateZoneId === 'GLOBAL' ? null : newRateZoneId,
+        ratePerCollectionCents: rateCents,
+      });
+      showToast(`✓ Compensation rate set to ₦${newRateNaira.toLocaleString()} per completed collection`);
+      await loadAdpRates();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Failed to set rate');
+    } finally {
+      setSavingRate(false);
+    }
+  };
+
+  const loadAdpEarnings = useCallback(async () => {
+    try {
+      setAdpEarningsLoading(true);
+      const params: any = {};
+      if (adpEarningFilterStatus !== 'ALL') params.status = adpEarningFilterStatus;
+      const data = await adminApi.listAdpEarnings(params);
+      setAdpEarnings(data || []);
+    } catch (e) {
+      console.warn('[Admin] Could not load earnings:', e);
+    } finally {
+      setAdpEarningsLoading(false);
+    }
+  }, [adpEarningFilterStatus]);
+
+  const handleBatchPayout = async (operatorId: string, channel: 'TRANSACTPAY' | 'MANUAL') => {
+    const unbatchedForOperator = adpEarnings.filter(
+      (e) => e.adpOperatorId === operatorId && (e.status === 'PENDING' || e.status === 'APPROVED') && !e.payoutBatchId
+    );
+    if (unbatchedForOperator.length === 0) {
+      alert('No unbatched earnings available for this operator.');
+      return;
+    }
+    const totalNaira = unbatchedForOperator.reduce((sum, e) => sum + Number(e.amountCents || 0), 0) / 100;
+    if (!confirm(`Initiate payout of ₦${totalNaira.toLocaleString('en-NG', { minimumFractionDigits: 2 })} to ${unbatchedForOperator[0]?.adpOperator?.fullName} via ${channel}?`)) return;
+
+    try {
+      setIsProcessingPayout(true);
+      const batch = await adminApi.createAdpPayoutBatch({
+        operatorId,
+        earningIds: unbatchedForOperator.map((e) => e.id),
+        channel,
+      });
+      await adminApi.executeAdpPayoutBatch(batch.id);
+      showToast(`✓ Payout batch initiated for ${unbatchedForOperator[0]?.adpOperator?.fullName}!`);
+      await loadAdpEarnings();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Payout initiation failed');
+    } finally {
+      setIsProcessingPayout(false);
+    }
+  };
+
   const loadProducts = useCallback(async () => {
     try {
       setProductsLoading(true);
@@ -750,6 +839,13 @@ export const AdminDashboardPage: React.FC = () => {
       loadAdpApplications();
     }
   }, [activeTab, loadAdpApplications]);
+
+  useEffect(() => {
+    if (activeTab === 'adp-earnings') {
+      loadAdpRates();
+      loadAdpEarnings();
+    }
+  }, [activeTab, loadAdpRates, loadAdpEarnings]);
 
   // Delivery fee configuration state (Staff & Admin can configure delivery rates for Ilesa, Osun State)
   const [deliveryConfig, setDeliveryConfig] = useState<DeliveryFeeSettings>(() => {
@@ -1401,6 +1497,21 @@ export const AdminDashboardPage: React.FC = () => {
           >
             <span>🎓 ADP Partner Applications</span>
             <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{adpApplications.length}</span>
+          </button>
+        )}
+
+        {/* ADP Earnings & Payout Management: Admin, SuperAdmin, FinanceStaff */}
+        {(isAdminOrSuperAdmin || isFinanceStaff) && (
+          <button
+            onClick={() => setActiveTab('adp-earnings')}
+            className={`px-4 py-2.5 rounded-2xl transition-all flex items-center space-x-2 whitespace-nowrap ${
+              activeTab === 'adp-earnings'
+                ? 'bg-brand-700 text-white shadow-sm'
+                : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
+            }`}
+          >
+            <span>💰 ADP Earnings & Payouts</span>
+            <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{adpEarnings.length}</span>
           </button>
         )}
       </div>
@@ -3286,6 +3397,311 @@ export const AdminDashboardPage: React.FC = () => {
                         </tr>
                       );
                     })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =========================================================================
+          TAB: ADP EARNINGS & PAYOUT MANAGEMENT (Milestone 7)
+      ========================================================================= */}
+      {activeTab === 'adp-earnings' && (
+        <div className="space-y-6 animate-fadeIn">
+          {/* Header & Metrics */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-6">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 border-b border-slate-100 pb-5">
+              <div>
+                <div className="inline-flex items-center gap-2 px-3 py-1 bg-emerald-50 text-emerald-800 rounded-full text-xs font-bold mb-2">
+                  <span>💰</span>
+                  <span>Finance & Operator Compensation</span>
+                </div>
+                <h2 className="text-xl font-black text-slate-900 tracking-tight">
+                  ADP Operator Earnings & Automated Payout Batches
+                </h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Configure dynamic compensation rates per verified collection and disburse operator earnings via TransactPay or manual bank transfers.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    loadAdpRates();
+                    loadAdpEarnings();
+                  }}
+                  disabled={adpEarningsLoading || adpRatesLoading}
+                  className="px-4 py-2 bg-brand-50 hover:bg-brand-100 text-brand-700 text-xs font-bold rounded-xl transition-all flex items-center gap-1.5 shadow-2xs"
+                >
+                  <span className={adpEarningsLoading ? 'animate-spin' : ''}>🔄</span>
+                  <span>Refresh Ledger</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Metrics Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                <span className="text-xs text-slate-500 font-semibold block">Total Completed Collections</span>
+                <span className="text-2xl font-black text-slate-900">{adpEarnings.length}</span>
+              </div>
+              <div className="p-4 bg-amber-50 rounded-2xl border border-amber-100">
+                <span className="text-xs text-amber-700 font-semibold block">Pending Operator Payouts</span>
+                <span className="text-2xl font-black text-amber-800">
+                  ₦{(
+                    adpEarnings
+                      .filter((e) => e.status === 'PENDING' || e.status === 'APPROVED')
+                      .reduce((sum, e) => sum + Number(e.amountCents || 0), 0) / 100
+                  ).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="p-4 bg-emerald-50 rounded-2xl border border-emerald-100">
+                <span className="text-xs text-emerald-700 font-semibold block">Total Payouts Disbursed</span>
+                <span className="text-2xl font-black text-emerald-800">
+                  ₦{(
+                    adpEarnings
+                      .filter((e) => e.status === 'PAID')
+                      .reduce((sum, e) => sum + Number(e.amountCents || 0), 0) / 100
+                  ).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <div className="p-4 bg-brand-50 rounded-2xl border border-brand-100">
+                <span className="text-xs text-brand-700 font-semibold block">Active Configured Rates</span>
+                <span className="text-2xl font-black text-brand-900">
+                  {adpRates.filter((r) => r.isActive).length}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Rate Configuration Panel */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <h3 className="text-base font-black text-slate-900">Configure Compensation Rate per Collection</h3>
+            <p className="text-xs text-slate-500">
+              Set the amount earned by student operators for each verified food order collection at their hostel.
+            </p>
+
+            <form onSubmit={handleSaveAdpRate} className="flex flex-col sm:flex-row gap-3 items-end pt-2">
+              <div className="flex-1 w-full">
+                <label className="block text-[11px] font-bold uppercase text-slate-700 mb-1">
+                  Scope (Global or Zone Specific)
+                </label>
+                <select
+                  value={newRateZoneId}
+                  onChange={(e) => setNewRateZoneId(e.target.value)}
+                  className="w-full h-10 px-3 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="GLOBAL">Default Fallback (All 13 UNILESA Zones)</option>
+                  {zones.map((z) => (
+                    <option key={z.id} value={z.id}>
+                      {z.name} (Zone Specific)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="w-full sm:w-60">
+                <label className="block text-[11px] font-bold uppercase text-slate-700 mb-1">
+                  Rate in Naira per Collection (₦) *
+                </label>
+                <input
+                  type="number"
+                  min="50"
+                  step="50"
+                  value={newRateNaira}
+                  onChange={(e) => setNewRateNaira(Number(e.target.value))}
+                  placeholder="e.g. 300"
+                  required
+                  className="w-full h-10 px-3.5 bg-slate-50 border border-slate-300 rounded-xl text-xs text-slate-800 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-brand-500"
+                />
+              </div>
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={savingRate}
+                  className="w-full sm:w-auto h-10 px-5 bg-brand-600 hover:bg-brand-700 text-white font-bold rounded-xl text-xs transition shadow-2xs"
+                >
+                  {savingRate ? 'Saving Rate...' : '✓ Set Rate'}
+                </button>
+              </div>
+            </form>
+
+            {/* Currently Active Rates list */}
+            <div className="pt-4 border-t border-slate-100">
+              <h4 className="text-xs font-bold text-slate-700 mb-2">Currently Active Compensation Rates:</h4>
+              <div className="flex flex-wrap gap-2">
+                {adpRates.filter((r) => r.isActive).map((rate) => (
+                  <span
+                    key={rate.id}
+                    className="px-3 py-1.5 bg-emerald-50 border border-emerald-200 rounded-xl text-xs font-semibold text-emerald-900"
+                  >
+                    {rate.coverageZone ? rate.coverageZone.name : 'All Zones (Global)'}:{' '}
+                    <strong>₦{(Number(rate.ratePerCollectionCents) / 100).toLocaleString()}</strong> / collection
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Pending Operator Payouts & Batch Execution */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <h3 className="text-base font-black text-slate-900">Unbatched Operator Balances Ready for Payout</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3">Operator</th>
+                    <th className="px-4 py-3">Hostel & Zone</th>
+                    <th className="px-4 py-3">Bank Details</th>
+                    <th className="px-4 py-3 text-center">Unpaid Collections</th>
+                    <th className="px-4 py-3 text-right">Unpaid Balance</th>
+                    <th className="px-4 py-3 text-right">Payout Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {/* Group unbatched earnings by operator */}
+                  {Array.from(
+                    new Set(
+                      adpEarnings
+                        .filter((e) => (e.status === 'PENDING' || e.status === 'APPROVED') && !e.payoutBatchId)
+                        .map((e) => e.adpOperatorId)
+                    )
+                  ).map((operatorId) => {
+                    const opEarnings = adpEarnings.filter(
+                      (e) => e.adpOperatorId === operatorId && (e.status === 'PENDING' || e.status === 'APPROVED') && !e.payoutBatchId
+                    );
+                    const operator = opEarnings[0]?.adpOperator;
+                    const totalCents = opEarnings.reduce((sum, e) => sum + Number(e.amountCents || 0), 0);
+
+                    return (
+                      <tr key={operatorId} className="hover:bg-slate-50/70">
+                        <td className="px-4 py-3.5 font-bold text-slate-900">
+                          {operator?.fullName || 'Operator'}
+                          <span className="block text-[10px] text-slate-400 font-mono font-normal">
+                            {operator?.matricNumber}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {operator?.hostelName}
+                          <span className="block text-[10px] text-slate-400">
+                            {operator?.coverageZone?.name}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {operator?.bankName} ({operator?.accountNumberMasked})
+                          <span className="block text-[10px] text-emerald-700 font-semibold">
+                            {operator?.nameEnquiryVerifiedName || operator?.accountName}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3.5 text-center font-bold text-slate-800">
+                          {opEarnings.length}
+                        </td>
+                        <td className="px-4 py-3.5 text-right font-black text-emerald-700 text-sm">
+                          ₦{(totalCents / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                        </td>
+                        <td className="px-4 py-3.5 text-right space-x-2">
+                          <button
+                            type="button"
+                            disabled={isProcessingPayout}
+                            onClick={() => handleBatchPayout(operatorId, 'TRANSACTPAY')}
+                            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-2xs"
+                          >
+                            ⚡ TransactPay
+                          </button>
+                          <button
+                            type="button"
+                            disabled={isProcessingPayout}
+                            onClick={() => handleBatchPayout(operatorId, 'MANUAL')}
+                            className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 disabled:opacity-50 text-slate-700 font-bold rounded-xl text-xs transition"
+                          >
+                            🏦 Manual
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                  {adpEarnings.filter((e) => (e.status === 'PENDING' || e.status === 'APPROVED') && !e.payoutBatchId).length === 0 && (
+                    <tr>
+                      <td colSpan={6} className="text-center py-6 text-slate-400">
+                        No pending unpaid operator earnings right now. All verified collections are up to date.
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* Full Itemized Collections Earnings Table */}
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-black text-slate-900">Itemized Collection Earnings Ledger</h3>
+              <div>
+                <select
+                  value={adpEarningFilterStatus}
+                  onChange={(e) => setAdpEarningFilterStatus(e.target.value)}
+                  className="h-9 px-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                >
+                  <option value="ALL">All Statuses</option>
+                  <option value="PENDING">Pending</option>
+                  <option value="APPROVED">Approved (Locked in Batch)</option>
+                  <option value="PAID">Paid</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs text-slate-600">
+                <thead className="bg-slate-50 text-slate-500 font-bold uppercase text-[10px] tracking-wider border-b border-slate-100">
+                  <tr>
+                    <th className="px-4 py-3">Collection Date</th>
+                    <th className="px-4 py-3">Order Ref</th>
+                    <th className="px-4 py-3">Operator & Hostel</th>
+                    <th className="px-4 py-3 text-right">Amount (₦)</th>
+                    <th className="px-4 py-3 text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {adpEarnings.map((earn) => (
+                    <tr key={earn.id} className="hover:bg-slate-50/70">
+                      <td className="px-4 py-3 text-[11px]">
+                        {new Date(earn.collectedAt).toLocaleString('en-GB')}
+                      </td>
+                      <td className="px-4 py-3 font-mono font-bold text-slate-800">
+                        {earn.order?.reference || earn.orderId.slice(0, 8)}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className="font-bold text-slate-900 block">{earn.adpOperator?.fullName}</span>
+                        <span className="text-[10px] text-slate-400 block">{earn.adpOperator?.hostelName}</span>
+                      </td>
+                      <td className="px-4 py-3 text-right font-black text-emerald-700">
+                        ₦{(Number(earn.amountCents) / 100).toLocaleString('en-NG', { minimumFractionDigits: 2 })}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded text-[10px] font-bold ${
+                            earn.status === 'PAID'
+                              ? 'bg-emerald-100 text-emerald-800'
+                              : earn.status === 'APPROVED'
+                              ? 'bg-blue-100 text-blue-800'
+                              : 'bg-amber-100 text-amber-800'
+                          }`}
+                        >
+                          {earn.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                  {adpEarnings.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="text-center py-8 text-slate-400">
+                        No collection earnings records found.
+                      </td>
+                    </tr>
                   )}
                 </tbody>
               </table>

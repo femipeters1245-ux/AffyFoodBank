@@ -890,6 +890,14 @@ export class AdpOperatorService {
       },
     });
 
+    // Atomically generate operator earning for verified collection
+    try {
+      const { adpCompensationService } = await import('./adpCompensation.service');
+      await adpCompensationService.recordOrderCollectionEarning(orderId);
+    } catch (e: any) {
+      logger.warn('[AdpOperatorService] Could not record earning for order collection:', e.message);
+    }
+
     return {
       status: 'success',
       message: 'Order collection confirmed successfully',

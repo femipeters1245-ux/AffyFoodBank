@@ -472,6 +472,27 @@ export const adminApi = {
     const res = await apiClient.patch(`/admin/adp/applications/${id}/block`, { reason });
     return res.data?.data;
   },
+  // Compensation Rates & Earnings
+  listAdpRates: async () => {
+    const res = await apiClient.get('/admin/adp/rates');
+    return res.data?.data ?? [];
+  },
+  setAdpRate: async (data: { coverageZoneId?: string | null; ratePerCollectionCents: number }) => {
+    const res = await apiClient.post('/admin/adp/rates', data);
+    return res.data?.data;
+  },
+  listAdpEarnings: async (params?: { operatorId?: string; status?: string }) => {
+    const res = await apiClient.get('/admin/adp/earnings', { params });
+    return res.data?.data ?? [];
+  },
+  createAdpPayoutBatch: async (data: { operatorId: string; earningIds: string[]; channel?: string }) => {
+    const res = await apiClient.post('/admin/adp/payout-batches', data);
+    return res.data?.data;
+  },
+  executeAdpPayoutBatch: async (batchId: string) => {
+    const res = await apiClient.post(`/admin/adp/payout-batches/${batchId}/execute`);
+    return res.data;
+  },
 };
 
 export const zonesApi = {

@@ -1055,4 +1055,111 @@ router.patch('/adp/applications/:id/block', async (req: Request, res: Response, 
   }
 });
 
+// ─── ADP Compensation Rates & Payout Management ───────────────────────────────
+
+/**
+ * GET /api/v1/admin/adp/rates
+ * List active compensation rates
+ */
+router.get('/adp/rates', async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpCompensationService } = await import('../services/adpCompensation.service');
+    const rates = await adpCompensationService.listCompensationRates();
+    res.json({
+      status: 'success',
+      data: rates,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/admin/adp/rates
+ * Configure compensation rate per collection (Admin/Finance only)
+ */
+router.post('/adp/rates', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpCompensationService } = await import('../services/adpCompensation.service');
+    const { coverageZoneId, ratePerCollectionCents } = req.body;
+    const officerUserId = req.user?.sub;
+    const rate = await adpCompensationService.setCompensationRate({
+      coverageZoneId,
+      ratePerCollectionCents: Number(ratePerCollectionCents),
+      createdBy: officerUserId,
+    });
+    res.status(201).json({
+      status: 'success',
+      message: 'Compensation rate configured successfully',
+      data: rate,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /api/v1/admin/adp/earnings
+ * List collection earnings for Finance review
+ */
+router.get('/adp/earnings', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpCompensationService } = await import('../services/adpCompensation.service');
+    const { operatorId, status } = req.query;
+    const earnings = await adpCompensationService.listEarnings({
+      operatorId: operatorId as string | undefined,
+      status: status as string | undefined,
+    });
+    res.json({
+      status: 'success',
+      count: earnings.length,
+      data: earnings,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/admin/adp/payout-batches
+ * Create payout batch locking earnings
+ */
+router.post('/adp/payout-batches', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpCompensationService } = await import('../services/adpCompensation.service');
+    const officerUserId = req.user?.sub;
+    if (!officerUserId) throw new UnauthorizedError('Authentication required');
+    const { operatorId, earningIds, channel } = req.body;
+    const batch = await adpCompensationService.createPayoutBatch({
+      operatorId,
+      earningIds,
+      channel,
+      officerUserId,
+    });
+    res.status(201).json({
+      status: 'success',
+      message: 'Payout batch created and locked',
+      data: batch,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/admin/adp/payout-batches/:id/execute
+ * Execute payout batch via TransactPay or Manual transfer
+ */
+router.post('/adp/payout-batches/:id/execute', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { adpCompensationService } = await import('../services/adpCompensation.service');
+    const officerUserId = req.user?.sub;
+    if (!officerUserId) throw new UnauthorizedError('Authentication required');
+    const result = await adpCompensationService.executePayoutBatch(req.params.id, officerUserId);
+    res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});
+
 export default router;
