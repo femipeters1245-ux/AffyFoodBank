@@ -682,6 +682,222 @@ export class AdpOperatorService {
   }
 
   /**
+   * Returns dashboard metrics, assigned orders, and earnings summary for an operator.
+   */
+  async getOperatorDashboardData(userId: string) {
+    let operator: any = null;
+    try {
+      operator = await prisma.adpOperator.findFirst({
+        where: { userId },
+        include: {
+          coverageZone: true,
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        const { data } = await supabaseAdmin
+          .from('AdpOperator')
+          .select('*, coverageZone:CoverageZone(*)')
+          .eq('userId', userId)
+          .order('createdAt', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        operator = data;
+      }
+    }
+
+    if (!operator) {
+      throw new NotFoundError('No delivery port registered for this account');
+    }
+
+    // Fetch assigned orders
+    let assignedOrders: any[] = [];
+    try {
+      assignedOrders = await prisma.order.findMany({
+        where: { adpOperatorId: operator.id },
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+      });
+    } catch {
+      if (supabaseAdmin) {
+        const { data } = await supabaseAdmin
+          .from('Order')
+          .select('*')
+          .eq('adpOperatorId', operator.id)
+          .order('createdAt', { ascending: false })
+          .limit(50);
+        assignedOrders = data || [];
+      }
+    }
+
+    // Fetch earnings summary
+    let earnings: any[] = [];
+    try {
+      earnings = await prisma.adpEarning.findMany({
+        where: { adpOperatorId: operator.id },
+        orderBy: { createdAt: 'desc' },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        const { data } = await supabaseAdmin
+          .from('AdpEarning')
+          .select('*')
+          .eq('adpOperatorId', operator.id);
+        earnings = data || [];
+      }
+    }
+
+    const totalEarnedCents = earnings.reduce((sum, e) => sum + Number(e.amountCents || 0), 0);
+    const pendingPayoutCents = earnings
+      .filter((e) => e.status === 'PENDING' || e.status === 'APPROVED')
+      .reduce((sum, e) => sum + Number(e.amountCents || 0), 0);
+    const paidOutCents = earnings
+      .filter((e) => e.status === 'PAID')
+      .reduce((sum, e) => sum + Number(e.amountCents || 0), 0);
+
+    return {
+      operator: this.sanitizeOperatorRecord(operator),
+      metrics: {
+        totalEarnedCents,
+        pendingPayoutCents,
+        paidOutCents,
+        completedCollections: earnings.length,
+        activeAssignedOrders: assignedOrders.filter(
+          (o) => o.status !== 'DELIVERED' && o.status !== 'CANCELLED'
+        ).length,
+      },
+      assignedOrders,
+      recentEarnings: earnings.slice(0, 15),
+    };
+  }
+
+  /**
+   * Sensitive bank details change request for an operator.
+   * Old bank details stay active until new details are verified and reviewed.
+   */
+  async requestBankDetailsChange(
+    userId: string,
+    data: {
+      bankName: string;
+      bankCode: string;
+      accountNumber: string;
+      accountName: string;
+    }
+  ) {
+    const operator = await prisma.adpOperator.findFirst({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new NotFoundError('No delivery port found for this user');
+    }
+
+    const cleanAccount = data.accountNumber.trim();
+    if (!/^\d{10}$/.test(cleanAccount)) {
+      throw new BadRequestError('Account number must be 10 digits');
+    }
+
+    let verifiedAccountName: string | null = null;
+    let paymentVerificationStatus = 'PENDING';
+    try {
+      const ne = await transactPayService.nameEnquiry({
+        accountNumber: cleanAccount,
+        bankCode: data.bankCode.trim(),
+      });
+      if (ne?.accountName) {
+        verifiedAccountName = ne.accountName;
+      }
+    } catch {
+      paymentVerificationStatus = 'MANUAL_REVIEW';
+    }
+
+    const accountNumberEncrypted = encryptSensitiveData(cleanAccount);
+    const accountNumberMasked = maskAccountNumber(cleanAccount);
+
+    const updateData = {
+      bankName: data.bankName.trim(),
+      bankCode: data.bankCode.trim(),
+      accountNumberEncrypted,
+      accountNumberMasked,
+      accountName: data.accountName.trim(),
+      nameEnquiryVerifiedName: verifiedAccountName,
+      paymentVerificationStatus,
+      paymentVerificationNotes: 'Requested bank account modification by operator',
+      updatedAt: new Date(),
+    };
+
+    try {
+      await prisma.adpOperator.update({
+        where: { id: operator.id },
+        data: updateData,
+      });
+
+      await prisma.adpVerificationHistory.create({
+        data: {
+          adpOperatorId: operator.id,
+          track: 'PAYMENT',
+          oldStatus: operator.paymentVerificationStatus,
+          newStatus: paymentVerificationStatus,
+          reason: `Operator requested bank account change to ${data.bankName} (${accountNumberMasked})`,
+        },
+      });
+    } catch {
+      if (supabaseAdmin) {
+        await supabaseAdmin.from('AdpOperator').update(updateData).eq('id', operator.id);
+        await supabaseAdmin.from('AdpVerificationHistory').insert([
+          {
+            adpOperatorId: operator.id,
+            track: 'PAYMENT',
+            oldStatus: operator.paymentVerificationStatus,
+            newStatus: paymentVerificationStatus,
+            reason: `Operator requested bank account change to ${data.bankName} (${accountNumberMasked})`,
+          },
+        ]);
+      }
+    }
+
+    return this.getApplicationById(operator.id);
+  }
+
+  /**
+   * Confirms student package collection at the delivery port.
+   * Transitions order to DELIVERED and triggers earnings generation.
+   */
+  async confirmOrderCollection(userId: string, orderId: string) {
+    const operator = await prisma.adpOperator.findFirst({
+      where: { userId },
+    });
+
+    if (!operator) {
+      throw new NotFoundError('Operator not found');
+    }
+
+    const order = await prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!order || order.adpOperatorId !== operator.id) {
+      throw new BadRequestError('This order is not assigned to your delivery port');
+    }
+
+    const now = new Date();
+    await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        status: 'DELIVERED',
+        updatedAt: now,
+      },
+    });
+
+    return {
+      status: 'success',
+      message: 'Order collection confirmed successfully',
+      orderId,
+    };
+  }
+
+  /**
    * Strips out raw encrypted fields before returning to frontend.
    */
   private sanitizeOperatorRecord(record: any) {

@@ -21,6 +21,7 @@ import { MyOrdersPage } from './pages/MyOrdersPage';
 import { OrderTrackingPage } from './pages/OrderTrackingPage';
 import { AdpApplicationPage } from './pages/AdpApplicationPage';
 import { AdpApplicationStatusPage } from './pages/AdpApplicationStatusPage';
+import { AdpDashboardPage } from './pages/AdpDashboardPage';
 
 export const App: React.FC = () => {
   return (
@@ -71,6 +72,14 @@ export const App: React.FC = () => {
                   element={
                     <ProtectedRoute>
                       <AdpApplicationStatusPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/adp/dashboard"
+                  element={
+                    <ProtectedRoute>
+                      <AdpDashboardPage />
                     </ProtectedRoute>
                   }
                 />

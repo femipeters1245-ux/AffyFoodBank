@@ -130,3 +130,64 @@ adpRouter.get('/my-applications', authenticate, async (req: Request, res: Respon
     next(err);
   }
 });
+
+/**
+ * GET /api/v1/adp/my/dashboard
+ * Returns metrics, assigned orders, and earnings summary for an operator.
+ */
+adpRouter.get('/my/dashboard', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const dashboard = await adpOperatorService.getOperatorDashboardData(userId);
+    return res.json({
+      status: 'success',
+      data: dashboard,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /api/v1/adp/my/bank/change-request
+ * Submit sensitive bank account change request
+ */
+adpRouter.post('/my/bank/change-request', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const updated = await adpOperatorService.requestBankDetailsChange(userId, req.body);
+    return res.json({
+      status: 'success',
+      message: 'Bank details update submitted for verification',
+      data: updated,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * PATCH /api/v1/adp/my/orders/:orderId/confirm-collection
+ * Allows operator to confirm student collection
+ */
+adpRouter.patch('/my/orders/:orderId/confirm-collection', authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = req.user?.sub;
+    if (!userId) {
+      throw new UnauthorizedError('Authentication required');
+    }
+
+    const result = await adpOperatorService.confirmOrderCollection(userId, req.params.orderId);
+    return res.json(result);
+  } catch (err) {
+    next(err);
+  }
+});

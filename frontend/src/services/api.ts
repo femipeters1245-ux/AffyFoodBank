@@ -536,6 +536,18 @@ export const adpApi = {
     const res = await apiClient.get('/adp/my-applications');
     return res.data?.data ?? [];
   },
+  getOperatorDashboard: async () => {
+    const res = await apiClient.get('/adp/my/dashboard');
+    return res.data?.data;
+  },
+  requestBankChange: async (payload: { bankName: string; bankCode: string; accountNumber: string; accountName: string }) => {
+    const res = await apiClient.post('/adp/my/bank/change-request', payload);
+    return res.data;
+  },
+  confirmCollection: async (orderId: string) => {
+    const res = await apiClient.patch(`/adp/my/orders/${orderId}/confirm-collection`);
+    return res.data;
+  },
 };
 
 export const ordersApi = {
