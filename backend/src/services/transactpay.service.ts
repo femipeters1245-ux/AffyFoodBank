@@ -354,6 +354,53 @@ export const transactPayService = {
   },
 
   /**
+   * Fetches list of Nigerian commercial & fintech banks from TransactPay (with offline fallback)
+   */
+  async getBanks(): Promise<Array<{ code: string; name: string }>> {
+    const fallbackBanks = [
+      { name: 'Access Bank', code: '044' },
+      { name: 'Guaranty Trust Bank (GTBank)', code: '058' },
+      { name: 'Zenith Bank', code: '057' },
+      { name: 'United Bank for Africa (UBA)', code: '033' },
+      { name: 'First Bank of Nigeria', code: '011' },
+      { name: 'OPay', code: '999992' },
+      { name: 'PalmPay', code: '999991' },
+      { name: 'Kuda Bank', code: '50211' },
+      { name: 'Moniepoint MFB', code: '50515' },
+      { name: 'Wema Bank / ALAT', code: '035' },
+      { name: 'Stanbic IBTC Bank', code: '221' },
+      { name: 'Sterling Bank', code: '232' },
+      { name: 'Fidelity Bank', code: '070' },
+      { name: 'Union Bank of Nigeria', code: '032' },
+      { name: 'First City Monument Bank (FCMB)', code: '214' },
+      { name: 'Polaris Bank', code: '076' },
+      { name: 'Ecobank Nigeria', code: '050' },
+      { name: 'Providus Bank', code: '101' },
+      { name: 'Jaiz Bank', code: '301' },
+      { name: 'Taj Bank', code: '302' },
+    ];
+
+    try {
+      const tpRes = await fetch(`${TRANSACTPAY_BASE_URL}/payment/banks`, {
+        method: 'GET',
+        headers: { accept: 'application/json' },
+      });
+      if (tpRes.ok) {
+        const data: any = await tpRes.json();
+        if (Array.isArray(data) && data.length > 0) {
+          return data.map((b: any) => ({
+            name: b.name || b.bankName,
+            code: b.code || b.bankCode,
+          }));
+        }
+      }
+    } catch (e: any) {
+      logger.warn('[TransactPay getBanks] Using fallback banks list:', e.message);
+    }
+    return fallbackBanks;
+  },
+
+  /**
    * 4. Initiate Payout (Outbound withdrawal)
    * Endpoint: POST /payout/initiate
    * Payload encrypted with RSA PKCS#1 v1.5

@@ -19,6 +19,7 @@ import adminRouter from './routes/admin';
 import emailRouter from './routes/email';
 import ordersRouter from './routes/orders';
 import zonesRouter from './routes/zones';
+import { adpRouter } from './routes/adp';
 
 // Middleware
 import errorHandler from './middleware/errorHandler';
@@ -108,6 +109,7 @@ app.use(`${API}/me/orders`, ordersRouter);
 app.use(`${API}/admin`, adminRouter);
 app.use(`${API}/email`, emailRouter);
 app.use([`${API}/zones`, '/api/zones', '/zones'], zonesRouter);
+app.use([`${API}/adp`, '/api/adp', '/adp'], adpRouter);
 
 // Public units endpoint
 app.get(['/units', '/api/units', `${API}/units`], async (_req: Request, res: Response) => {

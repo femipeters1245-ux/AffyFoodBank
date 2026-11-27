@@ -19,6 +19,8 @@ import { RegisterPage } from './pages/RegisterPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
 import { MyOrdersPage } from './pages/MyOrdersPage';
 import { OrderTrackingPage } from './pages/OrderTrackingPage';
+import { AdpApplicationPage } from './pages/AdpApplicationPage';
+import { AdpApplicationStatusPage } from './pages/AdpApplicationStatusPage';
 
 export const App: React.FC = () => {
   return (
@@ -56,6 +58,22 @@ export const App: React.FC = () => {
                   }
                 />
                 <Route path="/orders/:orderReference" element={<OrderTrackingPage />} />
+                <Route
+                  path="/adp/apply"
+                  element={
+                    <ProtectedRoute>
+                      <AdpApplicationPage />
+                    </ProtectedRoute>
+                  }
+                />
+                <Route
+                  path="/adp/status"
+                  element={
+                    <ProtectedRoute>
+                      <AdpApplicationStatusPage />
+                    </ProtectedRoute>
+                  }
+                />
                 <Route
                   path="/admin"
                   element={

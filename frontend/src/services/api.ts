@@ -452,6 +452,63 @@ export const zonesApi = {
   },
 };
 
+export interface AdpApplicationPayload {
+  coverageZoneId: string;
+  fullName: string;
+  matricNumber: string;
+  institution?: string;
+  faculty: string;
+  department: string;
+  academicLevel: string;
+  phone: string;
+  email: string;
+  studentIdDocPath: string;
+  hostelName: string;
+  hostelAddress: string;
+  closestLandmark?: string;
+  bankName: string;
+  bankCode: string;
+  accountNumber: string;
+  accountName: string;
+  alternativeContact?: string;
+}
+
+export const adpApi = {
+  getBanks: async () => {
+    const res = await apiClient.get('/adp/banks');
+    return res.data?.banks ?? [];
+  },
+  verifyBank: async (accountNumber: string, bankCode: string) => {
+    const res = await apiClient.post('/adp/verify-bank', { accountNumber, bankCode });
+    return res.data;
+  },
+  getUploadUrl: async (fileName: string) => {
+    const res = await apiClient.get('/adp/upload-url', { params: { fileName } });
+    return res.data;
+  },
+  uploadDocumentDirectly: async (signedUrl: string, file: File) => {
+    const response = await fetch(signedUrl, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': file.type,
+      },
+      body: file,
+    });
+    if (!response.ok) {
+      throw new Error(`Failed to upload document to secure storage: ${response.statusText}`);
+    }
+    return true;
+  },
+  submitApplication: async (payload: AdpApplicationPayload) => {
+    const res = await apiClient.post('/adp/apply', payload);
+    return res.data;
+  },
+  getMyApplications: async () => {
+    const res = await apiClient.get('/adp/my-applications');
+    return res.data?.data ?? [];
+  },
+};
+
 export const ordersApi = {
   getMyOrders: async () => {
     const res = await apiClient.get('/orders/me');
