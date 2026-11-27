@@ -211,6 +211,63 @@ export const OrderTrackingPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Affy Delivery Port (ADP) Designated Pickup Point if applicable */}
+          {order.adpSnapshot && (
+            <div className="bg-gradient-to-r from-emerald-900 via-brand-900 to-teal-900 text-white rounded-3xl p-5 sm:p-6 shadow-lg border border-emerald-700/50 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-black uppercase tracking-wider text-emerald-200 flex items-center space-x-1.5">
+                  <span>📍</span>
+                  <span>Designated Affy Delivery Port (Campus Hostel Port)</span>
+                </span>
+                <span className="text-[11px] bg-emerald-500/20 text-emerald-200 border border-emerald-400/30 font-bold px-2.5 py-0.5 rounded-full">
+                  Student Partner Station
+                </span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1 text-xs">
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 space-y-1">
+                  <span className="text-[11px] text-emerald-300 font-semibold block">Pickup Hostel:</span>
+                  <div className="text-base font-extrabold text-white">
+                    🏢 {order.adpSnapshot.hostelName || 'Hostel Port'}
+                  </div>
+                  {order.adpSnapshot.closestLandmark && (
+                    <p className="text-[11px] text-slate-300">
+                      Landmark: <span className="text-white font-medium">{order.adpSnapshot.closestLandmark}</span>
+                    </p>
+                  )}
+                  {order.adpSnapshot.hostelAddress && (
+                    <p className="text-[11px] text-slate-300">
+                      Address: <span className="text-white font-medium">{order.adpSnapshot.hostelAddress}</span>
+                    </p>
+                  )}
+                </div>
+
+                <div className="bg-white/10 backdrop-blur-md rounded-2xl p-3 border border-white/10 space-y-1 flex flex-col justify-between">
+                  <div>
+                    <span className="text-[11px] text-emerald-300 font-semibold block">Coverage Zone:</span>
+                    <div className="text-sm font-bold text-white">
+                      {order.adpSnapshot.zoneName || 'UNILESA Zone'}
+                    </div>
+                  </div>
+                  {order.adpSnapshot.operatorName && (
+                    <div className="pt-2 border-t border-white/10 text-[11px]">
+                      <span className="text-slate-300">Port Operator: </span>
+                      <span className="font-bold text-white">{order.adpSnapshot.operatorName}</span>
+                      {order.adpSnapshot.operatorPhone && (
+                        <span className="block font-mono text-emerald-300 font-semibold mt-0.5">
+                          📞 {order.adpSnapshot.operatorPhone}
+                        </span>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+              <div className="text-[11px] text-emerald-200/90 pt-1 flex items-center space-x-1.5">
+                <span>💡</span>
+                <span>Please present your Tracking Reference ({order.orderReference}) when picking up your package.</span>
+              </div>
+            </div>
+          )}
+
           {/* Delivery Destination & Rider Info */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Address */}

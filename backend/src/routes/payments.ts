@@ -67,6 +67,7 @@ async function recordOrderInDatabase(params: {
   address?: string;
   items?: Array<{ productId?: string; name: string; quantity: number; priceCents: number }>;
   status?: 'PENDING' | 'PROCESSING';
+  adpOperatorId?: string;
 }) {
   try {
     const { orderReference, amountCents, email, name, phone, address, items, status = 'PENDING' } = params;
@@ -158,6 +159,28 @@ async function recordOrderInDatabase(params: {
         }
       }
 
+      // Validate and snapshot ADP operator if provided
+      let validAdpOperator: any = null;
+      let adpSnapshot: any = null;
+      if (params.adpOperatorId) {
+        validAdpOperator = await prisma.adpOperator.findUnique({
+          where: { id: params.adpOperatorId },
+          include: { coverageZone: true },
+        });
+        if (validAdpOperator && validAdpOperator.isActive && validAdpOperator.status === 'APPROVED') {
+          adpSnapshot = {
+            operatorId: validAdpOperator.id,
+            operatorName: validAdpOperator.fullName,
+            operatorPhone: validAdpOperator.phone,
+            hostelName: validAdpOperator.hostelName,
+            hostelAddress: validAdpOperator.hostelAddress,
+            closestLandmark: validAdpOperator.closestLandmark,
+            zoneName: validAdpOperator.coverageZone?.name,
+            assignedAt: new Date().toISOString(),
+          };
+        }
+      }
+
       // Create Order
       const newOrder = await prisma.order.create({
         data: {
@@ -167,6 +190,8 @@ async function recordOrderInDatabase(params: {
           totalAmountCents: BigInt(amountCents),
           currency: 'NGN',
           status: status === 'PROCESSING' ? 'PROCESSING' : 'PENDING',
+          adpOperatorId: validAdpOperator ? validAdpOperator.id : null,
+          adpSnapshot: adpSnapshot || undefined,
           items: {
             create: resolvedItems,
           },
@@ -174,7 +199,9 @@ async function recordOrderInDatabase(params: {
             create: {
               id: uuidv4(),
               status: status === 'PROCESSING' ? 'READY_FOR_DISPATCH' : 'PENDING',
-              notes: `Order Reference: ${orderReference}. Customer: ${name || email}. Phone: ${phone || 'N/A'}. Delivery Address: ${address || 'Local Delivery'}`,
+              notes: validAdpOperator
+                ? `[ADP Pickup Port: ${validAdpOperator.hostelName} (${validAdpOperator.coverageZone?.name})] Ref: ${orderReference}. Customer: ${name || email}. Phone: ${phone || 'N/A'}. Pickup Address: ${validAdpOperator.hostelAddress}`
+                : `Order Reference: ${orderReference}. Customer: ${name || email}. Phone: ${phone || 'N/A'}. Delivery Address: ${address || 'Local Delivery'}`,
             },
           },
         },
@@ -223,7 +250,7 @@ async function recordOrderInDatabase(params: {
  */
 router.post('/transactpay/create-order', async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const { amountNaira, email, name, phone, address, location, isExpress, items, redirectUrl } = req.body;
+    const { amountNaira, email, name, phone, address, location, isExpress, items, redirectUrl, adpOperatorId } = req.body;
 
     if (!email) {
       throw new BadRequestError('Customer email is required');
@@ -318,6 +345,7 @@ router.post('/transactpay/create-order', async (req: Request, res: Response, nex
             address,
             items,
             status: 'PENDING',
+            adpOperatorId,
           });
 
           const orderData = resData.data?.order || resData.data || {};

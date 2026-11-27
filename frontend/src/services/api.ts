@@ -272,6 +272,7 @@ export const paymentsApi = {
     location?: string;
     isExpress?: boolean;
     items?: any[];
+    adpOperatorId?: string;
   }) => {
     const res = await apiClient.post('/payments/transactpay/create-order', data);
     return res.data;
@@ -500,6 +501,10 @@ export const zonesApi = {
     const res = await apiClient.get('/zones');
     return res.data?.data ?? [];
   },
+  getOperatorsByZone: async (zoneId: string) => {
+    const res = await apiClient.get(`/zones/${zoneId}/operators`);
+    return res.data?.data ?? [];
+  },
 };
 
 export interface AdpApplicationPayload {
@@ -588,6 +593,7 @@ export const ordersApi = {
     location?: string;
     isExpress?: boolean;
     items?: Array<{ productId?: string; name: string; quantity: number; priceCents: number }>;
+    adpOperatorId?: string;
   }) => {
     const res = await apiClient.post('/orders/wallet-checkout', payload);
     return res.data;

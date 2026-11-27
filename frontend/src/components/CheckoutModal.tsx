@@ -5,7 +5,7 @@ import { useCart } from '../context/CartContext';
 import { useAuth } from '../context/AuthContext';
 import { formatNaira } from '../utils/format';
 import { TransactPayModal } from './TransactPayModal';
-import { paymentsApi, deliveryApi, ordersApi } from '../services/api';
+import { paymentsApi, deliveryApi, ordersApi, zonesApi } from '../services/api';
 
 interface CheckoutModalProps {
   isOpen: boolean;
@@ -28,6 +28,14 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const [isExpressDelivery, setIsExpressDelivery] = useState(false);
   const [deliveryNotes, setDeliveryNotes] = useState('');
 
+  // Delivery mode: Doorstep or Affy's Delivery Port (Hostel Port)
+  const [deliveryMode, setDeliveryMode] = useState<'DOORSTEP' | 'ADP_HOSTEL'>('DOORSTEP');
+  const [coverageZones, setCoverageZones] = useState<any[]>([]);
+  const [selectedZoneId, setSelectedZoneId] = useState<string>('');
+  const [zoneOperators, setZoneOperators] = useState<any[]>([]);
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>('');
+  const [loadingOperators, setLoadingOperators] = useState<boolean>(false);
+
   // Payment method
   const [paymentMethod, setPaymentMethod] = useState<'transactpay' | 'wallet'>('transactpay');
 
@@ -41,6 +49,12 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     channel: string;
     totalCents: number;
     itemsCount: number;
+    adpInfo?: {
+      hostelName: string;
+      zoneName: string;
+      landmark?: string;
+      address?: string;
+    } | null;
   } | null>(null);
 
   // Dynamic delivery fee settings (set by staff & admin in portal)
@@ -105,6 +119,49 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     return () => window.removeEventListener('affy_delivery_fee_updated', fetchConfig);
   }, []);
 
+  // Fetch coverage zones for ADP hostel pickup
+  React.useEffect(() => {
+    zonesApi
+      .getActiveZones()
+      .then((data) => {
+        setCoverageZones(data || []);
+        if (data && data.length > 0 && !selectedZoneId) {
+          setSelectedZoneId(data[0].id);
+        }
+      })
+      .catch((err) => {
+        console.warn('[CheckoutModal] Failed to load coverage zones:', err.message);
+      });
+  }, []);
+
+  // When selectedZoneId changes, fetch active approved operators for that zone
+  React.useEffect(() => {
+    if (!selectedZoneId) {
+      setZoneOperators([]);
+      setSelectedOperatorId('');
+      return;
+    }
+    setLoadingOperators(true);
+    zonesApi
+      .getOperatorsByZone(selectedZoneId)
+      .then((ops) => {
+        setZoneOperators(ops || []);
+        if (ops && ops.length > 0) {
+          setSelectedOperatorId(ops[0].id);
+        } else {
+          setSelectedOperatorId('');
+        }
+      })
+      .catch((err) => {
+        console.warn('[CheckoutModal] Failed to load zone operators:', err.message);
+        setZoneOperators([]);
+        setSelectedOperatorId('');
+      })
+      .finally(() => {
+        setLoadingOperators(false);
+      });
+  }, [selectedZoneId]);
+
   if (!isOpen) return null;
 
   // Delivery cost calculation (Affy food collective standard delivery set by Admin/Staff)
@@ -140,10 +197,39 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
   const handleStartPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!fullName || !phone || !address) {
-      alert('Please fill in your name, phone number, and delivery address.');
+    if (!fullName || !phone) {
+      alert('Please fill in your name and phone number.');
       return;
     }
+
+    if (deliveryMode === 'DOORSTEP' && !address) {
+      alert('Please enter your doorstep delivery street address.');
+      return;
+    }
+
+    if (deliveryMode === 'ADP_HOSTEL' && !selectedOperatorId) {
+      alert('Please select an active Affy Delivery Port (Hostel Port) for your package pickup.');
+      return;
+    }
+
+    const selectedZone = coverageZones.find((z) => z.id === selectedZoneId);
+    const selectedOperator = zoneOperators.find((o) => o.id === selectedOperatorId);
+    const effectiveAddress =
+      deliveryMode === 'ADP_HOSTEL' && selectedOperator
+        ? `Affy Delivery Port: ${selectedOperator.hostelName}${selectedOperator.hostelAddress ? ` (${selectedOperator.hostelAddress})` : ''}, Landmark: ${selectedOperator.closestLandmark || 'Campus Environs'}`
+        : `${address}, ${state}`;
+    const effectiveLocation =
+      deliveryMode === 'ADP_HOSTEL' && selectedZone ? selectedZone.name : state;
+    const adpPayloadId = deliveryMode === 'ADP_HOSTEL' ? selectedOperatorId : undefined;
+    const adpSummaryInfo =
+      deliveryMode === 'ADP_HOSTEL' && selectedOperator
+        ? {
+            hostelName: selectedOperator.hostelName,
+            zoneName: selectedZone?.name || 'UNILESA Zone',
+            landmark: selectedOperator.closestLandmark,
+            address: selectedOperator.hostelAddress,
+          }
+        : null;
 
     if (paymentMethod === 'wallet') {
       const availableBalance = Math.max(0, (wallet?.totalBalanceCents ?? 0) - (wallet?.allocatedToSavingsCents ?? 0));
@@ -159,9 +245,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           totalAmountCents: grandTotalCents,
           name: fullName,
           phone,
-          address: `${address}, ${state}`,
-          location: state,
+          address: effectiveAddress,
+          location: effectiveLocation,
           isExpress: isExpressDelivery,
+          adpOperatorId: adpPayloadId,
           items: items.map((i: any) => ({
             productId: i.product?.id || i.id,
             name: i.product?.name || i.name,
@@ -177,6 +264,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           channel: 'WALLET',
           totalCents: grandTotalCents,
           itemsCount: items.reduce((s, i) => s + i.quantity, 0),
+          adpInfo: adpSummaryInfo,
         });
         clearCart();
       } catch (err: any) {
@@ -193,9 +281,10 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           email: email || user?.email || 'customer@affyfoodbank.ng',
           name: fullName,
           phone,
-          address: `${address}, ${state}`,
-          location: state,
+          address: effectiveAddress,
+          location: effectiveLocation,
           isExpress: isExpressDelivery,
+          adpOperatorId: adpPayloadId,
           items: items.map((i: any) => ({
             productId: i.product?.id || i.id,
             name: i.product?.name || i.name,
@@ -242,6 +331,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 channel: data?.paymentMethod || 'TRANSACTPAY',
                 amountCents: grandTotalCents,
                 paidAt: new Date().toISOString(),
+                adpInfo: adpSummaryInfo,
               });
             },
             onClose: () => {
@@ -273,14 +363,28 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
     channel: string;
     amountCents: number;
     paidAt: string;
+    adpInfo?: any;
   }) => {
     setShowTransactPay(false);
+    const selectedZone = coverageZones.find((z) => z.id === selectedZoneId);
+    const selectedOperator = zoneOperators.find((o) => o.id === selectedOperatorId);
+    const adpSummaryInfo =
+      deliveryMode === 'ADP_HOSTEL' && selectedOperator
+        ? {
+            hostelName: selectedOperator.hostelName,
+            zoneName: selectedZone?.name || 'UNILESA Zone',
+            landmark: selectedOperator.closestLandmark,
+            address: selectedOperator.hostelAddress,
+          }
+        : null;
+
     setCompletedOrder({
       reference: paymentData.reference,
       paidAt: paymentData.paidAt,
       channel: paymentData.channel,
       totalCents: grandTotalCents,
       itemsCount: items.reduce((s, i) => s + i.quantity, 0),
+      adpInfo: paymentData.adpInfo ?? adpSummaryInfo,
     });
     clearCart();
   };
@@ -348,12 +452,24 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   <span className="font-semibold text-slate-800">{fullName}</span>
                 </div>
 
-                <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200/60">
-                  <span className="text-slate-500">Delivery Address:</span>
-                  <span className="font-medium text-slate-800 text-right max-w-xs truncate">
-                    {address}, {state}
-                  </span>
-                </div>
+                {completedOrder.adpInfo ? (
+                  <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200/60 bg-emerald-50/60 -mx-5 px-5 py-2.5 rounded-lg">
+                    <span className="text-emerald-800 font-bold flex items-center space-x-1">
+                      <span>📍</span>
+                      <span>Affy Delivery Port:</span>
+                    </span>
+                    <span className="font-semibold text-emerald-900 text-right max-w-xs">
+                      {completedOrder.adpInfo.hostelName} ({completedOrder.adpInfo.zoneName})
+                    </span>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200/60">
+                    <span className="text-slate-500">Delivery Address:</span>
+                    <span className="font-medium text-slate-800 text-right max-w-xs truncate">
+                      {address}, {state}
+                    </span>
+                  </div>
+                )}
 
                 <div className="flex justify-between items-center text-xs pt-2 border-t border-slate-200/60">
                   <span className="text-slate-500">Contact Phone:</span>
@@ -419,9 +535,42 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
               {/* Delivery Contact Details */}
               <div className="space-y-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  1. Delivery Destination
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                    1. Delivery Destination
+                  </h4>
+                  <span className="text-[11px] text-brand-700 font-semibold">
+                    Campus & Ilesa Network
+                  </span>
+                </div>
+
+                {/* Delivery Mode Toggle */}
+                <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMode('DOORSTEP')}
+                    className={`py-2 px-3 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center space-x-1.5 ${
+                      deliveryMode === 'DOORSTEP'
+                        ? 'bg-white text-brand-900 shadow-sm border border-slate-200'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>🚚</span>
+                    <span>Doorstep Delivery</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeliveryMode('ADP_HOSTEL')}
+                    className={`py-2 px-3 text-xs font-extrabold rounded-xl transition-all flex items-center justify-center space-x-1.5 ${
+                      deliveryMode === 'ADP_HOSTEL'
+                        ? 'bg-emerald-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <span>📍</span>
+                    <span>Affy Delivery Port (Hostel)</span>
+                  </button>
+                </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
@@ -440,7 +589,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
 
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Phone Number (for rider) *
+                      Phone Number (for notifications) *
                     </label>
                     <input
                       type="tel"
@@ -453,38 +602,117 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Street Address / Estate *
-                    </label>
-                    <input
-                      type="text"
-                      required
-                      value={address}
-                      onChange={(e) => setAddress(e.target.value)}
-                      placeholder="e.g. No 12, Ereja Square / Imo Road, Ilesa, Osun State"
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    />
-                  </div>
+                {deliveryMode === 'DOORSTEP' ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Street Address / Estate *
+                      </label>
+                      <input
+                        type="text"
+                        required={deliveryMode === 'DOORSTEP'}
+                        value={address}
+                        onChange={(e) => setAddress(e.target.value)}
+                        placeholder="e.g. No 12, Ereja Square / Imo Road, Ilesa, Osun State"
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      />
+                    </div>
 
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Delivery Location (Ilesa & Osun State) *
-                    </label>
-                    <select
-                      value={state}
-                      onChange={(e) => setState(e.target.value)}
-                      className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
-                    >
-                      {Object.keys(deliveryConfig?.stateFees || {}).filter((k: string) => k !== 'Default').map((zone: string) => (
-                        <option key={zone} value={zone}>
-                          {zone} {typeof deliveryConfig.stateFees[zone] === 'number' ? `— ₦${(deliveryConfig.stateFees[zone] / 100).toLocaleString()}` : ''}
-                        </option>
-                      ))}
-                    </select>
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        Delivery Location (Ilesa & Osun State) *
+                      </label>
+                      <select
+                        value={state}
+                        onChange={(e) => setState(e.target.value)}
+                        className="w-full px-3.5 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      >
+                        {Object.keys(deliveryConfig?.stateFees || {}).filter((k: string) => k !== 'Default').map((zone: string) => (
+                          <option key={zone} value={zone}>
+                            {zone} {typeof deliveryConfig.stateFees[zone] === 'number' ? `— ₦${(deliveryConfig.stateFees[zone] / 100).toLocaleString()}` : ''}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  /* ADP HOSTEL PICKUP SELECTION */
+                  <div className="space-y-3 bg-emerald-50/50 p-3.5 rounded-2xl border border-emerald-200">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-bold text-emerald-950 mb-1">
+                          1. Select Coverage Zone (UNILESA) *
+                        </label>
+                        <select
+                          value={selectedZoneId}
+                          onChange={(e) => setSelectedZoneId(e.target.value)}
+                          className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                        >
+                          <option value="">-- Choose Coverage Zone --</option>
+                          {coverageZones.map((z: any) => (
+                            <option key={z.id} value={z.id}>
+                              {z.name} ({z.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-bold text-emerald-950 mb-1">
+                          2. Choose Pickup Hostel Port *
+                        </label>
+                        {loadingOperators ? (
+                          <div className="p-2.5 bg-white border border-emerald-200 rounded-xl text-xs text-slate-500 animate-pulse">
+                            Loading ports...
+                          </div>
+                        ) : zoneOperators.length === 0 ? (
+                          <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800">
+                            No approved ADP ports in this zone yet. Choose another zone or Doorstep Delivery.
+                          </div>
+                        ) : (
+                          <select
+                            value={selectedOperatorId}
+                            onChange={(e) => setSelectedOperatorId(e.target.value)}
+                            className="w-full px-3.5 py-2.5 bg-white border border-emerald-300 rounded-xl text-xs font-bold text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                          >
+                            <option value="">-- Choose Hostel Port --</option>
+                            {zoneOperators.map((op: any) => (
+                              <option key={op.id} value={op.id}>
+                                🏢 {op.hostelName} {op.closestLandmark ? `(${op.closestLandmark})` : ''}
+                              </option>
+                            ))}
+                          </select>
+                        )}
+                      </div>
+                    </div>
+
+                    {selectedOperatorId && (
+                      (() => {
+                        const op = zoneOperators.find((o: any) => o.id === selectedOperatorId);
+                        if (!op) return null;
+                        return (
+                          <div className="p-3 bg-white rounded-xl border border-emerald-200 text-xs space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="font-extrabold text-emerald-900 flex items-center space-x-1">
+                                <span>📍 Assigned Port:</span>
+                                <span>{op.hostelName}</span>
+                              </span>
+                              <span className="text-[10px] bg-emerald-100 text-emerald-800 font-bold px-2 py-0.5 rounded-md">
+                                Verified Port
+                              </span>
+                            </div>
+                            <div className="text-slate-600 text-[11px]">
+                              <span>Address: {op.hostelAddress || 'Hostel Compound'}</span>
+                              {op.closestLandmark && (
+                                <span className="block text-slate-500">Landmark: {op.closestLandmark}</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()
+                    )}
+                  </div>
+                )}
 
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1">

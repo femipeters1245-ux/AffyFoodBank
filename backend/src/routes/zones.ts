@@ -21,6 +21,54 @@ router.get('/', async (_req: Request, res: Response, next: NextFunction) => {
 });
 
 /**
+ * GET /api/v1/zones/:zoneId/operators
+ * Public endpoint returning approved and active ADP delivery ports for checkout.
+ * Privacy-compliant: NEVER returns bank details, matric numbers, or private documents.
+ */
+router.get('/:zoneId/operators', async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { zoneId } = req.params;
+    let operators: any[] = [];
+    try {
+      const prismaClient = (await import('../prisma/client')).default;
+      operators = await prismaClient.adpOperator.findMany({
+        where: {
+          coverageZoneId: zoneId,
+          status: 'APPROVED',
+          isActive: true,
+        },
+        select: {
+          id: true,
+          hostelName: true,
+          hostelAddress: true,
+          closestLandmark: true,
+          coverageZoneId: true,
+        },
+      });
+    } catch {
+      const { supabaseAdmin } = await import('../services/supabase-admin.service');
+      if (supabaseAdmin) {
+        const { data } = await supabaseAdmin
+          .from('AdpOperator')
+          .select('id, hostelName, hostelAddress, closestLandmark, coverageZoneId')
+          .eq('coverageZoneId', zoneId)
+          .eq('status', 'APPROVED')
+          .eq('isActive', true);
+        operators = data || [];
+      }
+    }
+
+    res.json({
+      status: 'success',
+      count: operators.length,
+      data: operators,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/v1/admin/zones
  * Admin oversight: returns all coverage zones with live computed monitoring figures.
  * Restricted to Admin and SuperAdmin roles.

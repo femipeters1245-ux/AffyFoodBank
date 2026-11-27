@@ -367,6 +367,8 @@ router.get(['/track/:reference', '/:reference'], async (req: Request, res: Respo
             totalAmountCents: Number(targetOrder.totalAmountCents || 0),
             createdAt: targetOrder.createdAt,
             updatedAt: targetOrder.updatedAt,
+            adpOperatorId: targetOrder.adpOperatorId || null,
+            adpSnapshot: targetOrder.adpSnapshot || null,
             customerProfile: {
               phone: profile?.phone || '',
               user: user ? { firstName: user.firstName, lastName: user.lastName, email: user.email } : null,
@@ -431,6 +433,8 @@ router.get(['/track/:reference', '/:reference'], async (req: Request, res: Respo
       deliveryStatus: order.delivery?.status || 'PENDING',
       totalAmountCents: order.totalAmountCents,
       currency: order.currency,
+      adpOperatorId: order.adpOperatorId || null,
+      adpSnapshot: order.adpSnapshot || null,
       createdAt: order.createdAt,
       updatedAt: order.updatedAt,
       customer: {
@@ -469,7 +473,30 @@ router.get(['/track/:reference', '/:reference'], async (req: Request, res: Respo
 router.post('/wallet-checkout', authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
     const userId = req.user?.sub;
-    const { totalAmountCents, name, phone, address, location, isExpress, items } = req.body;
+    const { totalAmountCents, name, phone, address, location, isExpress, items, adpOperatorId } = req.body;
+
+    // Validate ADP Operator if pickup selected
+    let validAdpOperator: any = null;
+    let adpSnapshot: any = null;
+    if (adpOperatorId) {
+      validAdpOperator = await prisma.adpOperator.findUnique({
+        where: { id: adpOperatorId },
+        include: { coverageZone: true },
+      });
+      if (!validAdpOperator || !validAdpOperator.isActive || validAdpOperator.status !== 'APPROVED') {
+        throw new BadRequestError('The selected Affy Delivery Port is currently unavailable. Please choose another port or doorstep delivery.');
+      }
+      adpSnapshot = {
+        operatorId: validAdpOperator.id,
+        operatorName: validAdpOperator.fullName,
+        operatorPhone: validAdpOperator.phone,
+        hostelName: validAdpOperator.hostelName,
+        hostelAddress: validAdpOperator.hostelAddress,
+        closestLandmark: validAdpOperator.closestLandmark,
+        zoneName: validAdpOperator.coverageZone?.name,
+        assignedAt: new Date().toISOString(),
+      };
+    }
 
     // 1. Calculate items subtotal
     const resolvedItemsList = items || [];
@@ -589,6 +616,8 @@ router.post('/wallet-checkout', authenticate, async (req: Request, res: Response
           totalAmountCents: BigInt(chargedCents),
           currency: 'NGN',
           status: 'PROCESSING',
+          adpOperatorId: validAdpOperator ? validAdpOperator.id : null,
+          adpSnapshot: adpSnapshot || undefined,
           items: {
             create: resolvedItems,
           },
@@ -596,7 +625,9 @@ router.post('/wallet-checkout', authenticate, async (req: Request, res: Response
             create: {
               id: uuidv4(),
               status: 'READY_FOR_DISPATCH',
-              notes: `Order Reference: ${orderReference}. Customer: ${name || customerProfile.user.firstName}. Phone: ${phone || 'N/A'}. Delivery Address: ${address || 'Local Delivery'}`,
+              notes: validAdpOperator
+                ? `[ADP Pickup Port: ${validAdpOperator.hostelName} (${validAdpOperator.coverageZone?.name})] Ref: ${orderReference}. Customer: ${name || customerProfile.user.firstName}. Phone: ${phone || 'N/A'}. Pickup Address: ${validAdpOperator.hostelAddress}`
+                : `Order Reference: ${orderReference}. Customer: ${name || customerProfile.user.firstName}. Phone: ${phone || 'N/A'}. Delivery Address: ${address || 'Local Delivery'}`,
             },
           },
         },
