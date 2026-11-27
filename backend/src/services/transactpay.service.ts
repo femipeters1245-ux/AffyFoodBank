@@ -185,9 +185,9 @@ export const transactPayService = {
    * before making an unnecessary generate call or recovering from earlier save failure.
    */
   async getAccountDetailsByAlias(alias: string): Promise<VirtualAccountResult | null> {
-    const publicKey = process.env.TRANSACTPAY_PUBLIC_KEY;
-    if (!publicKey) {
-      throw new Error('TRANSACTPAY_PUBLIC_KEY is not configured');
+    const authKey = process.env.TRANSACTPAY_SECRET_KEY || process.env.TRANSACTPAY_API_KEY || process.env.TRANSACTPAY_PUBLIC_KEY;
+    if (!authKey) {
+      throw new Error('TransactPay secret/API key is not configured');
     }
 
     if (!alias || !alias.trim()) {
@@ -204,7 +204,7 @@ export const transactPayService = {
           method: 'GET',
           headers: {
             'accept': 'application/json',
-            'api-key': publicKey,
+            'api-key': authKey,
           },
         }
       );
@@ -248,7 +248,7 @@ export const transactPayService = {
    * Independent API re-verification of bank transfer deposits
    */
   async verifyFundingDetails(sessionId: string): Promise<FundingDetailsResult> {
-    const authKey = process.env.TRANSACTPAY_SECRET_KEY || process.env.TRANSACTPAY_API_KEY || process.env.TRANSACTPAY_PUBLIC_KEY;
+    const authKey = process.env.TRANSACTPAY_PUBLIC_KEY || process.env.TRANSACTPAY_API_KEY || process.env.TRANSACTPAY_SECRET_KEY;
     if (!authKey) {
       throw new Error('TransactPay API authentication key is not configured');
     }

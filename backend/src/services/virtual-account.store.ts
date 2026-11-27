@@ -242,9 +242,39 @@ export const virtualAccountStore = {
         if (auditRows && !error) {
           for (const row of auditRows) {
             const val = row.newValues as VirtualAccountRecord;
-            if (val && (val.accountNumber === cleanId || val.accountReference === cleanId)) {
+            if (val && (val.accountNumber === cleanId || val.accountReference === cleanId || val.alias === cleanId)) {
               return val;
             }
+          }
+        }
+      } catch {}
+
+      // 4. Try matching customerProfile by embedded UUID in accountReference (e.g. AFFY-WLT-<userId>)
+      try {
+        const uuidMatch = cleanId.match(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/i);
+        if (uuidMatch) {
+          const userId = uuidMatch[0];
+          const { data: cp } = await supabaseAdmin
+            .from('CustomerProfile')
+            .select('id, userId')
+            .eq('userId', userId)
+            .maybeSingle();
+
+          if (cp) {
+            return {
+              id: uuidv4(),
+              customerProfileId: cp.id,
+              accountNumber: cleanId.replace(/[^0-9]/g, '') || '0000000000',
+              bankName: 'Moniepoint Microfinance Bank',
+              accountName: 'Affy FoodBank',
+              accountReference: `AFFY-WLT-${userId}`,
+              alias: `AFFY-CUST-${userId}`,
+              currency: 'NGN',
+              provider: 'TRANSACTPAY',
+              isActive: true,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString(),
+            };
           }
         }
       } catch {}

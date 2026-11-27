@@ -1,5 +1,5 @@
 // frontend/src/pages/WalletPage.tsx
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { WalletTransaction } from '../types';
@@ -47,6 +47,12 @@ export const WalletPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [toast, setToast] = useState<{ msg: string; type?: 'success' | 'info' | 'error' } | null>(null);
 
+  // Polling & Balance Detection State
+  const [isAwaitingDeposit, setIsAwaitingDeposit] = useState(false);
+  const previousBalanceRef = useRef<number | null>(null);
+  const pollTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const pollCountRef = useRef<number>(0);
+
   const showToast = (msg: string, type: 'success' | 'info' | 'error' = 'success') => {
     setToast({ msg, type });
     setTimeout(() => setToast(null), 4500);
@@ -69,6 +75,58 @@ export const WalletPage: React.FC = () => {
   useEffect(() => {
     fetchTransactions();
   }, [fetchTransactions]);
+
+  // Balance Increase Detector: alert user when incoming transfer clears
+  useEffect(() => {
+    if (wallet && typeof wallet.totalBalanceCents === 'number') {
+      const currentCents = Number(wallet.totalBalanceCents);
+      if (previousBalanceRef.current !== null && currentCents > previousBalanceRef.current) {
+        const diffNaira = (currentCents - previousBalanceRef.current) / 100;
+        showToast(`🎉 Deposit of ₦${diffNaira.toLocaleString()} confirmed! Your wallet balance has been updated.`, 'success');
+        setIsAwaitingDeposit(false);
+        fetchTransactions();
+      }
+      previousBalanceRef.current = currentCents;
+    }
+  }, [wallet, fetchTransactions]);
+
+  // Window Focus Auto-Refetch (user returning from banking app)
+  useEffect(() => {
+    const handleFocus = () => {
+      if (isAuthenticated) {
+        refreshWallet();
+        fetchTransactions();
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
+  }, [isAuthenticated, refreshWallet, fetchTransactions]);
+
+  // Short-interval polling when waiting for bank transfer confirmation
+  useEffect(() => {
+    if (!isAwaitingDeposit) {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      pollCountRef.current = 0;
+      return;
+    }
+
+    pollCountRef.current = 0;
+    pollTimerRef.current = setInterval(async () => {
+      pollCountRef.current += 1;
+      await refreshWallet();
+      await fetchTransactions();
+
+      // Stop after 12 intervals (60 seconds)
+      if (pollCountRef.current >= 12) {
+        setIsAwaitingDeposit(false);
+        if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+      }
+    }, 5000);
+
+    return () => {
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current);
+    };
+  }, [isAwaitingDeposit, refreshWallet, fetchTransactions]);
 
   // Load Banks from TransactPay for Withdrawal
   useEffect(() => {
@@ -139,10 +197,13 @@ export const WalletPage: React.FC = () => {
   // Confirm / Verify Sent Bank Transfer
   const handleConfirmTransfer = () => {
     setIsDepositOpen(false);
+    setIsAwaitingDeposit(true);
     showToast(
-      'Your transfer is being processed. Your wallet will update automatically once TransactPay confirms the transaction.',
+      'Transfer submitted! Monitoring network for bank confirmation...',
       'info'
     );
+    refreshWallet();
+    fetchTransactions();
   };
 
   // ─── 2. Instant Card / Gateway Deposit ──────────────────────────────────────
@@ -297,6 +358,31 @@ export const WalletPage: React.FC = () => {
           </button>
         </div>
       </div>
+
+      {/* Active Deposit Clearing Notification Banner */}
+      {isAwaitingDeposit && (
+        <div className="p-3.5 bg-emerald-50 border border-emerald-200 rounded-2xl flex items-center justify-between text-xs text-emerald-900 shadow-2xs animate-pulse">
+          <div className="flex items-center space-x-2.5 min-w-0">
+            <div className="w-4 h-4 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin flex-shrink-0"></div>
+            <div className="truncate">
+              <span className="font-black">Monitoring bank network:</span>{' '}
+              <span className="text-emerald-800 text-[11px]">
+                Waiting for incoming transfer confirmation. Your balance will update automatically.
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              refreshWallet();
+              fetchTransactions();
+            }}
+            className="ml-3 px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-lg text-[10px] flex-shrink-0 transition-colors"
+          >
+            Refresh Now
+          </button>
+        </div>
+      )}
 
       {/* 3 Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 sm:gap-6">

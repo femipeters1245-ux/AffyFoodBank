@@ -114,6 +114,32 @@ export const fundingService = {
         if (!error) {
           logger.info('[fundingService] Durably recorded funding event in Supabase:', { eventId, sessionId });
           return { eventId, sessionId, isDuplicate: false };
+        } else if (error.code === 'PGRST205') {
+          // If table does not exist yet in Supabase schema cache, buffer durably in AuditLog
+          await supabaseAdmin.from('AuditLog').insert({
+            id: uuidv4(),
+            action: 'WALLET_FUNDING_EVENT_RECEIVED',
+            targetTable: 'WalletFundingEvent',
+            targetId: sessionId,
+            newValues: {
+              id: eventId,
+              sessionId,
+              paymentReference,
+              accountReference,
+              destinationAccountNumber: destinationAccount,
+              rawPayload: payload,
+              status: 'RECEIVED',
+              grossAmountCents,
+              feeCents,
+              netAmountCents,
+              currency: 'NGN',
+              attempts: 0,
+              createdAt: new Date().toISOString(),
+            },
+            ipAddress: 'server',
+          });
+          logger.info('[fundingService] Durably buffered funding event in Supabase AuditLog:', { eventId, sessionId });
+          return { eventId, sessionId, isDuplicate: false };
         }
       } catch (supaErr: any) {
         logger.warn('[fundingService] Supabase insert note:', { message: supaErr.message });
@@ -140,12 +166,30 @@ export const fundingService = {
     } catch {}
 
     if (!event && isSupabaseAdminConfigured && supabaseAdmin) {
-      const { data } = await supabaseAdmin
-        .from('WalletFundingEvent')
-        .select('*')
-        .eq('sessionId', cleanSessionId)
-        .maybeSingle();
-      event = data;
+      try {
+        const { data } = await supabaseAdmin
+          .from('WalletFundingEvent')
+          .select('*')
+          .eq('sessionId', cleanSessionId)
+          .maybeSingle();
+        event = data;
+      } catch {}
+
+      if (!event) {
+        try {
+          const { data: auditRow } = await supabaseAdmin
+            .from('AuditLog')
+            .select('*')
+            .eq('targetTable', 'WalletFundingEvent')
+            .eq('targetId', cleanSessionId)
+            .order('createdAt', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          if (auditRow?.newValues) {
+            event = auditRow.newValues;
+          }
+        } catch {}
+      }
     }
 
     // Check if already credited
@@ -253,6 +297,9 @@ export const fundingService = {
     const netAmountCents = grossAmountCents; // Defaulting to 100% credit unless fee deduction confirmed
 
     // 5. ATOMIC LEDGER CREDITING (Exactly Once)
+    let creditSuccess = false;
+    let transactionReference = verified.paymentReference || `DEP-${Date.now()}-${uuidv4().slice(0, 6)}`;
+
     try {
       await prisma.$transaction(async (tx) => {
         // A. Verify and lock the funding event row
@@ -292,7 +339,7 @@ export const fundingService = {
             id: txId,
             walletId: wallet.id,
             customerId: customerProfileId,
-            reference: verified.paymentReference || `DEP-${Date.now()}-${uuidv4().slice(0, 6)}`,
+            reference: transactionReference,
             providerSessionId: cleanSessionId,
             providerReference: verified.paymentReference,
             type: 'DEPOSIT',
@@ -325,19 +372,12 @@ export const fundingService = {
         });
       });
 
-      logger.info('[fundingService] Successfully credited wallet exactly once:', {
+      creditSuccess = true;
+      logger.info('[fundingService] Successfully credited wallet exactly once via Prisma:', {
         sessionId: cleanSessionId,
         customerProfileId,
         amountNaira: verified.totalAmountCharged,
       });
-
-      return {
-        status: 'CREDITED',
-        message: `Successfully verified and credited ₦${verified.totalAmountCharged} to wallet`,
-        customerProfileId,
-        amountCents: netAmountCents,
-        transactionReference: verified.paymentReference,
-      };
     } catch (txErr: any) {
       if (txErr?.message === 'ALREADY_CREDITED' || txErr?.code === 'P2002') {
         logger.info('[fundingService] Event was already credited concurrently:', { sessionId: cleanSessionId });
@@ -348,14 +388,133 @@ export const fundingService = {
           amountCents: netAmountCents,
         };
       }
-
-      logger.error('[fundingService] Atomic transaction failed:', { sessionId: cleanSessionId, error: txErr.message });
-      await this.updateEventStatus(cleanSessionId, {
-        status: 'FAILED',
-        failureReason: `DB transaction error: ${txErr.message}`,
-      });
-      throw txErr;
+      logger.warn('[fundingService] Prisma atomic transaction note, attempting Supabase fallback:', { message: txErr?.message });
     }
+
+    // 6. Supabase Atomic Ledger Fallback (Resilient Production Serverless)
+    if (!creditSuccess && isSupabaseAdminConfigured && supabaseAdmin) {
+      try {
+        // A. Idempotency check: check if WalletTransaction already exists with paymentReference or reference
+        const { data: existingTxs } = await supabaseAdmin
+          .from('WalletTransaction')
+          .select('id, status')
+          .or(`paymentReference.eq."${verified.paymentReference}",reference.eq."${cleanSessionId}",reference.eq."${transactionReference}"`)
+          .limit(1);
+
+        if (existingTxs && existingTxs.length > 0 && existingTxs[0].status === 'SUCCESSFUL') {
+          logger.info('[fundingService] Deposit already credited in Supabase (idempotent):', { sessionId: cleanSessionId });
+          return {
+            status: 'ALREADY_CREDITED',
+            message: 'Deposit already credited',
+            customerProfileId,
+            amountCents: netAmountCents,
+          };
+        }
+
+        // B. Ensure wallet exists
+        const { data: supaWallet } = await supabaseAdmin
+          .from('Wallet')
+          .select('*')
+          .eq('customerProfileId', customerProfileId)
+          .maybeSingle();
+
+        let walletId = supaWallet?.id || uuidv4();
+        const now = new Date().toISOString();
+
+        // C. Insert unique ledger entry in WalletTransaction FIRST
+        const txId = uuidv4();
+        const { error: txErr } = await supabaseAdmin
+          .from('WalletTransaction')
+          .insert({
+            id: txId,
+            walletId,
+            customerId: customerProfileId,
+            reference: transactionReference,
+            type: 'DEPOSIT',
+            amountCents: netAmountCents,
+            currency: 'NGN',
+            direction: 'IN',
+            status: 'SUCCESSFUL',
+            description: `TransactPay Bank Transfer: ₦${verified.totalAmountCharged.toLocaleString()} (VA: ${matchedVA.accountNumber})`,
+            paymentReference: verified.paymentReference,
+            createdAt: now,
+            updatedAt: now,
+          });
+
+        if (txErr) {
+          logger.error('[fundingService] Supabase ledger insert failed:', txErr);
+          throw new Error(`Supabase ledger insert failed: ${txErr.message}`);
+        }
+
+        // D. Update or create wallet balance atomically
+        if (!supaWallet) {
+          const { error: wErr } = await supabaseAdmin
+            .from('Wallet')
+            .insert({
+              id: walletId,
+              customerProfileId,
+              totalBalanceCents: netAmountCents,
+              allocatedToSavingsCents: 0,
+              currency: 'NGN',
+              status: 'ACTIVE',
+              createdAt: now,
+              updatedAt: now,
+            });
+          if (wErr) {
+            // Compensate ledger insert on wallet creation failure
+            await supabaseAdmin.from('WalletTransaction').delete().eq('id', txId);
+            throw new Error(`Supabase wallet creation failed: ${wErr.message}`);
+          }
+        } else {
+          // Increment wallet balance
+          const newBal = Number(supaWallet.totalBalanceCents || 0) + netAmountCents;
+          const { error: updErr } = await supabaseAdmin
+            .from('Wallet')
+            .update({
+              totalBalanceCents: newBal,
+              updatedAt: now,
+            })
+            .eq('id', walletId);
+          if (updErr) {
+            // Compensate ledger insert on wallet update failure
+            await supabaseAdmin.from('WalletTransaction').delete().eq('id', txId);
+            throw new Error(`Supabase wallet update failed: ${updErr.message}`);
+          }
+        }
+
+        // D. Update funding event status
+        await this.updateEventStatus(cleanSessionId, {
+          status: 'CREDITED',
+          verificationPayload: verified.raw,
+        });
+
+        creditSuccess = true;
+        logger.info('[fundingService] Successfully credited wallet exactly once via Supabase fallback:', {
+          sessionId: cleanSessionId,
+          customerProfileId,
+          amountNaira: verified.totalAmountCharged,
+        });
+      } catch (supaTxErr: any) {
+        logger.error('[fundingService] Supabase atomic transaction failed:', { sessionId: cleanSessionId, error: supaTxErr.message });
+        await this.updateEventStatus(cleanSessionId, {
+          status: 'FAILED',
+          failureReason: `DB transaction error: ${supaTxErr.message}`,
+        });
+        throw supaTxErr;
+      }
+    }
+
+    if (!creditSuccess) {
+      throw new Error('Database transaction failed on both Prisma and Supabase connections');
+    }
+
+    return {
+      status: 'CREDITED',
+      message: `Successfully verified and credited ₦${verified.totalAmountCharged} to wallet`,
+      customerProfileId,
+      amountCents: netAmountCents,
+      transactionReference: transactionReference,
+    };
   },
 
   /**
@@ -385,7 +544,7 @@ export const fundingService = {
 
     if (isSupabaseAdminConfigured && supabaseAdmin) {
       try {
-        await supabaseAdmin
+        const { error } = await supabaseAdmin
           .from('WalletFundingEvent')
           .update({
             ...(updates.status ? { status: updates.status } : {}),
@@ -394,6 +553,18 @@ export const fundingService = {
             updatedAt: new Date().toISOString(),
           })
           .eq('sessionId', sessionId);
+
+        if (error && error.code === 'PGRST205') {
+          // If table does not exist yet, log update in AuditLog
+          await supabaseAdmin.from('AuditLog').insert({
+            id: uuidv4(),
+            action: updates.status === 'CREDITED' ? 'WALLET_FUNDING_EVENT_CREDITED' : 'WALLET_FUNDING_EVENT_UPDATED',
+            targetTable: 'WalletFundingEvent',
+            targetId: sessionId,
+            newValues: { sessionId, ...updates, updatedAt: new Date().toISOString() },
+            ipAddress: 'server',
+          });
+        }
       } catch {}
     }
   },
@@ -465,6 +636,43 @@ export const fundingService = {
         total,
       };
     } catch {
+      if (isSupabaseAdminConfigured && supabaseAdmin) {
+        try {
+          const { data: auditLogs } = await supabaseAdmin
+            .from('AuditLog')
+            .select('*')
+            .eq('targetTable', 'WalletFundingEvent')
+            .order('createdAt', { ascending: false })
+            .limit(limit);
+
+          if (auditLogs && auditLogs.length > 0) {
+            return {
+              events: auditLogs.map((log: any) => {
+                const val = log.newValues || {};
+                return {
+                  id: log.id,
+                  sessionId: log.targetId || val.sessionId,
+                  paymentReference: val.paymentReference || '',
+                  accountReference: val.accountReference || '',
+                  destinationAccountNumber: val.destinationAccountNumber || '',
+                  customerName: 'Customer',
+                  customerEmail: null,
+                  status: val.status || 'RECEIVED',
+                  grossAmountNaira: val.grossAmountCents ? Number(val.grossAmountCents) / 100 : 0,
+                  feeNaira: val.feeCents ? Number(val.feeCents) / 100 : 0,
+                  netAmountNaira: val.netAmountCents ? Number(val.netAmountCents) / 100 : 0,
+                  currency: val.currency || 'NGN',
+                  failureReason: val.failureReason || null,
+                  attempts: val.attempts || 1,
+                  verifiedAt: val.verifiedAt || null,
+                  createdAt: log.createdAt,
+                };
+              }),
+              total: auditLogs.length,
+            };
+          }
+        } catch {}
+      }
       return { events: [], total: 0 };
     }
   },

@@ -568,22 +568,18 @@ router.post('/transactpay/webhook/funding', async (req: Request, res: Response) 
     // 1. Durably record the raw event in WalletFundingEvent table (deduplicated by sessionId / paymentReference)
     const { isDuplicate } = await fundingService.recordFundingEvent(payload);
 
-    // 2. Acknowledge with HTTP 200 once durably recorded
-    res.status(200).json({
+    // 2. Trigger independent verification & atomic crediting SYNCHRONOUSLY to prevent serverless execution freeze
+    const verificationResult = await fundingService.verifyAndProcessFundingEvent(sessionId);
+    console.log(`[TransactPay Funding Webhook] Verification completed: ${verificationResult.status} - ${verificationResult.message}`);
+
+    // 3. Acknowledge with HTTP 200 once verified and processed
+    return res.status(200).json({
       status: 'success',
-      message: 'Funding event received and durably recorded',
+      message: 'Funding event received, verified and processed',
       sessionId,
       isDuplicate,
+      result: verificationResult,
     });
-
-    // 3. Trigger independent verification & atomic crediting asynchronously
-    fundingService.verifyAndProcessFundingEvent(sessionId)
-      .then((result) => {
-        console.log(`[TransactPay Funding Webhook] Verification completed: ${result.status} - ${result.message}`);
-      })
-      .catch((err) => {
-        console.error('[TransactPay Funding Webhook] Background verification error:', err.message);
-      });
   } catch (err: any) {
     console.error('[TransactPay Funding Webhook Error]:', err.message);
     return res.status(500).json({ status: 'error', message: err.message });
