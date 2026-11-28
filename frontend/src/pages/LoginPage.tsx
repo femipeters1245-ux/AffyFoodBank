@@ -27,7 +27,7 @@ export const LoginPage: React.FC = () => {
         localStorage.removeItem('affy_checkout_intent');
         navigate('/?checkout=true', { replace: true });
       } else {
-        navigate(from === '/login' ? '/' : from, { replace: true });
+        navigate(from === '/login' || from === '/wallet' || from === '/savings' ? '/' : from, { replace: true });
       }
     }
   }, [isAuthenticated, user, navigate, from]);
@@ -91,7 +91,7 @@ export const LoginPage: React.FC = () => {
           // ignore parse errors
         }
       }
-      navigate(from === '/login' ? '/wallet' : from, { replace: true });
+      navigate(from === '/login' || from === '/wallet' || from === '/savings' ? '/' : from, { replace: true });
     } catch (err: any) {
       const serverMsg =
         err.response?.data?.message ||
@@ -192,7 +192,7 @@ export const LoginPage: React.FC = () => {
             {viewMode === 'LOGIN'
               ? isFromCheckout
                 ? 'Sign in to confirm your delivery details and proceed to checkout.'
-                : 'Sign in to access your wallet, track orders, and manage savings.'
+                : 'Sign in to track your food deliveries, view orders, and explore bundles.'
               : resetStep === 'REQUEST'
               ? 'Enter your registered email address to receive a secure password reset code.'
               : `Enter the 6-digit code sent to ${resetEmail} and your new password.`}

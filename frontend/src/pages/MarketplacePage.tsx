@@ -233,7 +233,7 @@ export const MarketplacePage: React.FC = () => {
               </div>
             </div>
 
-            {/* Hero CTA Buttons - Visible on both, neatly spaced under headline on mobile */}
+            {/* Hero CTA Buttons */}
             <div className="pt-2 sm:pt-1 flex flex-wrap gap-2.5 sm:gap-3">
               <Link
                 to="/packages"
@@ -243,10 +243,10 @@ export const MarketplacePage: React.FC = () => {
                 <span className="text-xs">➔</span>
               </Link>
               <Link
-                to="/savings"
+                to="/adp/apply"
                 className="inline-flex items-center justify-center space-x-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white border border-white/20 font-bold text-xs sm:text-sm px-4 py-2.5 sm:py-2.5 rounded-xl transition-all active:scale-95 touch-manipulation"
               >
-                <span>Save Towards Food</span>
+                <span>📍 Student Delivery Ports</span>
               </Link>
             </div>
           </div>
@@ -446,31 +446,19 @@ export const MarketplacePage: React.FC = () => {
                     </button>
                   )}
 
-                  {/* 8 & 9. Save Towards & Buy Now Options */}
-                  <div className="grid grid-cols-2 gap-1.5">
-                    {/* 8. Save Towards Option */}
-                    <Link
-                      to="/savings"
-                      className="text-center text-[10px] sm:text-[11px] font-semibold py-1.5 sm:py-2 px-1 rounded-lg sm:rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 transition-colors truncate"
-                      title="Save towards purchasing this staple"
-                    >
-                      Save Towards
-                    </Link>
-
-                    {/* 9. Buy Now Option */}
-                    <button
-                      onClick={() => handleBuyNow(product)}
-                      disabled={!inStock}
-                      className={`text-[10px] sm:text-[11px] font-black py-1.5 sm:py-2 px-1 rounded-lg sm:rounded-xl shadow-2xs transition-all text-center flex items-center justify-center space-x-0.5 active:scale-95 truncate ${
-                        inStock
-                          ? 'bg-brand-600 hover:bg-brand-700 text-white'
-                          : 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                      }`}
-                    >
-                      <span>Buy Now</span>
-                      <span className="text-[9px]">➔</span>
-                    </button>
-                  </div>
+                  {/* Buy Now Option */}
+                  <button
+                    onClick={() => handleBuyNow(product)}
+                    disabled={!inStock}
+                    className={`w-full text-[10px] sm:text-[11px] font-black py-1.5 sm:py-2 px-1 rounded-lg sm:rounded-xl shadow-2xs transition-all text-center flex items-center justify-center space-x-1 active:scale-95 truncate ${
+                      inStock
+                        ? 'bg-brand-600 hover:bg-brand-700 text-white'
+                        : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                    }`}
+                  >
+                    <span>Instant Checkout</span>
+                    <span className="text-[9px]">➔</span>
+                  </button>
                 </div>
               </div>
             );

@@ -437,19 +437,12 @@ export const PackagesPage: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Responsive 3-Button Action Row */}
-                <div className="grid grid-cols-3 gap-2">
-                  <Link
-                    to="/savings"
-                    className="text-center py-2.5 px-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 font-bold text-xs transition-colors flex items-center justify-center truncate"
-                  >
-                    Save in Plan
-                  </Link>
-
+                {/* Responsive 2-Button Action Row */}
+                <div className="grid grid-cols-2 gap-2">
                   <button
                     onClick={() => handleAddToCart(pkg, false)}
                     disabled={isUnavailable}
-                    className={`py-2.5 px-2 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-1 truncate ${
+                    className={`py-2.5 px-3 rounded-xl font-bold text-xs transition-all flex items-center justify-center space-x-1 truncate ${
                       isUnavailable
                         ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
                         : 'bg-white border border-brand-300 text-brand-800 hover:bg-brand-50 active:scale-95 shadow-2xs'
@@ -461,13 +454,13 @@ export const PackagesPage: React.FC = () => {
                   <button
                     onClick={() => handleAddToCart(pkg, true)}
                     disabled={isUnavailable}
-                    className={`py-2.5 px-2 rounded-xl font-black text-xs text-white shadow-xs transition-all flex items-center justify-center space-x-1 truncate active:scale-95 ${
+                    className={`py-2.5 px-3 rounded-xl font-black text-xs text-white shadow-xs transition-all flex items-center justify-center space-x-1 truncate active:scale-95 ${
                       isUnavailable
                         ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
                         : 'bg-brand-600 hover:bg-brand-700'
                     }`}
                   >
-                    <span>Buy Now</span>
+                    <span>Buy Bundle</span>
                     <span className="text-[10px]">➔</span>
                   </button>
                 </div>

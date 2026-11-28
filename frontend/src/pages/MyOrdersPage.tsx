@@ -95,7 +95,7 @@ export const MyOrdersPage: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
         <div>
           <div className="flex items-center space-x-2 text-xs text-slate-500 mb-1">
-            <Link to="/wallet" className="hover:text-brand-700 font-medium">Wallet</Link>
+            <Link to="/" className="hover:text-brand-700 font-medium">Marketplace</Link>
             <span>/</span>
             <span className="text-slate-800 font-bold">My Orders</span>
           </div>

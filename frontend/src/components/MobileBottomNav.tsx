@@ -6,14 +6,13 @@ import { useCart } from '../context/CartContext';
 
 export const MobileBottomNav: React.FC = () => {
   const location = useLocation();
-  const { isAuthenticated } = useAuth();
   const { totalItems, setIsCartOpen } = useCart();
 
   const pathname = location.pathname;
 
   const isHomeActive = pathname === '/';
-  const isSavingsActive = pathname === '/savings';
-  const isWalletActive = ['/wallet', '/orders'].includes(pathname) || (!isAuthenticated && pathname === '/login');
+  const isOrdersActive = pathname.startsWith('/orders');
+  const isBundlesActive = pathname === '/packages';
 
   return (
     <nav
@@ -79,62 +78,62 @@ export const MobileBottomNav: React.FC = () => {
           <span className="text-[10px] mt-1 tracking-tight">Basket</span>
         </button>
 
-        {/* 3. Food Savings */}
+        {/* 3. My Orders */}
         <Link
-          to="/savings"
+          to="/orders"
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            isSavingsActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
+            isOrdersActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
           }`}
-          aria-label="Food Savings"
+          aria-label="My Orders"
         >
           <div className="relative">
             <svg
-              className={`w-5 h-5 transition-transform ${isSavingsActive ? 'scale-110' : ''}`}
-              fill={isSavingsActive ? 'currentColor' : 'none'}
+              className={`w-5 h-5 transition-transform ${isOrdersActive ? 'scale-110' : ''}`}
+              fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
-              strokeWidth={isSavingsActive ? 2 : 1.75}
+              strokeWidth={isOrdersActive ? 2 : 1.75}
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm7-5a2 2 0 11-4 0 2 2 0 014 0z"
+                d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-3 7h3m-3 4h3m-6-4h.01M9 16h.01"
               />
             </svg>
-            {isSavingsActive && (
+            {isOrdersActive && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-600" />
             )}
           </div>
-          <span className="text-[10px] mt-1 tracking-tight">Food Savings</span>
+          <span className="text-[10px] mt-1 tracking-tight">Orders</span>
         </Link>
 
-        {/* 4. Wallet */}
+        {/* 4. Commercial Bundles (Exact position of retired Wallet) */}
         <Link
-          to="/wallet"
+          to="/packages"
           className={`flex flex-col items-center justify-center py-1 transition-colors ${
-            isWalletActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
+            isBundlesActive ? 'text-brand-700 font-bold' : 'text-slate-500 hover:text-slate-800 font-medium'
           }`}
-          aria-label="My Wallet"
+          aria-label="Commercial Food Bundles"
         >
           <div className="relative">
             <svg
-              className={`w-5 h-5 transition-transform ${isWalletActive ? 'scale-110' : ''}`}
-              fill={isWalletActive ? 'currentColor' : 'none'}
+              className={`w-5 h-5 transition-transform ${isBundlesActive ? 'scale-110' : ''}`}
+              fill={isBundlesActive ? 'currentColor' : 'none'}
               viewBox="0 0 24 24"
               stroke="currentColor"
-              strokeWidth={isWalletActive ? 2 : 1.75}
+              strokeWidth={isBundlesActive ? 2 : 1.75}
             >
               <path
                 strokeLinecap="round"
                 strokeLinejoin="round"
-                d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"
+                d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4"
               />
             </svg>
-            {isWalletActive && (
+            {isBundlesActive && (
               <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 w-1.5 h-1.5 rounded-full bg-brand-600" />
             )}
           </div>
-          <span className="text-[10px] mt-1 tracking-tight">Wallet</span>
+          <span className="text-[10px] mt-1 tracking-tight">Bundles</span>
         </Link>
       </div>
     </nav>

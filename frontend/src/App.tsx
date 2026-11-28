@@ -12,8 +12,6 @@ import { ProtectedRoute } from './components/ProtectedRoute';
 
 import { MarketplacePage } from './pages/MarketplacePage';
 import { PackagesPage } from './pages/PackagesPage';
-import { SavingsPage } from './pages/SavingsPage';
-import { WalletPage } from './pages/WalletPage';
 import { LoginPage } from './pages/LoginPage';
 import { RegisterPage } from './pages/RegisterPage';
 import { AdminDashboardPage } from './pages/AdminDashboardPage';
@@ -34,22 +32,9 @@ export const App: React.FC = () => {
               <Routes>
                 <Route path="/" element={<MarketplacePage />} />
                 <Route path="/packages" element={<PackagesPage />} />
-                <Route
-                  path="/savings"
-                  element={
-                    <ProtectedRoute>
-                      <SavingsPage />
-                    </ProtectedRoute>
-                  }
-                />
-                <Route
-                  path="/wallet"
-                  element={
-                    <ProtectedRoute>
-                      <WalletPage />
-                    </ProtectedRoute>
-                  }
-                />
+                {/* Retired Wallet & Food Savings — cleanly redirected to Commercial Bundles */}
+                <Route path="/savings" element={<Navigate to="/packages" replace />} />
+                <Route path="/wallet" element={<Navigate to="/packages" replace />} />
                 <Route
                   path="/orders"
                   element={

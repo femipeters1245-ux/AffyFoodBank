@@ -9,19 +9,17 @@ interface ProtectedRouteProps {
 }
 
 const AUTH_GATE_META: Record<string, { icon: string; title: string; subtitle: string; cta: string }> = {
-  '/savings': {
-    icon: '🏦',
-    title: 'Food Savings is Private',
-    subtitle:
-      'Sign in or create a free account to set savings goals, track your progress, and lock in today\u2019s farm prices before inflation hits.',
-    cta: 'Start Saving Today',
+  '/orders': {
+    icon: '📦',
+    title: 'Track Your Orders',
+    subtitle: 'Sign in to view your order history, delivery status, and receipts.',
+    cta: 'View My Orders',
   },
-  '/wallet': {
-    icon: '💳',
-    title: 'Your Wallet is Private',
-    subtitle:
-      'Log in to view your Affy Food Wallet, check your balance, top up funds, and review all your transaction history.',
-    cta: 'Access My Wallet',
+  '/adp/dashboard': {
+    icon: '📍',
+    title: 'Delivery Port Portal',
+    subtitle: 'Log in to manage your Delivery Port operations, earnings, and order collections.',
+    cta: 'Access Portal',
   },
 };
 

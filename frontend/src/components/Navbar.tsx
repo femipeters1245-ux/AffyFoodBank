@@ -3,7 +3,6 @@ import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useCart } from '../context/CartContext';
-import { formatNaira } from '../utils/format';
 import { AffyLogo } from './AffyLogo';
 
 // Lock icon badge shown on auth-required links for guests
@@ -20,7 +19,7 @@ const LockBadge: React.FC = () => (
 );
 
 export const Navbar: React.FC = () => {
-  const { user, wallet, isAuthenticated, logout } = useAuth();
+  const { user, isAuthenticated, logout } = useAuth();
   const { totalItems, setIsCartOpen } = useCart();
   const location = useLocation();
 
@@ -43,7 +42,7 @@ export const Navbar: React.FC = () => {
             </Link>
           </div>
 
-          {/* ─── Desktop Nav Links (Preserved) ─── */}
+          {/* ─── Desktop Nav Links ─── */}
           <div className="hidden md:flex items-center space-x-1">
             <Link
               to="/"
@@ -65,28 +64,18 @@ export const Navbar: React.FC = () => {
             >
               Food Bundles
             </Link>
-            <Link
-              to="/savings"
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
-                isActive('/savings')
-                  ? 'bg-brand-50 text-brand-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              Food Savings
-              {!isAuthenticated && <LockBadge />}
-            </Link>
-            <Link
-              to="/wallet"
-              className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
-                isActive('/wallet')
-                  ? 'bg-brand-50 text-brand-700 font-semibold'
-                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
-              }`}
-            >
-              My Wallet
-              {!isAuthenticated && <LockBadge />}
-            </Link>
+            {isAuthenticated && (
+              <Link
+                to="/orders"
+                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
+                  isActive('/orders')
+                    ? 'bg-brand-50 text-brand-700 font-semibold'
+                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100'
+                }`}
+              >
+                My Orders
+              </Link>
+            )}
             <Link
               to="/adp/apply"
               className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors flex items-center ${
@@ -141,23 +130,7 @@ export const Navbar: React.FC = () => {
             <div className="hidden md:flex items-center space-x-3">
               {isAuthenticated ? (
                 <div className="flex items-center space-x-3">
-                  {/* Wallet Balance Chip */}
-                  <Link
-                    to="/wallet"
-                    className="flex items-center space-x-2 bg-gradient-to-r from-brand-50 to-purple-50 border border-brand-200/80 px-3 py-1.5 rounded-full hover:shadow-xs hover:border-brand-300 transition-all"
-                    title="View wallet & ledger"
-                  >
-                    <span className="flex h-2 w-2 relative">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-brand-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-brand-500"></span>
-                    </span>
-                    <span className="text-xs text-slate-500 font-medium">Bal:</span>
-                    <span className="text-xs font-bold text-brand-800">
-                      {wallet ? formatNaira(wallet.totalBalanceCents) : '₦0.00'}
-                    </span>
-                  </Link>
-
-                  {/* User menu */}
+                  {/* User profile & actions */}
                   <div className="flex items-center space-x-2">
                     <div className="w-8 h-8 rounded-full bg-slate-100 border border-slate-300 flex items-center justify-center text-xs font-bold text-slate-700 uppercase">
                       {user?.firstName ? user.firstName[0] : user?.email[0] ?? 'U'}

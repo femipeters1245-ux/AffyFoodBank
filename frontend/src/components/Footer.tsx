@@ -13,7 +13,7 @@ export const Footer: React.FC = () => {
               <AffyLogo variant="dark" size="lg" />
             </Link>
             <p className="text-xs text-slate-400 leading-relaxed">
-              Empowering Nigerian households, restaurants, and caterers to hedge against food inflation through direct farm-gate sourcing and automated food savings.
+              Empowering Nigerian households, restaurants, and caterers to hedge against food inflation through direct farm-gate sourcing and commercial food bundles.
             </p>
             <div className="flex items-center space-x-3 text-xs text-slate-500">
               <span>🇳🇬 Lagos, Nigeria</span>
@@ -27,9 +27,9 @@ export const Footer: React.FC = () => {
             <h4 className="text-white font-semibold text-xs uppercase tracking-wider mb-3">Marketplace</h4>
             <ul className="space-y-2 text-xs">
               <li><Link to="/" className="hover:text-brand-400 transition-colors">Raw Foodstuff Catalogue</Link></li>
-              <li><Link to="/packages" className="hover:text-brand-400 transition-colors">Curated Food Bundles</Link></li>
-              <li><Link to="/savings" className="hover:text-brand-400 transition-colors">Target Food Savings</Link></li>
-              <li><Link to="/wallet" className="hover:text-brand-400 transition-colors">Digital Food Wallet</Link></li>
+              <li><Link to="/packages" className="hover:text-brand-400 transition-colors">Commercial Food Bundles</Link></li>
+              <li><Link to="/adp/apply" className="hover:text-brand-400 transition-colors">Affy Delivery Ports (ADP)</Link></li>
+              <li><Link to="/orders" className="hover:text-brand-400 transition-colors">Order Tracking</Link></li>
             </ul>
           </div>
 
@@ -59,7 +59,7 @@ export const Footer: React.FC = () => {
               </div>
               <div className="flex items-start space-x-2">
                 <span className="text-brand-400 font-bold">✓</span>
-                <span>Escrow-safe wallet & savings ledger</span>
+                <span>Safe &amp; verified TransactPay payment gateway</span>
               </div>
             </div>
           </div>

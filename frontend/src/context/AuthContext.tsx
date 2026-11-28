@@ -43,12 +43,8 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   const fetchWallet = async () => {
-    try {
-      const data = await walletApi.getWallet();
-      setWallet(data);
-    } catch {
-      // Wallet may not exist yet or request failed
-    }
+    // Wallet system retired — no-op
+    setWallet(null);
   };
 
   // Check HttpOnly session or localStorage on mount
@@ -107,7 +103,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
     localStorage.setItem('affy_user', JSON.stringify(res.user));
     setToken(res.token);
     setUser(res.user);
-    walletApi.getWallet().then(setWallet).catch(() => {});
+    setWallet(null);
     return res.user;
   };
 

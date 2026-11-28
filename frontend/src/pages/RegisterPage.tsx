@@ -7,7 +7,7 @@ export const RegisterPage: React.FC = () => {
   const { sendSignupOtp, verifySignupOtp, isAuthenticated, user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
-  const from = (location.state as any)?.from?.pathname || '/wallet';
+  const from = (location.state as any)?.from?.pathname || '/';
 
   // Automatically redirect if already authenticated
   useEffect(() => {

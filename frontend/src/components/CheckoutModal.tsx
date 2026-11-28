@@ -14,7 +14,7 @@ interface CheckoutModalProps {
 
 export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose }) => {
   const { items, totalAmountCents, clearCart } = useCart();
-  const { user, wallet } = useAuth();
+  const { user } = useAuth();
   const navigate = useNavigate();
 
   // Delivery form state
@@ -35,9 +35,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
   const [zoneOperators, setZoneOperators] = useState<any[]>([]);
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>('');
   const [loadingOperators, setLoadingOperators] = useState<boolean>(false);
-
-  // Payment method
-  const [paymentMethod, setPaymentMethod] = useState<'transactpay' | 'wallet'>('transactpay');
 
   // TransactPay modal trigger & completed order state
   const [showTransactPay, setShowTransactPay] = useState(false);
@@ -231,58 +228,16 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
           }
         : null;
 
-    if (paymentMethod === 'wallet') {
-      const availableBalance = Math.max(0, (wallet?.totalBalanceCents ?? 0) - (wallet?.allocatedToSavingsCents ?? 0));
-      if (availableBalance < grandTotalCents) {
-        alert(
-          `Insufficient available wallet balance. You have ${formatNaira(availableBalance)} available (excluding locked food savings) but order total is ${formatNaira(grandTotalCents)}. Please use Direct Online Payment or top up your wallet.`,
-        );
-        return;
-      }
-      setIsInitiating(true);
-      try {
-        const orderRes = await ordersApi.walletCheckout({
-          totalAmountCents: grandTotalCents,
-          name: fullName,
-          phone,
-          address: effectiveAddress,
-          location: effectiveLocation,
-          isExpress: isExpressDelivery,
-          adpOperatorId: adpPayloadId,
-          items: items.map((i: any) => ({
-            productId: i.product?.id || i.id,
-            name: i.product?.name || i.name,
-            quantity: i.quantity,
-            priceCents: i.product?.priceCents || i.priceCents,
-          })),
-        });
-
-        const activeOrderRef = orderRes?.orderReference || `WLT_ORD_${Date.now()}`;
-        setCompletedOrder({
-          reference: activeOrderRef,
-          paidAt: new Date().toISOString(),
-          channel: 'WALLET',
-          totalCents: grandTotalCents,
-          itemsCount: items.reduce((s, i) => s + i.quantity, 0),
-          adpInfo: adpSummaryInfo,
-        });
-        clearCart();
-      } catch (err: any) {
-        alert(err.response?.data?.message || err.message || 'Failed to process wallet payment. Please try again.');
-      } finally {
-        setIsInitiating(false);
-      }
-    } else {
-      setIsInitiating(true);
-      try {
-        // Create TransactPay order on backend
-        const orderRes = await paymentsApi.createTransactPayOrder({
-          amountNaira: grandTotalCents / 100,
-          email: email || user?.email || 'customer@affyfoodbank.ng',
-          name: fullName,
-          phone,
-          address: effectiveAddress,
-          location: effectiveLocation,
+    setIsInitiating(true);
+    try {
+      // Create TransactPay order on backend
+      const orderRes = await paymentsApi.createTransactPayOrder({
+        amountNaira: grandTotalCents / 100,
+        email: email || user?.email || 'customer@affyfoodbank.ng',
+        name: fullName,
+        phone,
+        address: effectiveAddress,
+        location: effectiveLocation,
           isExpress: isExpressDelivery,
           adpOperatorId: adpPayloadId,
           items: items.map((i: any) => ({
@@ -354,8 +309,6 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
       } finally {
         setIsInitiating(false);
       }
-
-    }
   };
 
   const handleTransactPaySuccess = (paymentData: {
@@ -432,7 +385,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 <p className="text-xs text-slate-500 mt-1">
                   We have received your payment via{' '}
                   <span className="font-bold text-slate-800">
-                    {completedOrder.channel === 'WALLET' ? 'Affy Wallet' : 'TransactPay Gateway'}
+                    TransactPay Gateway
                   </span>
                   .
                 </p>
@@ -745,75 +698,25 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                 </div>
               </div>
 
-              {/* Payment Method Selector */}
+              {/* Payment Method Info */}
               <div className="space-y-3">
                 <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500">
-                  2. Choose Payment Method
+                  2. Payment Method
                 </h4>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {/* TransactPay Gateway Option */}
-                  <div
-                    onClick={() => setPaymentMethod('transactpay')}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                      paymentMethod === 'transactpay'
-                        ? 'border-blue-600 bg-blue-50/60 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white font-black text-xs flex items-center justify-center">
-                          💳
-                        </div>
-                        <span className="font-extrabold text-sm text-slate-900">
-                          Direct Online Payment
-                        </span>
-                      </div>
-                      <input
-                        type="radio"
-                        checked={paymentMethod === 'transactpay'}
-                        onChange={() => setPaymentMethod('transactpay')}
-                        className="text-emerald-600"
-                      />
+                <div className="p-4 rounded-2xl border border-blue-200 bg-blue-50/50 shadow-2xs space-y-2">
+                  <div className="flex items-center space-x-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-blue-600 text-white font-black text-xs flex items-center justify-center shadow-xs">
+                      💳
                     </div>
-                    <p className="text-[11px] text-slate-500">
-                      Debit Card (Verve, Mastercard, Visa), Bank Transfer, or USSD. Instant
-                      settlement.
-                    </p>
-                  </div>
-
-                  {/* Affy Wallet Option */}
-                  <div
-                    onClick={() => setPaymentMethod('wallet')}
-                    className={`p-4 rounded-2xl border-2 cursor-pointer transition-all flex flex-col justify-between ${
-                      paymentMethod === 'wallet'
-                        ? 'border-brand-600 bg-brand-50/60 shadow-sm'
-                        : 'border-slate-200 hover:border-slate-300 bg-white'
-                    }`}
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center space-x-2">
-                        <div className="w-7 h-7 rounded-lg bg-brand-700 text-white font-bold text-xs flex items-center justify-center">
-                          ₦
-                        </div>
-                        <span className="font-extrabold text-sm text-slate-900">
-                          Affy Food Wallet
-                        </span>
-                      </div>
-                      <input
-                        type="radio"
-                        checked={paymentMethod === 'wallet'}
-                        onChange={() => setPaymentMethod('wallet')}
-                        className="text-brand-600"
-                      />
-                    </div>
-                    <p className="text-[11px] text-slate-500">
-                      Available Balance:{' '}
-                      <span className="font-bold text-slate-800">
-                        {wallet ? formatNaira(Math.max(0, (wallet.totalBalanceCents || 0) - (wallet.allocatedToSavingsCents || 0))) : '₦0.00'}
+                    <div>
+                      <span className="font-extrabold text-sm text-slate-900 block">
+                        TransactPay Secure Gateway
                       </span>
-                    </p>
+                      <span className="text-[11px] text-slate-500">
+                        Pay with Debit Card (Mastercard, Visa, Verve), Bank Transfer, or USSD
+                      </span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -854,11 +757,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
               <button
                 type="submit"
                 disabled={isInitiating}
-                className={`w-full py-4 rounded-2xl font-black text-sm text-white shadow-lg transition-all flex items-center justify-center space-x-2 disabled:opacity-75 ${
-                  paymentMethod === 'transactpay'
-                    ? 'bg-blue-700 hover:bg-blue-800 shadow-blue-600/30'
-                    : 'bg-brand-600 hover:bg-brand-700 shadow-brand-600/30'
-                }`}
+                className="w-full py-4 rounded-2xl font-black text-sm text-white shadow-lg transition-all flex items-center justify-center space-x-2 disabled:opacity-75 bg-blue-700 hover:bg-blue-800 shadow-blue-600/30 active:scale-[0.98]"
               >
                 {isInitiating ? (
                   <>
@@ -867,11 +766,7 @@ export const CheckoutModal: React.FC<CheckoutModalProps> = ({ isOpen, onClose })
                   </>
                 ) : (
                   <>
-                    <span>
-                      {paymentMethod === 'transactpay'
-                        ? `Pay ${formatNaira(grandTotalCents)} with TransactPay`
-                        : `Pay ${formatNaira(grandTotalCents)} from Wallet`}
-                    </span>
+                    <span>Pay {formatNaira(grandTotalCents)} with TransactPay</span>
                     <span>➔</span>
                   </>
                 )}
