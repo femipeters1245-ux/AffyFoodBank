@@ -1,5 +1,5 @@
 // backend/src/routes/savings.ts
-import { Router } from 'express';
+import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/authenticate';
 import { authorize } from '../middleware/authorize';
 import {
@@ -10,6 +10,21 @@ import {
 } from '../controllers/savings.controller';
 
 const router = Router();
+
+// ─── FOOD SAVINGS SYSTEM RETIRED ────────────────────────────────────────────
+// The Food Savings feature has been retired. All routes return HTTP 410 Gone.
+// Data is preserved in the database; no records were deleted or modified.
+// Rollback: set SAVINGS_RETIRED to false to restore normal routing.
+const SAVINGS_RETIRED = true;
+
+if (SAVINGS_RETIRED) {
+  router.use((_req: Request, res: Response) => {
+    return res.status(410).json({
+      error: 'The Food Savings feature has been permanently retired.',
+      code: 'FEATURE_RETIRED',
+    });
+  });
+}
 
 router.use(authenticate);
 

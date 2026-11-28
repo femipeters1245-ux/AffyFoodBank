@@ -719,106 +719,14 @@ router.get('/transactpay/banks', async (_req: Request, res: Response) => {
 
 /**
  * POST /api/v1/payments/transactpay/virtual-account
- * Generates an automated permanent Virtual Account for dedicated wallet funding.
- * Reuses existing persistent account per customer profile.
- * Concurrency-safe: uses mutex lock so simultaneous requests return the exact same account.
- * Recovery-capable: queries getAccountDetailsByAlias before making a new generate call.
- * Strictly avoids fake account numbers on provider failure.
+ * RETIRED: Virtual account generation is disabled. Wallet system has been retired.
+ * Returns HTTP 410 Gone.
  */
-router.post('/transactpay/virtual-account', authenticate, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const userId = req.user?.sub;
-    if (!userId) {
-      throw new UnauthorizedError('Authentication required to generate or access virtual account');
-    }
-
-    // 1. Resolve customer profile from authenticated session
-    let customerProfile = await prisma.customerProfile.findFirst({
-      where: { userId },
-      include: { user: true },
-    });
-
-    if (!customerProfile) {
-      customerProfile = await prisma.customerProfile.create({
-        data: { userId },
-        include: { user: true },
-      });
-    }
-
-    const profileId = customerProfile.id;
-
-    // Concurrency Lock: ensures only one generation task runs per customer profile
-    const accountRecord = await virtualAccountStore.withLock(profileId, async () => {
-      // Step 2.1: Look in DB/store for existing virtual account
-      const existing = await virtualAccountStore.getByCustomerProfileId(profileId);
-      if (existing) {
-        return existing;
-      }
-
-      // Identity values: deterministic, derived from the immutable user ID
-      const alias = `AFFY-CUST-${userId}`;
-      const reference = `AFFY-WLT-${userId}`;
-      const narration = 'AffyFoodBank Wallet Funding';
-
-      // Step 2.2: Check if TransactPay already has one (alias recovery path)
-      const existingAtProvider = await transactPayService.getAccountDetailsByAlias(alias);
-      if (existingAtProvider) {
-        console.log(`[Virtual Account] Recovered existing account from TransactPay via alias "${alias}":`, existingAtProvider.accountNumber);
-        return await virtualAccountStore.save({
-          customerProfileId: profileId,
-          accountNumber: existingAtProvider.accountNumber,
-          bankName: existingAtProvider.bankName,
-          bankCode: existingAtProvider.bankCode,
-          accountName: existingAtProvider.accountName,
-          accountReference: existingAtProvider.accountReference || reference,
-          alias,
-          currency: existingAtProvider.currency || 'NGN',
-          provider: 'TRANSACTPAY',
-          isActive: true,
-        });
-      }
-
-      // Step 2.3: Only if neither exists, call Generate Virtual Account
-      console.log(`[Virtual Account] Calling Generate Virtual Account for alias "${alias}"`);
-      const generated = await transactPayService.generateVirtualAccount({
-        alias,
-        reference,
-        narration,
-      });
-
-      // Step 2.4: Save REAL returned values (never fabricated)
-      return await virtualAccountStore.save({
-        customerProfileId: profileId,
-        accountNumber: generated.accountNumber,
-        bankName: generated.bankName,
-        bankCode: generated.bankCode,
-        accountName: generated.accountName,
-        accountReference: generated.accountReference || reference,
-        alias,
-        currency: generated.currency || 'NGN',
-        provider: 'TRANSACTPAY',
-        isActive: true,
-      });
-    });
-
-    res.json({
-      status: 'success',
-      reference: accountRecord.accountReference,
-      accountNumber: accountRecord.accountNumber,
-      bankName: accountRecord.bankName,
-      bankCode: accountRecord.bankCode,
-      accountName: accountRecord.accountName,
-      currency: accountRecord.currency || 'NGN',
-      instructions: 'Transfer the exact amount to this dedicated account number. Your Affy FoodBank wallet will credit automatically upon bank clearing.',
-    });
-  } catch (err: any) {
-    console.error('[Virtual Account Generation Failed]:', err.message);
-    const statusCode = err.statusCode || (err.message?.includes('rejected') ? 502 : 503);
-    res.status(statusCode).json({
-      status: 'error',
-      message: err.message || 'Unable to setup virtual account right now. Please try again shortly or contact support.',
-    });
-  }
+router.post('/transactpay/virtual-account', (_req: Request, res: Response) => {
+  return res.status(410).json({
+    error: 'Virtual account generation has been retired along with the Wallet system.',
+    code: 'FEATURE_RETIRED',
+  });
 });
 
 /**
@@ -849,51 +757,26 @@ router.get('/transactpay/funding-events', authenticate, async (req: Request, res
 
 /**
  * POST /api/v1/payments/transactpay/funding-events/reverify
- * Re-runs independent verification for any funding event.
- * Follows the same strict provider check — no manual bypass.
- * Restricted to Admin and SuperAdmin roles.
+ * RETIRED: Manual re-verification is no longer available via API.
+ * Incoming transfers are now recorded as FLAGGED_FOR_MANUAL_REFUND.
+ * Finance team handles these records manually in the Settlement Archive.
  */
-router.post('/transactpay/funding-events/reverify', authenticate, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const role = req.user?.role;
-    if (role !== 'Admin' && role !== 'SuperAdmin') {
-      return res.status(403).json({ status: 'error', message: 'Forbidden: Admin access required' });
-    }
-
-    const { sessionId } = req.body;
-    if (!sessionId) {
-      throw new BadRequestError('Session ID is required for re-verification');
-    }
-
-    const result = await fundingService.reverifyFundingEvent(sessionId);
-    res.json({ status: 'success', result });
-  } catch (err) {
-    next(err);
-  }
+router.post('/transactpay/funding-events/reverify', authenticate, (_req: Request, res: Response) => {
+  return res.status(410).json({
+    error: 'Manual re-verification has been retired. Incoming stray transfers are recorded as FLAGGED_FOR_MANUAL_REFUND and handled by the Finance team.',
+    code: 'FEATURE_RETIRED',
+  });
 });
 
 /**
  * POST /api/v1/payments/transactpay/virtual-account/backfill
- * Rate-limited resumable backfill to generate virtual accounts for existing customers.
- * Restricted to Admin and SuperAdmin roles.
+ * RETIRED: Virtual account backfill is disabled. Wallet system has been retired.
  */
-router.post('/transactpay/virtual-account/backfill', authenticate, async (req: Request, res: Response, next: NextFunction) => {
-  try {
-    const role = req.user?.role;
-    if (role !== 'Admin' && role !== 'SuperAdmin') {
-      return res.status(403).json({ status: 'error', message: 'Forbidden: Admin access required' });
-    }
-
-    const { limit, delayMs } = req.body || {};
-    const result = await fundingService.backfillExistingCustomers({
-      limit: limit ? Number(limit) : 10,
-      delayMs: delayMs ? Number(delayMs) : 500,
-    });
-
-    res.json({ status: 'success', result });
-  } catch (err) {
-    next(err);
-  }
+router.post('/transactpay/virtual-account/backfill', authenticate, (_req: Request, res: Response) => {
+  return res.status(410).json({
+    error: 'Virtual account backfill has been retired along with the Wallet system.',
+    code: 'FEATURE_RETIRED',
+  });
 });
 
 /**

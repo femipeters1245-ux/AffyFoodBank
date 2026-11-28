@@ -253,7 +253,7 @@ describe('[UNIT] fundingService.verifyAndProcessFundingEvent', () => {
     expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 
-  it('atomically credits wallet and records ledger entry when fully verified and matched', async () => {
+  it('flags event for manual refund and skips wallet crediting when wallet system is retired', async () => {
     (prisma.walletFundingEvent.findUnique as jest.Mock).mockResolvedValueOnce({
       sessionId: 'sess_valid',
       status: 'RECEIVED',
@@ -279,53 +279,26 @@ describe('[UNIT] fundingService.verifyAndProcessFundingEvent', () => {
       accountReference: 'AFFY-WLT-cp1',
     });
 
-    mockPrismaTx.walletFundingEvent.findUnique.mockResolvedValueOnce({
-      sessionId: 'sess_valid',
-      status: 'VERIFYING',
-    });
-    mockPrismaTx.wallet.findUnique.mockResolvedValueOnce({
-      id: 'w_123',
-      customerProfileId: 'cp_123',
-      totalBalanceCents: BigInt(100000),
-    });
-
     const res = await fundingService.verifyAndProcessFundingEvent('sess_valid');
 
-    expect(res.status).toBe('CREDITED');
+    // Milestone 4: Wallet is retired -> returns FLAGGED_FOR_MANUAL_REFUND
+    expect(res.status).toBe('FLAGGED_FOR_MANUAL_REFUND');
     expect(res.customerProfileId).toBe('cp_123');
     expect(res.amountCents).toBe(500000);
+    expect(res.message).toContain('flagged for manual bank refund');
 
-    // Verify wallet balance incremented
-    expect(mockPrismaTx.wallet.update).toHaveBeenCalledWith({
-      where: { customerProfileId: 'cp_123' },
-      data: {
-        totalBalanceCents: { increment: BigInt(500000) },
-      },
-    });
+    // Verify wallet balance was NOT touched (no crediting)
+    expect(mockPrismaTx.wallet.update).not.toHaveBeenCalled();
 
-    // Verify deposit transaction ledger created
-    expect(mockPrismaTx.walletTransaction.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          walletId: 'w_123',
-          customerId: 'cp_123',
-          type: 'DEPOSIT',
-          status: 'SUCCESSFUL',
-          providerSessionId: 'sess_valid',
-          amountCents: BigInt(500000),
-          grossAmountCents: BigInt(500000),
-          feeCents: BigInt(5000),
-        }),
-      })
-    );
+    // Verify deposit transaction ledger was NOT created
+    expect(mockPrismaTx.walletTransaction.create).not.toHaveBeenCalled();
 
-    // Verify event status updated to CREDITED
-    expect(mockPrismaTx.walletFundingEvent.update).toHaveBeenCalledWith(
+    // Verify event status updated to FLAGGED_FOR_MANUAL_REFUND in database
+    expect(prisma.walletFundingEvent.update).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { sessionId: 'sess_valid' },
         data: expect.objectContaining({
-          status: 'CREDITED',
-          customerProfileId: 'cp_123',
+          status: 'FLAGGED_FOR_MANUAL_REFUND',
         }),
       })
     );

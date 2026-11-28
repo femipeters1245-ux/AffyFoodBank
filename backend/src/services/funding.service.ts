@@ -296,6 +296,31 @@ export const fundingService = {
     const feeCents = event?.feeCents ? Number(event.feeCents) : 0;
     const netAmountCents = grossAmountCents; // Defaulting to 100% credit unless fee deduction confirmed
 
+    // ─── WALLET SYSTEM RETIRED ──────────────────────────────────────────────
+    // The wallet system has been retired. Incoming verified bank transfers are
+    // recorded as FLAGGED_FOR_MANUAL_REFUND and NOT credited to any wallet.
+    // Finance team handles manual bank refunds from the Settlement Archive view.
+    // Rollback: set WALLET_RETIRED to false to restore normal wallet crediting.
+    const WALLET_RETIRED = true;
+
+    if (WALLET_RETIRED) {
+      const retiredMsg = `Wallet system retired — transfer of ₦${verified.totalAmountCharged} from account ${destinationAccount || accountRef} flagged for manual bank refund`;
+      logger.info('[fundingService] ' + retiredMsg, { sessionId: cleanSessionId, customerProfileId });
+      await this.updateEventStatus(cleanSessionId, {
+        status: 'FLAGGED_FOR_MANUAL_REFUND' as any,
+        failureReason: retiredMsg,
+        verificationPayload: verified.raw,
+      });
+      return {
+        status: 'FLAGGED_FOR_MANUAL_REFUND' as any,
+        message: retiredMsg,
+        customerProfileId,
+        amountCents: verified.amountCents,
+        transactionReference: verified.paymentReference,
+      };
+    }
+    // ────────────────────────────────────────────────────────────────────────
+
     // 5. ATOMIC LEDGER CREDITING (Exactly Once)
     let creditSuccess = false;
     let transactionReference = verified.paymentReference || `DEP-${Date.now()}-${uuidv4().slice(0, 6)}`;

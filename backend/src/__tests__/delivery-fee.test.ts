@@ -183,19 +183,19 @@ describe('Centralized Delivery Fee Management & Checkout Sync', () => {
     });
 
     it('Tamper test: should reject checkout request with tampered underpaid total', async () => {
-      const customerToken = jwt.sign(
-        { sub: 'test-customer-tamper', email: 'tamper@test.com', role: 'Customer', permissions: [] },
-        JWT_SECRET,
-        { expiresIn: '1h' }
-      );
-
-      // Send checkout with items totaling ₦15,000 + ₦1,500 delivery = ₦16,500 (1,650,000 cents),
-      // but client attempts to pass totalAmountCents: 50000 (₦500)
-      const res = await request(app)
+      // 1. Verify retired wallet checkout returns HTTP 410 Gone
+      const walletRes = await request(app)
         .post('/api/v1/orders/wallet-checkout')
-        .set('Authorization', `Bearer ${customerToken}`)
+        .send({ totalAmountCents: 50000 });
+      expect(walletRes.status).toBe(410);
+
+      // 2. Verify active commercial TransactPay checkout rejects underpayment with 400
+      // Items totaling ₦15,000 + ₦1,500 delivery = ₦16,500, but client passes amountNaira: 500
+      const res = await request(app)
+        .post('/api/v1/payments/transactpay/create-order')
         .send({
-          totalAmountCents: 50000,
+          email: 'tamper@affyfoodbank.ng',
+          amountNaira: 500,
           location: 'Ilesa Central (Roundabout, Isokun, Imo)',
           items: [
             { productId: 'test-p1', name: 'Rice', quantity: 1, priceCents: 1500000 },
@@ -204,7 +204,7 @@ describe('Centralized Delivery Fee Management & Checkout Sync', () => {
 
       expect(res.status).toBe(400);
       const errMsg = res.body.error || res.body.message;
-      expect(errMsg).toMatch(/Order amount mismatch/);
+      expect(errMsg).toMatch(/Payment amount mismatch/);
     });
   });
 });

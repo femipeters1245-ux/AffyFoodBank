@@ -257,13 +257,10 @@ function saveKycStore(store: Record<string, any>) {
 router.get('/stats', async (_req: Request, res: Response, _next: NextFunction) => {
   try {
     // 1. Try Prisma first
-    const [totalProducts, totalCustomers, totalOrders, walletAgg] = await Promise.all([
+    const [totalProducts, totalCustomers, totalOrders] = await Promise.all([
       prisma.product.count({ where: { isActive: true } }),
       prisma.customerProfile.count(),
       prisma.order.count(),
-      prisma.wallet.aggregate({
-        _sum: { totalBalanceCents: true },
-      }),
     ]);
 
     const lowStockItems = await prisma.inventory.count({
@@ -275,28 +272,23 @@ router.get('/stats', async (_req: Request, res: Response, _next: NextFunction) =
       totalCustomers,
       totalOrders,
       lowStockItems,
-      totalCustFundsCents: Number(walletAgg._sum.totalBalanceCents ?? 0),
     });
   } catch {
     // 2. Resilient fallback to Supabase
     if (supabaseAdmin) {
       try {
-        const [pRes, cRes, oRes, wRes, iRes] = await Promise.all([
+        const [pRes, cRes, oRes, iRes] = await Promise.all([
           supabaseAdmin.from('Product').select('id', { count: 'exact', head: true }).eq('isActive', true),
           supabaseAdmin.from('CustomerProfile').select('id', { count: 'exact', head: true }),
           supabaseAdmin.from('Order').select('id', { count: 'exact', head: true }),
-          supabaseAdmin.from('Wallet').select('totalBalanceCents'),
           supabaseAdmin.from('Inventory').select('id', { count: 'exact', head: true }).lte('quantity', 20),
         ]);
-
-        const totalCustFundsCents = (wRes.data || []).reduce((acc, w) => acc + Number(w.totalBalanceCents || 0), 0);
 
         return res.json({
           totalProducts: pRes.count ?? 18,
           totalCustomers: cRes.count ?? 18,
           totalOrders: oRes.count ?? 0,
           lowStockItems: iRes.count ?? 3,
-          totalCustFundsCents,
         });
       } catch (sbErr: any) {
         console.warn('[admin] Supabase stats query warning:', sbErr.message);
@@ -309,7 +301,6 @@ router.get('/stats', async (_req: Request, res: Response, _next: NextFunction) =
       totalCustomers: 18,
       totalOrders: 0,
       lowStockItems: 3,
-      totalCustFundsCents: 17100000,
     });
   }
 });
