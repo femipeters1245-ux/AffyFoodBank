@@ -1465,7 +1465,7 @@ export const AdminDashboardPage: React.FC = () => {
                 : 'bg-white text-slate-600 hover:text-slate-900 border border-slate-200'
             }`}
           >
-            <span>💳 Complete Transaction Ledger</span>
+            <span>📜 Finance &amp; Settlement Archive</span>
             <span className="bg-white/20 px-1.5 py-0.2 rounded-full text-[10px]">{transactions.length}</span>
           </button>
         )}
@@ -1551,14 +1551,14 @@ export const AdminDashboardPage: React.FC = () => {
 
             <div className="p-5 bg-white rounded-2xl border border-slate-200 shadow-2xs space-y-1">
               <span className="text-xs text-slate-500 font-semibold flex items-center gap-1.5">
-                <span>💰</span>
-                <span>Customer Digital Funds</span>
+                <span>🍱</span>
+                <span>Commercial Food Bundles</span>
               </span>
               <div className="text-2xl font-black text-emerald-700">
-                {formatNaira(stats?.totalCustFundsCents ?? customers.reduce((acc, c) => acc + c.walletBalanceCents, 0))}
+                {packages.length} Packages
               </div>
-              <div className="text-[11px] text-slate-400 font-medium">
-                Affy wallet balances in custody
+              <div className="text-[11px] text-emerald-700 font-medium">
+                {packages.filter((p) => p.status === 'ACTIVE').length} active commercial bundles published
               </div>
             </div>
 
@@ -1664,12 +1664,12 @@ export const AdminDashboardPage: React.FC = () => {
                 className="p-5 bg-white rounded-2xl border border-slate-200 hover:border-brand-300 hover:shadow-md cursor-pointer transition-all space-y-2 group"
               >
                 <div className="flex items-center justify-between">
-                  <span className="text-2xl">💳</span>
+                  <span className="text-2xl">📜</span>
                   <span className="text-xs font-bold text-brand-600 group-hover:translate-x-1 transition-transform">Open →</span>
                 </div>
-                <h3 className="font-extrabold text-slate-900 text-sm">Financial & Payment Ledger</h3>
+                <h3 className="font-extrabold text-slate-900 text-sm">Finance &amp; Settlement Archive</h3>
                 <p className="text-xs text-slate-500">
-                  Audit payment settlements, TransactPay card payments, and internal wallet ledger transactions.
+                  Read-only historical transaction records and incoming transfers flagged for manual bank refund.
                 </p>
               </div>
             )}
@@ -2140,7 +2140,7 @@ export const AdminDashboardPage: React.FC = () => {
               <div>
                 <h2 className="text-lg font-black text-slate-900">Customer KYC & Identity Directory</h2>
                 <p className="text-xs text-slate-500">
-                  Verify customer identities, BVN/NIN compliance, and digital wallet limits.
+                  Verify customer identities, BVN/NIN compliance, and KYC tier eligibility.
                 </p>
               </div>
               <div className="flex items-center space-x-2 text-xs font-semibold">
@@ -2163,7 +2163,6 @@ export const AdminDashboardPage: React.FC = () => {
                     <th className="px-6 py-4">Saved User Data (Registered)</th>
                     <th className="px-6 py-4">Identity (BVN / NIN)</th>
                     <th className="px-6 py-4">KYC Tier</th>
-                    <th className="px-6 py-4">Wallet Balance</th>
                     <th className="px-6 py-4">Orders</th>
                     <th className="px-6 py-4 text-right">KYC Action</th>
                   </tr>
@@ -2210,10 +2209,6 @@ export const AdminDashboardPage: React.FC = () => {
                         >
                           {c.kycStatus}
                         </span>
-                      </td>
-
-                      <td className="px-6 py-4 font-black text-slate-900 text-sm">
-                        {formatNaira(c.walletBalanceCents)}
                       </td>
 
                       <td className="px-6 py-4 font-bold text-slate-700">
@@ -2699,16 +2694,16 @@ export const AdminDashboardPage: React.FC = () => {
             <div className="p-6 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
               <div>
                 <div className="flex items-center space-x-2">
-                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-brand-700 bg-brand-50 px-2 py-0.5 rounded-full border border-brand-200">
-                    ⚡ Provider Verification Audit
+                  <span className="text-[10px] font-extrabold uppercase tracking-wider text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full border border-amber-200">
+                    📜 Restricted Read-Only Archive
                   </span>
-                  <span className="text-[10px] text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-200 font-bold">
-                    TransactPay Reserved Accounts
+                  <span className="text-[10px] text-slate-700 bg-slate-100 px-2 py-0.5 rounded-full border border-slate-200 font-bold">
+                    Wallet System Retired
                   </span>
                 </div>
-                <h2 className="text-lg font-black text-slate-900 mt-1">Virtual Account Funding Oversight</h2>
+                <h2 className="text-lg font-black text-slate-900 mt-1">Stray Virtual Account Transfers &amp; Refund Queue</h2>
                 <p className="text-xs text-slate-500">
-                  Read-only audit of customer bank transfers. Wallet balances are credited strictly upon independent API confirmation.
+                  Read-only audit of customer bank transfers. Wallet crediting is permanently disabled; incoming transfers are captured and flagged for manual bank refund.
                 </p>
               </div>
 
@@ -2826,15 +2821,12 @@ export const AdminDashboardPage: React.FC = () => {
                             </div>
                           </td>
                           <td className="px-6 py-4 text-right">
-                            <button
-                              type="button"
-                              disabled={isCredited || reverifyingSessionId === ev.sessionId}
-                              onClick={() => handleReverify(ev.sessionId)}
-                              className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 disabled:opacity-40 text-slate-700 font-bold text-[11px] rounded-lg transition-colors"
-                              title={isCredited ? 'Already credited' : 'Re-run independent verification'}
+                            <span
+                              className="px-2.5 py-1 bg-amber-50 text-amber-700 border border-amber-200 font-bold text-[11px] rounded-lg"
+                              title="Wallet system retired — manual refund handled by Finance team"
                             >
-                              {reverifyingSessionId === ev.sessionId ? 'Verifying...' : 'Re-verify ➔'}
-                            </button>
+                              Finance Action Required
+                            </span>
                           </td>
                         </tr>
                       );
@@ -2850,7 +2842,7 @@ export const AdminDashboardPage: React.FC = () => {
               <div>
                 <h2 className="text-lg font-black text-slate-900">Complete Financial Ledger & Payment Audits</h2>
                 <p className="text-xs text-slate-500">
-                  Permanent records of online payment settlements, card charges, and wallet debits.
+                  Permanent records of online payment settlements, card charges, and TransactPay gateway transactions.
                 </p>
               </div>
               <button
